@@ -76,6 +76,15 @@ This is a dependency-aware sequence, not blanket implementation approval. Every 
 - **Required validation:** Complete affected test/build matrix; security and privacy evidence; keyboard/screen-reader review; SEO/canonical/hreflang/robots/sitemap checks; representative performance; restore/recovery checks where authorized.
 - **Owner stop/approval gate:** Owner decides whether findings authorize a separate remediation or release task. No commit, PR, deployment, or production activation is implied.
 
+## Design foundation workstream — bounded sequence
+
+| Task | Bounded outcome and dependency gate |
+| --- | --- |
+| `ARE-DS-00 — Brand Asset Audit and Design Foundation Readiness` | Audit existing brand/media evidence and map the locked Design System to public web, Admin web, and native mobile without implementing UI or assets. |
+| `ARE-DS-01 — Cross-Platform Design Tokens and Typography Foundation` | Implement only owner-approved semantic tokens, typography, RTL-safe foundations, focus, and reduced motion after the asset/licensing/owner-decision gates recorded by `ARE-DS-00`. |
+| `ARE-DS-02 — Public Web Core Component Foundation` | Build the bounded accessible public-web component base only after `ARE-DS-01` passes and required logo/icon/content gates for the selected components are satisfied. |
+| Homepage implementation | Begin only after the required design, brand-asset, media-rights, content, bilingual, accessibility, and component gates are satisfied and the owner authorizes a separate task. |
+
 ## Mobile workstream — bounded sequence
 
 This sequence extends the product with one customer-facing native Android/iOS application without authorizing the whole workstream at once.
@@ -92,6 +101,6 @@ This sequence extends the product with one customer-facing native Android/iOS ap
 
 The only proposed next task is:
 
-`ARE-MOB-01 — Minimal Expo Mobile Scaffold`
+`ARE-DS-01 — Cross-Platform Design Tokens and Typography Foundation`
 
-It requires explicit owner authorization and must satisfy the entry criteria in `docs/ARE_MOBILE_FOUNDATION.md`. It is not executed by `ARE-MOB-00`.
+It requires explicit owner authorization and must satisfy the entry criteria in `docs/ARE_DESIGN_FOUNDATION_READINESS.md`. It is not executed by `ARE-DS-00`.
