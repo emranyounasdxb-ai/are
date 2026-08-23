@@ -5,13 +5,13 @@
 | Task | `ARE-DS-00 — Brand Asset Audit and Design Foundation Readiness`, updated by `ARE-DS-00A — Official Logo Intake and Brand Decision` |
 | Audit date | 23 August 2026 |
 | Scope | Documentation and implementation readiness only |
-| Readiness outcome | **READY WITH GAPS** |
+| Readiness outcome | **READY WITH GAPS — ARE-DS-01 AUTHORIZED** |
 
 ## 1. Executive readiness result
 
 The locked ARE Design System contains enough exact UI color, semantic state, spacing, layout, radius, border, elevation, motion, RTL, focus, and accessibility direction to begin a bounded cross-platform token foundation.
 
-The repository now contains one owner-supplied official logo reference: `brand-source/aliyas-real-estate-logo-candidate.png`. The English identity concept is owner-approved, but the current PNG is not a production master or an authorized runtime/public asset. The editable/vector logo package, responsive and light/dark lockups, Arabic wordmark decision, other production media, icons, font sources, and licensing evidence remain missing. These gaps do not block a token-only foundation, provided `ARE-DS-01` keeps unresolved logo-production, font, icon, imagery, and native-adaptation decisions explicit and does not invent them.
+The repository contains one owner-supplied official logo reference: `brand-source/aliyas-real-estate-logo-candidate.png`. The owner has now locked the UI palette/logo relationship, Roboto Flex and IBM Plex Sans Arabic, typography normalization authority, official-source self-hosting/licensing, Lucide icon family, English-logo Arabic-launch policy, cross-platform mapping, media-rights governance, and production-logo method in `docs/ARE_DESIGN_OWNER_DECISIONS.md`. `ARE-DS-01` is authorized as the next bounded task. Actual font assets, icon packages, editable/vector logo source, production logo variants, Arabic/bilingual wordmark, rights-cleared media, and 3D/AR remain deferred gaps; this is not production-brand or homepage readiness.
 
 ## 2. Sources reviewed
 
@@ -20,6 +20,7 @@ The repository now contains one owner-supplied official logo reference: `brand-s
 - `ARE DESIGN SYSTEM v1.0.md`.
 - `docs/ARE_FOUNDATION_LOCK.md`.
 - `docs/ARE_IMPLEMENTATION_PLAN.md`.
+- `docs/ARE_DESIGN_OWNER_DECISIONS.md`.
 - `docs/ARE_MOBILE_FOUNDATION.md`.
 - `.agents/skills/are-frontend-implementation/SKILL.md`.
 - `.agents/skills/are-mobile-implementation/SKILL.md`.
@@ -106,10 +107,10 @@ All production items below remain absent. The current PNG verifies the stacked i
 | Developer logos | Missing | Developer authorization, attribution, and brand-use terms |
 | Community/location imagery | Missing | Location-accurate, rights-cleared originals |
 | Team/agent photography | Missing | Approved portraits, consent, usage scope, and retention rules |
-| Arabic wordmark requirement/asset | Missing | Owner/brand decision on Arabic naming and approved artwork, if required; do not transliterate by assumption |
-| Roboto Flex font files | Missing | Approved WOFF2/native source files and redistribution/self-hosting evidence |
-| IBM Plex Sans Arabic font files | Missing | Approved WOFF2/native source files and redistribution/self-hosting evidence |
-| Font licence record | Missing | Licence text/source, version, allowed platforms, modification/subsetting terms |
+| Arabic/bilingual wordmark asset | Missing | Not required for launch; the approved English mark serves both locales, while any future Arabic/bilingual artwork requires a separate owner-approved branding task |
+| Roboto Flex font files | Missing | Official `googlefonts/roboto-flex` source and OFL 1.1 are approved; exact version/files/formats/hashes remain for `ARE-DS-01` |
+| IBM Plex Sans Arabic font files | Missing | Official `IBM/plex` source and OFL 1.1 are approved; exact version/files/formats/hashes remain for `ARE-DS-01` |
+| Font licence artifact | Missing | Approved OFL 1.1 text must be committed alongside the exact future font files |
 | Video/media and poster frames | Missing | Rights-cleared masters, captions/transcripts where meaningful, and static posters |
 | Floor plans and brochures | Missing | Approved documents, rights, public/private classification, and accessible alternatives |
 | Optional 3D assets | Missing | Future feasibility evidence only; no format is selected now |
@@ -151,7 +152,7 @@ Public availability or appearance on a developer/reference website would not est
 | Favicon suitability | Full lockup is unsuitable. An approved monogram-only favicon source and size-specific exports are required. |
 | Mobile app-icon suitability | Not ready. A source-derived 1024 × 1024 master with platform-safe composition and approved background behavior is required; the current lockup/transparency must not be used directly. |
 | Social-avatar suitability | Full lockup is unsuitable at avatar sizes because the descriptor will disappear. An approved monogram-focused square export is required. |
-| Arabic-branding implications | The approved asset is English-only. Arabic wordmark/transliteration, bilingual lockup, reading order, and relative hierarchy remain owner decisions; the monogram itself must not be mechanically mirrored. |
+| Arabic-branding implications | Launch policy is resolved: the approved English mark serves both locales, is never mirrored internally in RTL, and may receive localized accessible naming. Arabic spelling/transliteration or a bilingual lockup must not be invented and remains a future branding task. |
 | One-color reproduction | The visible artwork is effectively one dominant brown plus antialias palette entries, but one-color print/digital reproduction is not approved until a source-derived single-color vector exists. |
 | Print/signage scalability | 2885px raster resolution and approximately 488ppi metadata may support bounded reference proofs, but they do not provide vector scalability, production color management, or signage authority. |
 | Color contrast | Strong on locked light neutrals; weak on locked dark/brown surfaces. Ratios below are nominal comparisons, not a substitute for implemented non-text contrast review. |
@@ -177,7 +178,7 @@ The dominant visible logo color is `#3D2605` at alpha 254. The following ratios 
 | Muted Umber 600 | `#625850` | 2.05:1 | Distinct text neutral; insufficient as a logo background pair |
 | Digital Aqua 400 | `#4CCFC0` | 7.44:1 | Strong numerical separation, but Aqua remains limited to intelligent/live/map context and is not a logo color |
 
-No locked UI color exactly matches `#3D2605`. This is not resolved by changing either authority: the logo may remain distinct from Heritage Brown `#5A3827` and the other interface colors. A later owner decision must confirm the final production logo color specification and its relationship to the UI palette after the editable/vector source is supplied.
+No locked UI color exactly matches `#3D2605`. The owner has resolved the relationship without changing either authority: `#3D2605` is logo-specific Heritage Ink, not a general UI token, while the existing Design System palette remains unchanged and authoritative for interfaces. The current brown logo is limited to sufficient-contrast surfaces; Carbon, Espresso, and other insufficient-contrast dark surfaces require a future approved Ivory/white inverted variant. The editable/vector source must still provide the final production color specification.
 
 ## 6. Reference-site compatibility assessment
 
@@ -185,7 +186,7 @@ The owner-approved reference interpretation is compatible with ARE's locked dire
 
 The repository does not contain the reference screenshot, so no pixel-level comparison is claimed. The reference must not supply ARE identity or business truth. Its name/logo, text, headings, prices, statistics, testimonials, property names, contact details, images, icons, exact composition, and exact styling are prohibited from copying.
 
-One explicit boundary is typography: no serif family is approved in the locked system. The approved reference preference for display-led hierarchy can be met with the documented Roboto Flex scale; a serif may not be introduced without a separate owner decision and licensing review.
+One explicit boundary is typography: no serif family is approved. The reference preference for display-led hierarchy must be met with Roboto Flex's approved variable capabilities; introducing a serif requires an explicit documented owner decision that supersedes the current lock.
 
 ## 7. Locked ARE visual direction
 
@@ -207,22 +208,22 @@ The current PNG is reference-only across all three platforms. It must not be cop
 
 | Foundation item | Locked evidence and platform mapping | Readiness classification | Gap or smallest decision |
 | --- | --- | --- | --- |
-| UI brand colors | Exact core UI palette and usage restrictions exist for web and native semantic translation | Ready for implementation | Keep the logo's verified reference brown separate; final logo/UI relationship remains an owner decision |
-| Logo colors | Current reference verifies dominant visible `#3D2605`, but production authority must come from the editable/vector source | Requires asset | Supply the master, production color specification, and approved light/dark variants; do not recolor either authority automatically |
+| UI brand colors | Exact core UI palette remains unchanged and authoritative across web/native semantic translation; logo-specific Heritage Ink `#3D2605` remains separate | Ready for implementation | Do not promote Heritage Ink to a general UI token or change the UI palette to match it |
+| Logo colors | Owner locked `#3D2605` as logo-specific Heritage Ink and prohibited dark-surface use without an approved light/inverted variant | Requires asset | Editable/vector source, production color specification, and approved variants remain deferred without blocking `ARE-DS-01` |
 | Semantic colors | Success, warning, error, information, and AI/live strong/soft pairs are defined | Ready for implementation | Validate implemented contrast and non-color cues |
 | Surface hierarchy | Light/dark page, surface, subtle, text, action, and border roles are defined | Ready for implementation | Dark mode is selective, not a blanket default |
 | Text hierarchy | Display, heading, body, label, overline, metadata, and data behavior are described | Ready for implementation | Exact font delivery remains gated |
 | Borders/dividers | Light, strong, and dark border values and focus offsets are defined | Ready for implementation | Native adapters must preserve visual contrast |
-| Typography families | Roboto Flex/Roboto and IBM Plex Sans Arabic/fallbacks are named | Requires licensing verification | Supply approved files and platform licences; no serif is approved |
+| Typography families | Roboto Flex and IBM Plex Sans Arabic are owner-approved from their official projects under OFL 1.1; no serif or third production family is approved | Ready for implementation | `ARE-DS-01` must acquire and pin exact files, formats, hashes, and OFL text; runtime CDN loading is prohibited |
 | Display/body/utility roles | Roles and intended uses are defined | Ready for implementation | Preserve Arabic metric differences |
-| Type scale | Sizes exist, but several line-height and weight values are ranges; fluid CSS does not map directly to native | Requires owner decision | Approve exact role values or authorize DS-01 to normalize within documented ranges |
-| Font weights | Role ranges exist rather than one final cross-platform set | Requires owner decision | Select the smallest approved weight/axis set after font evidence |
+| Type scale | Semantic roles and ranges exist; owner authorized script/platform optical normalization without changing role hierarchy | Ready for implementation | `ARE-DS-01` may map size, line-height, tracking, and weights per script/platform within the locked roles |
+| Font weights | Role ranges exist and may be normalized per script/platform within the approved family/source baseline | Ready for implementation | Select the smallest verified weight/axis set during `ARE-DS-01` font acquisition |
 | Spacing scale | 4px scale from 0 through 128px is defined | Ready for implementation | Expose semantic aliases only where real use exists |
 | Layout/container system | Web columns, gutters, containers, reading/form widths, and section rhythm are defined | Ready for implementation | CSS container values are not mobile layout primitives |
 | Breakpoints | Five public-web ranges and responsive behavior are defined | Ready for implementation | CSS breakpoints are Not applicable to platform on native; native uses window/orientation adaptation |
 | Radius scale | Seven exact radii and usage guidance are defined | Ready for implementation | Use fewer sizes per surface |
-| Shadow/elevation | Exact web shadows exist; native shadow/elevation parity is not numerically specified | Requires owner decision | Approve a minimal native elevation translation in DS-01 |
-| Icons | Grid, stroke, outline character, and RTL rules exist; family is unselected | Requires owner decision | Select one licensed family or approved internal set before DS-02 |
+| Shadow/elevation | Exact web shadows exist; owner authorized shared Flat/Raised/Floating/Overlay intents with native iOS shadow and Android elevation mapping | Ready for implementation | `ARE-DS-01` maps intents to locked values without inventing new purpose or requiring pixel identity |
+| Icons | Lucide is owner-approved as the sole general interface family: `lucide-react` for web and `lucide-react-native` for mobile | Ready for implementation | Exact compatible package versions remain uninstalled and must be pinned only in their authorized implementation task |
 | Image treatment | Ratios, art direction, overlays, performance, and rights rules exist | Requires asset | Supply rights-cleared masters and responsive crops |
 | Cards | Property/project/developer/location/agent/content anatomy and states are defined | Ready for implementation | Component work belongs to later approved tasks |
 | Buttons | Variants, heights, hierarchy, loading, icon, and CTA rules are defined | Ready for implementation | Validate each platform's native/keyboard behavior |
@@ -234,19 +235,21 @@ The current PNG is reference-only across all three platforms. It must not be cop
 | RTL behavior | Mirroring, logical properties, mixed-script isolation, and non-mirroring rules are defined | Ready for implementation | Arabic visual/content review remains mandatory |
 | Focus states | Exact web rings/offsets and interaction rules exist | Ready for implementation | CSS focus styling is Not applicable to platform on native; preserve native accessibility focus semantics |
 | Accessibility | WCAG 2.2 AA target, 44px targets, zoom, labels, state, screen-reader, and data alternatives exist | Ready for implementation | Actual components still require automated and manual verification |
-| Web/mobile token equivalence | Semantic source values may align; web CSS and native token adapters/runtime components remain separate | Ready for implementation | Native typography/elevation adaptations require the decisions above |
+| Web/mobile token equivalence | Shared semantic names/intent with separate web CSS and native adapters is owner-approved; platform-native accessibility and rendering take priority over pixel identity | Ready for implementation | No platform may silently create a different brand palette |
 
 ## 10. Typography and font-licensing readiness
 
-Typography intent is defined but delivery is not ready. Roboto Flex is the Latin recommendation and IBM Plex Sans Arabic is the Arabic recommendation, with documented fallbacks, type roles, loading/subsetting direction, tabular-number usage, Arabic line-height behavior, and performance constraints.
+Typography authority is resolved. Roboto Flex is the approved English/Latin production family from `googlefonts/roboto-flex`, and IBM Plex Sans Arabic is the approved Arabic production family from `IBM/plex`; both use the SIL Open Font License 1.1. No serif or third production family is approved. System-font stacks remain technical fallbacks only.
 
-No font file, licence text, source/version evidence, subsetting permission, self-hosting authority, or native redistribution evidence exists in the repository. `ARE-DS-01` must not add fonts until this evidence is supplied or the owner explicitly limits the task to token/fallback preparation. A serif display font is outside the locked system.
+Fonts must be self-hosted from verified official sources without a runtime Google Fonts/CDN dependency. `ARE-DS-01` is authorized to select and pin exact source versions, WOFF2/variable assets for web where suitable, compatible TTF/OTF assets for mobile, file hashes, formats, and required OFL texts. Web and mobile must share the approved family/source baseline. Any subsetting or conversion must be reproducible, licensed, validated, and documented.
+
+Semantic type roles remain shared, while `ARE-DS-01` may normalize size, line-height, tracking, and weight for script/platform optical equivalence, readability, and accessibility. Arabic must not inherit Latin letter spacing, and mobile user font scaling remains mandatory.
 
 ## 11. Responsive and RTL readiness
 
 Public/admin web have defined viewport bands, grid/gutter behavior, section rhythm, responsive patterns, logical-property direction, mixed-script isolation, and independent Arabic QA requirements. Mobile has an approved native boundary: safe areas, orientation/device adaptation, font scaling, correct reading order, touch-first behavior, directional mirroring, and non-mirroring of logos, media, maps, plans, and other non-directional content.
 
-The specifications are ready for implementation, but the approved identity reference is English-only: no English/Arabic reference screen, approved Arabic wordmark decision, bilingual lockup, real long-form Arabic content, or implemented component exists to validate. Those are later evidence gates, not passes from this audit.
+The specifications are ready for implementation. The approved English ALIYAS Real Estate logo is the official launch mark in both English and Arabic interfaces, must never be mirrored internally in RTL, and may receive localized accessible labels. No Arabic spelling, transliteration, or bilingual lockup may be invented. A future Arabic/bilingual wordmark remains deferred and does not block Arabic interface implementation. Real Arabic content, components, and assistive-technology behavior still require later implementation evidence.
 
 ## 12. Motion readiness
 
@@ -274,49 +277,52 @@ The logo reference received technical and visual intake assessment only; no comp
 
 | Scope | Blocker |
 | --- | --- |
-| Token-only color/spacing/radius/motion foundation | No technical blocker; the remaining owner decisions must be locked by `ARE-DS-00B` before separate `ARE-DS-01` authorization |
-| Typography font loading | Font files, licence/version evidence, and exact approved role/weight decisions are missing |
-| Logo/header/footer/app identity | English identity is owner-approved, but the editable/vector master, production color specification, horizontal/responsive/stacked exports, light/dark/one-color variants, favicon/app-icon masters, and Arabic wordmark decision are missing |
-| Icon-bearing components | Licensed icon family/approved internal set is not selected |
-| Production cards, hero, listings, projects, locations, team, social, and app/store visuals | Rights-cleared asset package and provenance manifest are missing |
-| Cross-platform native elevation/type adaptation | Exact approved native mapping is not recorded |
+| Token-only color/spacing/radius/motion foundation | No remaining design-decision blocker; `ARE-DS-01` is authorized as the next bounded task |
+| Typography font loading | Official sources, families, licences, self-hosting, and normalization authority are locked; exact acquisition/files/formats/hashes/OFL artifacts remain an `ARE-DS-01` implementation dependency, not an authorization blocker |
+| Logo/header/footer/app identity | English launch identity/policy is locked; missing editable/vector source and production variants do not block `ARE-DS-01` but block final branded-page and store-asset completion |
+| Icon-bearing components | Lucide is selected; exact `lucide-react`/`lucide-react-native` package versions and installation remain deferred to an authorized component implementation task |
+| Production cards, hero, listings, projects, locations, team, social, and app/store visuals | Rights-cleared asset package and operational provenance records remain missing; this does not block the token/typography foundation |
+| Cross-platform native elevation/type adaptation | Authority is resolved through shared semantic intents and platform-native mapping; exact implementation remains for `ARE-DS-01` |
 | 3D/AR | Entirely deferred to later feasibility |
 
 ## 16. Owner decisions required
 
-### Resolved by ARE-DS-00A
+No owner decision remains required before the bounded `ARE-DS-01` token and typography foundation. `docs/ARE_DESIGN_OWNER_DECISIONS.md` is the binding authority.
 
-- **Current English logo identity:** the supplied `A` monogram and English wordmark are **OWNER APPROVED**, with exact spelling `ALIYAS` and `REAL ESTATE`. Their geometry and lettering must not be redesigned, reconstructed, auto-traced, or replaced without owner approval.
+### Resolved and binding
 
-### Still pending for production logo use
+- UI palette remains authoritative; logo-specific Heritage Ink `#3D2605` remains separate and contrast-constrained.
+- Roboto Flex and IBM Plex Sans Arabic are approved; no serif or third production family.
+- Typography may be normalized by platform/script while preserving semantic roles and accessibility.
+- Official-source, OFL 1.1, self-hosted font delivery is approved; runtime font CDN use is prohibited.
+- Lucide is the sole general interface icon family.
+- The English logo is the official launch mark in both locales and is not mirrored in RTL; localized accessible naming is permitted.
+- Shared semantic token intent with platform-native elevation, typography, safe-area, focus, RTL, font-scaling, and screen-reader behavior is approved.
+- ALIYAS owner or explicitly authorized management is the media approval authority; the minimum provenance record is locked.
+- AI-generated/conceptual media requires approval, internal classification, provenance, and non-misleading use.
+- Production logo variants must originate from the editable Canva or verified original vector source without tracing, reconstruction, or redrawing.
 
-1. Supply and approve the original editable Canva source or equivalent vector source, SVG master, transparent production export, and typography/lettering ownership evidence.
-2. Approve horizontal, responsive, current stacked, monogram-only, and clear-space/minimum-size lockups.
-3. Approve light/inverted, dark, and single-color variants.
-4. Decide and supply the Arabic wordmark and bilingual-lockup policy.
-5. Confirm the final relationship between dominant reference brown `#3D2605` and the locked UI palette, including the production color specification; neither authority changes automatically.
-6. Approve favicon exports, a social-avatar export, the 1024 × 1024 app-icon master, and splash-safe source.
+### Deferred without blocking ARE-DS-01
 
-### Other design-foundation decisions still pending
-
-- Confirm the documented Future Heritage 2030 UI palette as the implementation palette while keeping logo colors separately authoritative.
-- Approve Roboto Flex and IBM Plex Sans Arabic for web/native use and provide verified files/licences, or authorize fallback-only typography work.
-- Select exact type weights/line heights where the locked system provides ranges, or authorize `ARE-DS-01` to normalize values within those ranges.
-- Select one licensed outlined icon family or approve creation of an internal normalized set in a later task.
-- Approve a minimal native translation for elevation and non-fluid typography/responsive tokens without importing CSS or web components.
-- Define the owner and required evidence format for brand/media rights and approval.
+- Actual font acquisition and exact font versions, files, formats, hashes, and committed OFL texts.
+- Exact Lucide package versions and installation.
+- Editable Canva/vector logo source and production logo variants.
+- Arabic/bilingual wordmark.
+- Rights-cleared property/project media and operational provenance storage.
+- 3D/AR feasibility and assets.
+- Final branded-page, homepage, store-asset, or production readiness.
 
 ## 17. ARE-DS-01 entry criteria
 
-`ARE-DS-01 — Cross-Platform Design Tokens and Typography Foundation` may begin only when:
+`ARE-DS-01 — Cross-Platform Design Tokens and Typography Foundation` is owner-authorized as the next bounded task, but is not executed by this decision lock. It may begin only from its separately verified task state and must:
 
-- The owner explicitly authorizes it from a clean, verified repository state.
-- The locked source documents and this readiness record remain unchanged unless a separate documentation correction is approved.
-- `ARE-DS-00B` records the remaining owner decisions for the UI palette, typography/font licensing, type normalization, icon family, native translation, and logo/UI color relationship, or explicitly defers them without invention.
-- Logo, imagery, icon, and content gaps remain explicit; no missing asset is guessed, reconstructed, downloaded, or generated.
-- The task defines one semantic token source with separate web and native adapters, not shared DOM/CSS/runtime components.
-- The scope remains tokens, typography, focus/reduced-motion foundations, RTL-safe semantics, and proportional validation only; component/page work remains deferred.
+- Follow `docs/ARE_DESIGN_OWNER_DECISIONS.md` without silently reinterpreting it.
+- Verify and record exact official font source versions, files, hashes, formats, and OFL artefacts before committing font assets.
+- Define one semantic token intent with separate web and native adapters, not shared DOM/CSS/runtime components.
+- Preserve the locked UI palette, logo-specific Heritage Ink separation, semantic typography roles, script/platform normalization authority, native accessibility, and RTL behavior.
+- Keep missing logo variants, media, Lucide installation, components, pages, and content explicit and outside scope unless the separate task authorizes them.
+- Remain limited to tokens, typography, focus/reduced-motion foundations, RTL-safe semantics, and proportional validation.
 
 ## 18. Explicit non-goals
 
-This audit and intake register the unchanged owner-supplied reference PNG and the approved English identity decision only. They do not implement or authorize runtime logo use, derived logo assets, UI, CSS/Tailwind tokens, React Native token files, fonts, icons, other imagery, components, pages, homepage sections, mobile screens, business content, Figma files, packages, dependency changes, advisory remediation, services, browsers, ports, EAS, deployment, or 3D/AR. They do not prove production lettering/media rights, claim pixel-level reference matching, or execute `ARE-DS-00B` or `ARE-DS-01`.
+This audit, intake, and decision lock record authority only. They do not implement runtime logo use, derived logo assets, UI, CSS/Tailwind tokens, React Native token files, fonts, icons, other imagery, components, pages, homepage sections, mobile screens, business content, Figma files, packages, dependency changes, advisory remediation, provenance storage, services, browsers, ports, EAS, deployment, or 3D/AR. They do not prove production lettering/media rights, claim production-brand or homepage readiness, or execute `ARE-DS-01`.
