@@ -54,6 +54,15 @@ Treat those authorities and the current explicit owner instruction as binding. S
 - Prevent horizontal overflow, clipped content, broken hierarchy, and desktop-only interactions.
 - Preserve usable zoom, long-label behavior, and equivalent access to information across viewports and locales.
 
+## Use the approved public motion stack
+
+- Motion is the approved public-site animation library, and Embla Carousel React is the approved slider engine. Additional motion or carousel engines require owner approval.
+- Use native browser scrolling. Use `whileInView` for appropriate entrance effects and `useScroll` with `useTransform` for approved scroll-linked effects.
+- Animate text without fragmenting or duplicating its semantic screen-reader output. Use Next Image for animated imagery.
+- Configure Embla and its content direction for RTL, and preserve equivalent controls and reading order.
+- Respect the user's reduced-motion preference. Prefer opacity and transform, and keep animation inside small client islands.
+- Never animate every section or hide essential content behind animation.
+
 ## Protect local ports
 
 - Use `127.0.0.1:50001` for the public website.

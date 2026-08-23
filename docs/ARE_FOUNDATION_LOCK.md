@@ -30,12 +30,13 @@
 
 ## Technology baseline
 
-Technology families are `LOCKED`; exact versions are `PENDING` compatibility verification and pinning during the scaffold task.
+Technology families are `LOCKED`. The approved frontend scaffold baselines are pinned below; other exact versions remain `PENDING` compatibility verification in their bounded phases.
 
 | Area | Foundation status and baseline |
 | --- | --- |
-| Public web | `LOCKED` Next.js App Router, React, TypeScript |
-| Admin web | `LOCKED` Next.js App Router, React, TypeScript |
+| Public web | `LOCKED` Next.js `16.3.2`, App Router, React, TypeScript |
+| Admin web | `LOCKED` Next.js `16.3.2`, App Router, React, TypeScript |
+| Public motion and sliders | `LOCKED` Motion is the approved animation system; Embla Carousel React is the approved slider engine. Additional animation engines require owner approval. |
 | Styling and accessible UI | `LOCKED` Tailwind CSS with a lightweight accessible component system; shadcn/ui and Radix-based primitives where appropriate |
 | Admin data/table handling | `LOCKED` TanStack Query and TanStack Table |
 | Charts | `LOCKED` Recharts only where a chart materially helps |
@@ -53,6 +54,8 @@ Technology families are `LOCKED`; exact versions are `PENDING` compatibility ver
 | CI/CD | `LOCKED` GitHub Actions |
 | Observability | `FUTURE` OpenTelemetry, Prometheus, and Grafana only when the relevant phase begins |
 | Vector support | `FUTURE` `pgvector` only when an approved feature requires it |
+
+Before production, recheck and explicitly approve the latest security-patched Next.js `16.3.x` release; do not change the locked baseline silently.
 
 ## Locked local port registry
 
@@ -139,7 +142,7 @@ Additional `LOCKED` port rules:
 
 ## Pending owner decisions
 
-- `PENDING` Exact dependency versions and final minimal repository layout.
+- `PENDING` Remaining phase-specific dependency versions beyond the approved frontend scaffold baseline.
 - `PENDING` Git initialization/default branch/remote.
 - `PENDING` Exact authentication, session, MFA, role, and permission design.
 - `PENDING` Canonical identifiers, archive/history rules, initial taxonomies, translations/source locale, localized URL structure, and price/availability freshness policy.
