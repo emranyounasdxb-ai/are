@@ -5,7 +5,7 @@ import "./globals.css";
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
     <html lang="en" dir="ltr">
-      <body>{children}</body>
+      <body className="are-site">{children}</body>
     </html>
   );
 }
