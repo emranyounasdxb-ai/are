@@ -140,3 +140,9 @@ Run `npm run dev:admin`, then use `http://127.0.0.1:50002`.
 * `npm run build`
 
 Port `3000` belongs to another protected local project. ARE commands must never bind, stop, restart, or otherwise interfere with port `3000`.
+
+## Local Mobile Development
+
+Run `npm run dev:mobile` from the repository root to start Expo Metro in development-build mode on `127.0.0.1:50018`. The command checks that the reserved port is free and does not launch a browser, emulator, or simulator.
+
+Android development requires an installed Expo development build. Windows supports the local Android toolchain; local iOS Simulator builds require macOS and Xcode. This scaffold has no browser-based mobile target. Physical-device networking and iPhone development remain separate owner-approved tasks.

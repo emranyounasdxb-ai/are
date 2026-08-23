@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
   [Parameter(Mandatory = $true)]
-  [ValidateSet(50001, 50002)]
+  [ValidateSet(50001, 50002, 50018)]
   [int]$Port
 )
 
