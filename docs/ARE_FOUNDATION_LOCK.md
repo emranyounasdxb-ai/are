@@ -12,7 +12,8 @@
 
 ## Product scope
 
-- `LOCKED` ARE is one public UAE real-estate website and one secure ARE Admin Dashboard.
+- `LOCKED` ARE is one public UAE real-estate website, one secure browser-based ARE Admin Dashboard, and one planned customer-facing native mobile application for Android and iOS from a single codebase.
+- `EXCLUDED` A staff/Admin mobile application and a WebView wrapper around the public website.
 - `LOCKED` The product is data-driven. Public pages present approved canonical records; they are not a hardcoded business catalogue.
 - `LOCKED` English and Arabic have equal product status, including complete RTL behavior.
 - `LOCKED` Work is delivered through small, dependency-aware, owner-approved tasks with stop gates.
@@ -21,6 +22,7 @@
 ## Architecture boundaries
 
 - `LOCKED` Public web and Admin web are separate deployable surfaces that may share approved tokens and reusable packages.
+- `LOCKED` The customer mobile application is a separate native presentation surface and uses the same planned FastAPI backend; it must not create a mobile-specific backend.
 - `LOCKED` One modular FastAPI backend enforces domain rules, contracts, authorization, and orchestration.
 - `LOCKED` One PostgreSQL database is the canonical data authority.
 - `LOCKED` Redis supports cache, coordination, rate-limit state, and queue support; it is not durable business truth.
@@ -36,6 +38,9 @@ Technology families are `LOCKED`. The approved frontend scaffold baselines are p
 | --- | --- |
 | Public web | `LOCKED` Next.js `16.3.2`, App Router, React, TypeScript |
 | Admin web | `LOCKED` Next.js `16.3.2`, App Router, React, TypeScript |
+| Customer mobile | `LOCKED` React Native with Expo, TypeScript, and Expo Router; Expo SDK 57 is the approved initial scaffold line, with exact compatible patch versions verified and pinned in `ARE-MOB-01` |
+| Mobile build workflow | `LOCKED` Expo Development Build for production-grade development; `PROVISIONAL` EAS Build for later signed Android/iOS builds after account, identifier, and signing approval |
+| Mobile motion and gestures | `LOCKED` React Native Reanimated and React Native Gesture Handler; reduced-motion support and performant opacity/transform animation are required |
 | Public motion and sliders | `LOCKED` Motion is the approved animation system; Embla Carousel React is the approved slider engine. Additional animation engines require owner approval. |
 | Styling and accessible UI | `LOCKED` Tailwind CSS with a lightweight accessible component system; shadcn/ui and Radix-based primitives where appropriate |
 | Admin data/table handling | `LOCKED` TanStack Query and TanStack Table |
@@ -56,6 +61,14 @@ Technology families are `LOCKED`. The approved frontend scaffold baselines are p
 | Vector support | `FUTURE` `pgvector` only when an approved feature requires it |
 
 Before production, recheck and explicitly approve the latest security-patched Next.js `16.3.x` release; do not change the locked baseline silently.
+
+## Mobile foundation boundaries
+
+- `LOCKED` Web Motion `13.1.1` remains limited to `apps/public-web`; DOM-based Motion components must not be reused in React Native.
+- `LOCKED` Share API contracts, TypeScript types, validation schemas, localization data, and semantic design-token values only when real reuse exists.
+- `LOCKED` Do not share Next.js pages, Server Components, DOM components, CSS, Tailwind classes, or browser-only code with mobile.
+- `LOCKED` The ARE Design System remains the visual authority; mobile translates its semantic foundation into native tokens and touch components with English/Arabic parity, RTL, safe areas, font scaling, screen-reader support, contrast, accessible touch targets, and reduced motion.
+- `FUTURE` Mobile 3D and AR require a dedicated post-MVP feasibility task; no engine is selected.
 
 ## Locked local port registry
 
@@ -80,11 +93,13 @@ All exposed development ports must bind to `127.0.0.1`, not `0.0.0.0`.
 | `50015` | OpenTelemetry HTTP | `4318` | Reserved |
 | `50016` | OpenSearch API | `9200` | Future only; do not activate |
 | `50017` | OpenSearch Dashboard | `5601` | Future only; do not activate |
-| `50018–50030` | Future ARE allocation | — | Reserved and unused |
+| `50018` | Expo Metro development server | — | Reserved for the approved mobile scaffold phase |
+| `50019–50030` | Future ARE allocation | — | Reserved and unused |
 
 Additional `LOCKED` port rules:
 
 - `50001` is the final local public-website port.
+- `50018` is reserved for future Expo Metro use and must not be bound before an approved mobile scaffold task.
 - Swagger and ReDoc will later use `http://localhost:50003/docs` and `http://localhost:50003/redoc`.
 - Celery workers and test runners do not receive permanent public host ports.
 - Only active-phase services may run.
@@ -143,6 +158,7 @@ Additional `LOCKED` port rules:
 ## Pending owner decisions
 
 - `PENDING` Remaining phase-specific dependency versions beyond the approved frontend scaffold baseline.
+- `PENDING` Exact Expo SDK 57-compatible package patch versions, mobile app identifiers, store ownership, privacy declarations, signing authority, EAS project/profile ownership, and mobile development-network profiles.
 - `PENDING` Git initialization/default branch/remote.
 - `PENDING` Exact authentication, session, MFA, role, and permission design.
 - `PENDING` Canonical identifiers, archive/history rules, initial taxonomies, translations/source locale, localized URL structure, and price/availability freshness policy.

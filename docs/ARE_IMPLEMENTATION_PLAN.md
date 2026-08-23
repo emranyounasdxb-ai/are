@@ -76,10 +76,22 @@ This is a dependency-aware sequence, not blanket implementation approval. Every 
 - **Required validation:** Complete affected test/build matrix; security and privacy evidence; keyboard/screen-reader review; SEO/canonical/hreflang/robots/sitemap checks; representative performance; restore/recovery checks where authorized.
 - **Owner stop/approval gate:** Owner decides whether findings authorize a separate remediation or release task. No commit, PR, deployment, or production activation is implied.
 
+## Mobile workstream — bounded sequence
+
+This sequence extends the product with one customer-facing native Android/iOS application without authorizing the whole workstream at once.
+
+| Task or stage | Bounded outcome and dependency gate |
+| --- | --- |
+| `ARE-MOB-00 — Mobile Foundation Lock` | Documentation and repository-skill authority only; no mobile scaffold, packages, services, credentials, or store work. |
+| `ARE-MOB-01 — Minimal Expo Mobile Scaffold` | Create the smallest `apps/mobile` Expo SDK 57 foundation only after exact compatible patches, workspace boundaries, Metro `50018` preflight, and device/network profiles are verified and owner-approved. |
+| Mobile design-token adaptation | Translate approved semantic design tokens into native tokens and essential accessible controls after the web design foundation and mobile scaffold provide verified authorities; do not redesign the brand. |
+| Mobile feature implementation after API contracts exist | Implement only owner-approved MVP slices against canonical FastAPI contracts; do not create a mobile-specific backend or hardcode business truth. |
+| Mobile 3D/AR feasibility | Optional post-MVP task to evaluate assets, native compatibility, device performance, fallbacks, accessibility, and download size before selecting an engine. |
+
 ## Proposed next task
 
 The only proposed next task is:
 
-`ARE-FND-01 — Minimal Local Repository Scaffold`
+`ARE-MOB-01 — Minimal Expo Mobile Scaffold`
 
-It requires explicit owner authorization and must resolve the pending Git initialization/default-branch decision before version-controlled scaffolding. It was not executed during Phase 0.
+It requires explicit owner authorization and must satisfy the entry criteria in `docs/ARE_MOBILE_FOUNDATION.md`. It is not executed by `ARE-MOB-00`.
