@@ -1,0 +1,32 @@
+{
+  "name": "@are/public-web",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "predev": "powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/check-port.ps1 -Port 50001",
+    "dev": "next dev --hostname 127.0.0.1 --port 50001",
+    "lint": "eslint .",
+    "typecheck": "next typegen && tsc --noEmit",
+    "build": "next build",
+    "prestart": "powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/check-port.ps1 -Port 50001",
+    "start": "next start --hostname 127.0.0.1 --port 50001"
+  },
+  "dependencies": {
+    "embla-carousel-react": "8.6.0",
+    "motion": "13.1.1",
+    "next": "16.3.2",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "4.3.3",
+    "@types/node": "24.13.3",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4",
+    "eslint": "9.39.5",
+    "eslint-config-next": "16.3.2",
+    "postcss": "8.5.26",
+    "tailwindcss": "4.3.3",
+    "typescript": "6.0.3"
+  }
+}

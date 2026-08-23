@@ -111,3 +111,38 @@ Development, design, content preparation and testing will be completed in contro
 ## License
 
 This project and its contents are intended for ALIYAS Real Estate. All brand assets, content, designs and source code are subject to the company’s ownership and usage policies.
+
+## Local Frontend Development
+
+The current frontend is a development-only technical scaffold. It does not contain the real homepage, Admin Dashboard, authentication, business data, or final ARE design system.
+
+### Prerequisites
+
+* Node.js `24.18.0`
+* npm `11.16.0`
+
+### Install dependencies
+
+Run `npm ci` from the repository root. The repository uses npm workspaces and one root `package-lock.json`.
+
+### Run the public application
+
+Run `npm run dev:public`, then use `http://127.0.0.1:50001`.
+
+### Run the Admin application
+
+Run `npm run dev:admin`, then use `http://127.0.0.1:50002`.
+
+### Validate the workspace
+
+* `npm run lint`
+* `npm run typecheck`
+* `npm run build`
+
+Port `3000` belongs to another protected local project. ARE commands must never bind, stop, restart, or otherwise interfere with port `3000`.
+
+## Local Mobile Development
+
+Run `npm run dev:mobile` from the repository root to start Expo Metro in development-build mode on `127.0.0.1:50018`. The command checks that the reserved port is free and does not launch a browser, emulator, or simulator.
+
+Android development requires an installed Expo development build. Windows supports the local Android toolchain; local iOS Simulator builds require macOS and Xcode. This scaffold has no browser-based mobile target. Physical-device networking and iPhone development remain separate owner-approved tasks.

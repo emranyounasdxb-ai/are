@@ -1,0 +1,9 @@
+{
+  "expo": {
+    "name": "ALIYAS Real Estate",
+    "slug": "are-mobile",
+    "version": "0.1.0",
+    "platforms": ["android", "ios"],
+    "plugins": ["expo-router"]
+  }
+}
