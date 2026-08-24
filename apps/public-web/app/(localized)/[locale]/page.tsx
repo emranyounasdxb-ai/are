@@ -5,16 +5,16 @@ import { notFound } from "next/navigation";
 import { Reveal } from "../../../components/motion/reveal";
 import {
   Breadcrumbs,
-  Checklist,
-  EditorialCards,
   FaqSection,
   FinalCta,
-  RelatedPages,
+  ProcessList,
 } from "../../../components/content/editorial-content";
 import { SiteFooter } from "../../../components/navigation/site-footer";
 import { SiteHeader } from "../../../components/navigation/site-header";
 import { DiscoverySearch } from "../../../components/search/discovery-search";
 import { homeCopy, isLocale, isPurpose, type Locale } from "../../../lib/home-copy";
+import { developers } from "../../../lib/developers-data";
+import { insightArticles } from "../../../lib/insights-data";
 import { richCopy } from "../../../lib/rich-copy";
 
 type HomePageProps = Readonly<{
@@ -53,6 +53,9 @@ export default async function HomePage({ params, searchParams }: HomePageProps) 
 function LocalizedHome({ locale, initialPurpose }: { locale: Locale; initialPurpose: "buy" | "rent" | "off-plan" }) {
   const copy = homeCopy[locale];
   const editorial = richCopy[locale].home;
+  const selectedDevelopers = ["emaar-properties", "aldar-properties", "al-hamra"]
+    .map((slug) => developers.find((developer) => developer.slug === slug))
+    .filter((developer): developer is (typeof developers)[number] => Boolean(developer));
 
   return (
     <div id="top">
@@ -184,12 +187,34 @@ function LocalizedHome({ locale, initialPurpose }: { locale: Locale; initialPurp
           </div>
         </section>
 
-        <section aria-labelledby="home-intro-title" className="content-section content-section--intro">
+        <section aria-labelledby="home-intro-title" className="content-section content-section--intro home-clarity">
           <div className="content-heading">
             <p>{editorial.intro.eyebrow}</p>
             <h2 id="home-intro-title">{editorial.intro.title}</h2>
           </div>
           <p className="content-lead">{editorial.intro.text}</p>
+        </section>
+
+        <section aria-labelledby="home-developers-title" className="content-section home-developers">
+          <div className="content-heading">
+            <p>{locale === "ar" ? "مطوّرون مختارون" : "SELECTED UAE DEVELOPERS"}</p>
+            <h2 id="home-developers-title">{locale === "ar" ? "ابدأ بالهوية الموثقة والمصدر الرسمي." : "Start with a verified identity and official source."}</h2>
+            <span>{locale === "ar" ? "مجموعة موجزة من دليلنا الذي يضم 20 مطوراً؛ وتتطلب المشاريع والأسعار والتوفر تحققاً حديثاً." : "A concise selection from our 20-record directory. Projects, pricing and availability still require fresh verification."}</span>
+          </div>
+          <div className="home-developer-list">
+            {selectedDevelopers.map((developer, index) => (
+              <article key={developer.slug}>
+                <span>{String(index + 1).padStart(2, "0")}</span>
+                <div>
+                  <h3 dir="ltr">{developer.officialName}</h3>
+                  <p>{developer.focus[locale]}</p>
+                </div>
+              </article>
+            ))}
+          </div>
+          <Link className="button button--secondary home-section-action" href={`/${locale}/developers`}>
+            {locale === "ar" ? "استكشف دليل المطورين" : "Explore the developer directory"}
+          </Link>
         </section>
 
         <section aria-label={locale === "ar" ? "مسارات مميزة" : "Featured pathways"} className="feature-pathways">
@@ -205,19 +230,33 @@ function LocalizedHome({ locale, initialPurpose }: { locale: Locale; initialPurp
           </Link>
         </section>
 
-        {editorial.sections.map((section, index) => (
-          <section aria-labelledby={`home-section-${index}`} className={`content-section ${index % 2 === 0 ? "content-section--dark" : ""}`} key={section.title}>
-            <div className="content-heading"><p>{section.eyebrow}</p><h2 id={`home-section-${index}`}>{section.title}</h2><span>{section.text}</span></div>
-            <EditorialCards items={section.items} />
-          </section>
-        ))}
-
-        <section aria-labelledby="home-checklist-title" className="content-section content-section--split">
-          <div className="content-heading"><p>{editorial.checklist.eyebrow}</p><h2 id="home-checklist-title">{editorial.checklist.title}</h2><span>{editorial.checklist.text}</span></div>
-          <Checklist items={editorial.checklist.items} />
+        <section aria-labelledby="home-process-title" className="content-section content-section--dark home-process">
+          <div className="content-heading"><p>{editorial.sections[0].eyebrow}</p><h2 id="home-process-title">{editorial.sections[0].title}</h2><span>{editorial.sections[0].text}</span></div>
+          <ProcessList items={editorial.sections[0].items} />
         </section>
-        <FaqSection eyebrow={editorial.faq.eyebrow} heading={editorial.faq.title} items={editorial.faq.items} />
-        <RelatedPages heading={editorial.related.title} items={editorial.related.items} />
+
+        <section aria-labelledby="home-insights-title" className="content-section home-insights">
+          <div className="content-heading">
+            <p>{locale === "ar" ? "أحدث الرؤى" : "LATEST INSIGHTS"}</p>
+            <h2 id="home-insights-title">{locale === "ar" ? "اقرأ، ثم تحقّق مما يخص قرارك." : "Read first, then verify what matters to your decision."}</h2>
+          </div>
+          <div className="home-insight-grid">
+            {insightArticles.map((article) => {
+              const articleCopy = article.content[locale];
+              return (
+                <article key={article.slug}>
+                  <p>{articleCopy.categoryLabel} · <time dateTime={article.updated}>{article.updated}</time></p>
+                  <h3><Link href={`/${locale}/insights/${article.slug}`}>{articleCopy.title}</Link></h3>
+                  <span>{articleCopy.metaDescription}</span>
+                </article>
+              );
+            })}
+          </div>
+          <Link className="text-link home-section-action" href={`/${locale}/insights`}>
+            {locale === "ar" ? "استكشف جميع الرؤى" : "Explore all insights"}
+          </Link>
+        </section>
+        <FaqSection eyebrow={editorial.faq.eyebrow} heading={editorial.faq.title} items={editorial.faq.items.slice(0, 4)} />
         <FinalCta action={editorial.cta.action} heading={editorial.cta.title} href={editorial.cta.href} locale={locale} text={editorial.cta.text} />
       </main>
       <SiteFooter copy={copy.header} locale={locale} />

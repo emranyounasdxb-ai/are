@@ -123,7 +123,7 @@ export function DiscoverySearch({
         <button className="search-submit" type="submit">
           <span>{copy.searchButton}</span>
           <span aria-hidden="true" className="directional-icon">
-            ↗
+            →
           </span>
         </button>
       </div>

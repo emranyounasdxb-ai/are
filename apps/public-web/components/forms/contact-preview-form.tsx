@@ -98,7 +98,7 @@ export function ContactPreviewForm({
       <p className="contact-form__note" id="contact-preview-note">{copy.previewNote}</p>
       <button className="button button--primary" type="submit">
         {copy.submit}
-        <span aria-hidden="true" className="directional-icon">↗</span>
+        <span aria-hidden="true" className="directional-icon">→</span>
       </button>
       <p
         aria-live="polite"
