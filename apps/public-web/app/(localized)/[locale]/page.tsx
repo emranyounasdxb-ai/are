@@ -13,8 +13,7 @@ import { SiteFooter } from "../../../components/navigation/site-footer";
 import { SiteHeader } from "../../../components/navigation/site-header";
 import { DiscoverySearch } from "../../../components/search/discovery-search";
 import { homeCopy, isLocale, isPurpose, type Locale } from "../../../lib/home-copy";
-import { developers } from "../../../lib/developers-data";
-import { getInsights } from "../../../lib/api";
+import { getDevelopers, getInsights } from "../../../lib/api";
 import { richCopy } from "../../../lib/rich-copy";
 
 type HomePageProps = Readonly<{
@@ -53,10 +52,10 @@ export default async function HomePage({ params, searchParams }: HomePageProps) 
 async function LocalizedHome({ locale, initialPurpose }: { locale: Locale; initialPurpose: "buy" | "rent" | "off-plan" }) {
   const copy = homeCopy[locale];
   const editorial = richCopy[locale].home;
-  const insightArticles = await getInsights(locale);
+  const [insightArticles, developerRecords] = await Promise.all([getInsights(locale), getDevelopers(locale)]);
   const selectedDevelopers = ["emaar-properties", "aldar-properties", "al-hamra"]
-    .map((slug) => developers.find((developer) => developer.slug === slug))
-    .filter((developer): developer is (typeof developers)[number] => Boolean(developer));
+    .map((slug) => developerRecords?.find((developer) => developer.slug === slug))
+    .filter((developer): developer is NonNullable<typeof developer> => Boolean(developer));
 
   return (
     <div id="top">
@@ -207,8 +206,8 @@ async function LocalizedHome({ locale, initialPurpose }: { locale: Locale; initi
               <article key={developer.slug}>
                 <span>{String(index + 1).padStart(2, "0")}</span>
                 <div>
-                  <h3 dir="ltr">{developer.officialName}</h3>
-                  <p>{developer.focus[locale]}</p>
+                  <h3 dir="ltr">{developer.name}</h3>
+                  <p>{developer.focus}</p>
                 </div>
               </article>
             ))}

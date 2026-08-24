@@ -233,6 +233,50 @@ class InsightPostTranslation(Base):
     seo_description: Mapped[str] = mapped_column(String(320), nullable=False)
 
 
+class Developer(TimestampMixin, Base):
+    __tablename__ = "developers"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    slug: Mapped[str] = mapped_column(String(180), unique=True, nullable=False)
+    primary_emirate: Mapped[str] = mapped_column(String(120), nullable=False)
+    other_presence: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    selected_projects: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    official_website: Mapped[str] = mapped_column(Text, nullable=False)
+    source_url: Mapped[str] = mapped_column(Text, nullable=False)
+    additional_source_urls: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    verification_date: Mapped[date] = mapped_column(Date, nullable=False)
+    enquiry_types: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    featured: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    display_order: Mapped[int] = mapped_column(default=0, nullable=False)
+    status: Mapped[PublicationStatus] = mapped_column(
+        Enum(PublicationStatus, name="publication_status", create_type=False),
+        default=PublicationStatus.DRAFT,
+        nullable=False,
+        index=True,
+    )
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    translations: Mapped[list[DeveloperTranslation]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin"
+    )
+
+
+class DeveloperTranslation(Base):
+    __tablename__ = "developer_translations"
+    __table_args__ = (UniqueConstraint("developer_id", "locale"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    developer_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("developers.id", ondelete="CASCADE"), nullable=False
+    )
+    locale: Mapped[str] = mapped_column(String(2), nullable=False)
+    name: Mapped[str] = mapped_column(String(240), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    focus: Mapped[str] = mapped_column(Text, nullable=False)
+    verification_note: Mapped[str] = mapped_column(Text, nullable=False)
+
+
 class JobOpening(TimestampMixin, Base):
     __tablename__ = "job_openings"
 
@@ -368,6 +412,7 @@ class PrivateFileMetadata(Base):
 
 Index("ix_properties_search", Property.slug, Property.property_type, Property.emirate)
 Index("ix_insight_posts_search", InsightPost.slug, InsightPost.category)
+Index("ix_developers_search", Developer.slug, Developer.primary_emirate, Developer.featured)
 Index("ix_job_openings_search", JobOpening.slug, JobOpening.department)
 Index("ix_contact_enquiries_status_created", ContactEnquiry.status, ContactEnquiry.created_at)
 Index(

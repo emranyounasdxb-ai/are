@@ -10,8 +10,16 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.db import get_db
-from app.models import InsightPost, JobOpening, JobStatus, Property, PublicationStatus, Purpose
-from app.serializers import insight_dict, job_dict, property_dict
+from app.models import (
+    Developer,
+    InsightPost,
+    JobOpening,
+    JobStatus,
+    Property,
+    PublicationStatus,
+    Purpose,
+)
+from app.serializers import developer_dict, insight_dict, job_dict, property_dict
 
 router = APIRouter(prefix="/public", tags=["public"])
 
@@ -23,6 +31,41 @@ def meta(page: int, page_size: int, total: int) -> dict[str, int]:
         "total": total,
         "pages": max(1, math.ceil(total / page_size)),
     }
+
+
+@router.get("/developers")
+async def developers(
+    locale: Literal["en", "ar"], db: AsyncSession = Depends(get_db)
+) -> dict[str, Any]:
+    records = (
+        await db.scalars(
+            select(Developer)
+            .where(Developer.status == PublicationStatus.PUBLISHED)
+            .options(selectinload(Developer.translations))
+            .order_by(Developer.display_order, Developer.slug)
+        )
+    ).all()
+    return {
+        "items": [developer_dict(record, locale) for record in records],
+        "meta": meta(1, max(1, len(records)), len(records)),
+    }
+
+
+@router.get("/developers/{slug}")
+async def developer_detail(
+    slug: str, locale: Literal["en", "ar"], db: AsyncSession = Depends(get_db)
+) -> dict[str, Any]:
+    record = await db.scalar(
+        select(Developer)
+        .where(Developer.slug == slug, Developer.status == PublicationStatus.PUBLISHED)
+        .options(selectinload(Developer.translations))
+    )
+    if not record:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            detail={"code": "not_found", "message": "Developer not found."},
+        )
+    return developer_dict(record, locale)
 
 
 @router.get("/properties")

@@ -136,6 +136,47 @@ class InsightResponse(InsightInput):
     published_at: datetime | None
 
 
+class DeveloperTranslationInput(StrictModel):
+    name: str = Field(min_length=2, max_length=240)
+    description: str = Field(min_length=10, max_length=20000)
+    focus: str = Field(min_length=2, max_length=2000)
+    verification_note: str = Field(min_length=10, max_length=2000)
+
+
+class DeveloperInput(StrictModel):
+    slug: str = Field(min_length=2, max_length=180)
+    primary_emirate: str = Field(min_length=2, max_length=120)
+    other_presence: list[str] = Field(default_factory=list, max_length=20)
+    selected_projects: list[str] = Field(default_factory=list, max_length=100)
+    official_website: HttpUrl
+    source_url: HttpUrl
+    additional_source_urls: list[HttpUrl] = Field(default_factory=list, max_length=20)
+    verification_date: date
+    enquiry_types: list[Literal["new-booking", "primary-sale", "resale"]] = Field(
+        default_factory=list, max_length=3
+    )
+    featured: bool = False
+    display_order: int = Field(default=0, ge=0, le=10000)
+    status: PublicationStatus = PublicationStatus.DRAFT
+    translations: dict[Literal["en", "ar"], DeveloperTranslationInput]
+
+    @field_validator("slug")
+    @classmethod
+    def valid_slug(cls, value: str) -> str:
+        if not SLUG_PATTERN.fullmatch(value):
+            raise ValueError("Use a lowercase hyphenated slug")
+        return value
+
+    @model_validator(mode="after")
+    def validate_publication(self) -> DeveloperInput:
+        if self.status == PublicationStatus.PUBLISHED:
+            if set(self.translations) != {"en", "ar"}:
+                raise ValueError("Published developers require English and Arabic content")
+            if not self.source_url or not self.verification_date:
+                raise ValueError("Published developers require provenance and a verification date")
+        return self
+
+
 class JobTranslationInput(StrictModel):
     title: str = Field(min_length=2, max_length=240)
     description: str = Field(min_length=10, max_length=20000)

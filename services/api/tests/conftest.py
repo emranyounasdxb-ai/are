@@ -17,6 +17,7 @@ from app.models import (
     AuditLog,
     CareerApplication,
     ContactEnquiry,
+    Developer,
     InsightPost,
     JobOpening,
     Property,
@@ -63,6 +64,7 @@ async def clean_disposable_records(test_settings: Settings) -> AsyncIterator[Non
         )
         await db.execute(delete(AuditLog).where(AuditLog.request_correlation_id.like("qa-%")))
         await db.execute(delete(Property).where(Property.slug.like("qa-%")))
+        await db.execute(delete(Developer).where(Developer.slug.like("qa-%")))
         await db.execute(delete(InsightPost).where(InsightPost.slug.like("qa-%")))
         await db.execute(delete(JobOpening).where(JobOpening.slug.like("qa-%")))
         user_ids = select(User.id).where(User.email.like("%@qa.are-cms.invalid-example-domain.com"))

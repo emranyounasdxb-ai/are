@@ -23,6 +23,8 @@ from app.models import (
     AuditLog,
     CareerApplication,
     ContactEnquiry,
+    Developer,
+    DeveloperTranslation,
     InsightPost,
     InsightPostTranslation,
     JobOpening,
@@ -32,8 +34,8 @@ from app.models import (
     PropertyTranslation,
     PublicationStatus,
 )
-from app.schemas import InsightInput, JobInput, PropertyInput
-from app.serializers import insight_dict, job_dict, property_dict
+from app.schemas import DeveloperInput, InsightInput, JobInput, PropertyInput
+from app.serializers import developer_dict, insight_dict, job_dict, property_dict
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -69,6 +71,20 @@ async def commit_or_conflict(db: AsyncSession) -> None:
         ) from exc
 
 
+async def flush_or_conflict(db: AsyncSession) -> None:
+    try:
+        await db.flush()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "record_conflict",
+                "message": "A record with that slug already exists.",
+            },
+        ) from exc
+
+
 @router.get("/dashboard")
 async def dashboard(
     _: AuthContext = Depends(get_auth_context), db: AsyncSession = Depends(get_db)
@@ -77,12 +93,255 @@ async def dashboard(
     for key, model in (
         ("properties", Property),
         ("insights", InsightPost),
+        ("developers", Developer),
         ("jobs", JobOpening),
         ("enquiries", ContactEnquiry),
         ("applications", CareerApplication),
     ):
         counts[key] = int(await db.scalar(select(func.count()).select_from(model)) or 0)
     return counts
+
+
+def apply_developer_payload(
+    record: Developer, payload: DeveloperInput, actor_user_id: uuid.UUID
+) -> None:
+    record.slug = payload.slug
+    record.primary_emirate = payload.primary_emirate
+    record.other_presence = payload.other_presence
+    record.selected_projects = payload.selected_projects
+    record.official_website = str(payload.official_website)
+    record.source_url = str(payload.source_url)
+    record.additional_source_urls = [str(url) for url in payload.additional_source_urls]
+    record.verification_date = payload.verification_date
+    record.enquiry_types = [str(item) for item in payload.enquiry_types]
+    record.featured = payload.featured
+    record.display_order = payload.display_order
+    record.status = payload.status
+    record.updated_by = actor_user_id
+    by_locale = {item.locale: item for item in record.translations}
+    for locale, translation in payload.translations.items():
+        item = by_locale.get(locale) or DeveloperTranslation(developer_id=record.id, locale=locale)
+        item.name = translation.name
+        item.description = translation.description
+        item.focus = translation.focus
+        item.verification_note = translation.verification_note
+        if item not in record.translations:
+            record.translations.append(item)
+
+
+@router.get("/developers")
+async def list_developers(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    search: str | None = Query(None, max_length=120),
+    record_status: PublicationStatus | None = Query(None, alias="status"),
+    emirate: str | None = Query(None, max_length=120),
+    featured: bool | None = None,
+    _: AuthContext = Depends(require_permission("developers.manage")),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    filters: list[Any] = []
+    if record_status:
+        filters.append(Developer.status == record_status)
+    if emirate:
+        filters.append(Developer.primary_emirate == emirate)
+    if featured is not None:
+        filters.append(Developer.featured == featured)
+    if search:
+        filters.append(
+            or_(
+                Developer.slug.ilike(f"%{search}%"),
+                Developer.translations.any(DeveloperTranslation.name.ilike(f"%{search}%")),
+            )
+        )
+    total = int(await db.scalar(select(func.count()).select_from(Developer).where(*filters)) or 0)
+    records = (
+        await db.scalars(
+            select(Developer)
+            .where(*filters)
+            .options(selectinload(Developer.translations))
+            .order_by(Developer.display_order, Developer.slug)
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+    ).all()
+    return {
+        "items": [developer_dict(record) for record in records],
+        "meta": page_meta(page, page_size, total),
+    }
+
+
+@router.get("/developers/{record_id}")
+async def get_developer(
+    record_id: uuid.UUID,
+    _: AuthContext = Depends(require_permission("developers.manage")),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    record = await db.scalar(
+        select(Developer)
+        .where(Developer.id == record_id)
+        .options(selectinload(Developer.translations))
+    )
+    if not record:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            detail={"code": "not_found", "message": "Developer not found."},
+        )
+    return developer_dict(record)
+
+
+@router.post("/developers", status_code=status.HTTP_201_CREATED)
+async def create_developer(
+    payload: DeveloperInput,
+    request: Request,
+    context: AuthContext = Depends(require_mutation_permission("developers.manage")),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    record = Developer(created_by=context.user.id, updated_by=context.user.id)
+    apply_developer_payload(record, payload, context.user.id)
+    record.published_at = (
+        datetime.now(UTC) if payload.status == PublicationStatus.PUBLISHED else None
+    )
+    db.add(record)
+    await flush_or_conflict(db)
+    await write_audit(
+        db,
+        action="developer.publish"
+        if payload.status == PublicationStatus.PUBLISHED
+        else "developer.create",
+        entity_type="developer",
+        entity_id=record.id,
+        actor_user_id=context.user.id,
+        correlation_id=request_correlation_id(request),
+        after={"slug": record.slug, "status": record.status.value},
+    )
+    await commit_or_conflict(db)
+    await db.refresh(record, attribute_names=["updated_at"])
+    return developer_dict(record)
+
+
+@router.put("/developers/{record_id}")
+async def update_developer(
+    record_id: uuid.UUID,
+    payload: DeveloperInput,
+    request: Request,
+    context: AuthContext = Depends(require_mutation_permission("developers.manage")),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    record = await db.scalar(
+        select(Developer)
+        .where(Developer.id == record_id)
+        .options(selectinload(Developer.translations))
+    )
+    if not record:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            detail={"code": "not_found", "message": "Developer not found."},
+        )
+    before = {"slug": record.slug, "status": record.status.value}
+    publishing = payload.status == PublicationStatus.PUBLISHED and record.status != payload.status
+    apply_developer_payload(record, payload, context.user.id)
+    if publishing:
+        record.published_at = datetime.now(UTC)
+    action = (
+        "developer.publish"
+        if publishing
+        else "developer.archive"
+        if payload.status == PublicationStatus.ARCHIVED
+        else "developer.update"
+    )
+    await write_audit(
+        db,
+        action=action,
+        entity_type="developer",
+        entity_id=record.id,
+        actor_user_id=context.user.id,
+        correlation_id=request_correlation_id(request),
+        before=before,
+        after={"slug": record.slug, "status": record.status.value},
+    )
+    await commit_or_conflict(db)
+    await db.refresh(record, attribute_names=["updated_at"])
+    return developer_dict(record)
+
+
+async def developer_for_action(record_id: uuid.UUID, db: AsyncSession) -> Developer:
+    record = await db.scalar(
+        select(Developer)
+        .where(Developer.id == record_id)
+        .options(selectinload(Developer.translations))
+    )
+    if not record:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            detail={"code": "not_found", "message": "Developer not found."},
+        )
+    return record
+
+
+@router.post("/developers/{record_id}/publish")
+async def publish_developer(
+    record_id: uuid.UUID,
+    request: Request,
+    context: AuthContext = Depends(require_mutation_permission("developers.manage")),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    record = await developer_for_action(record_id, db)
+    translations = {item.locale: item for item in record.translations}
+    if set(translations) != {"en", "ar"} or any(
+        not all((item.name, item.description, item.focus, item.verification_note))
+        for item in translations.values()
+    ):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={
+                "code": "publication_incomplete",
+                "message": "Complete English, Arabic and provenance fields before publication.",
+            },
+        )
+    before = {"slug": record.slug, "status": record.status.value}
+    record.status = PublicationStatus.PUBLISHED
+    record.published_at = datetime.now(UTC)
+    record.updated_by = context.user.id
+    await write_audit(
+        db,
+        action="developer.publish",
+        entity_type="developer",
+        entity_id=record.id,
+        actor_user_id=context.user.id,
+        correlation_id=request_correlation_id(request),
+        before=before,
+        after={"slug": record.slug, "status": record.status.value},
+    )
+    await db.commit()
+    await db.refresh(record, attribute_names=["updated_at"])
+    return developer_dict(record)
+
+
+@router.post("/developers/{record_id}/archive")
+async def archive_developer(
+    record_id: uuid.UUID,
+    request: Request,
+    context: AuthContext = Depends(require_mutation_permission("developers.manage")),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    record = await developer_for_action(record_id, db)
+    before = {"slug": record.slug, "status": record.status.value}
+    record.status = PublicationStatus.ARCHIVED
+    record.updated_by = context.user.id
+    await write_audit(
+        db,
+        action="developer.archive",
+        entity_type="developer",
+        entity_id=record.id,
+        actor_user_id=context.user.id,
+        correlation_id=request_correlation_id(request),
+        before=before,
+        after={"slug": record.slug, "status": record.status.value},
+    )
+    await db.commit()
+    await db.refresh(record, attribute_names=["updated_at"])
+    return developer_dict(record)
 
 
 @router.get("/properties")

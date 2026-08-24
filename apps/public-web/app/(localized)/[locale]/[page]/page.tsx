@@ -18,8 +18,7 @@ import { DiscoverySearch } from "../../../../components/search/discovery-search"
 import { homeCopy, isLocale, locales, type Locale, type Purpose } from "../../../../lib/home-copy";
 import { isPageSlug, pageSlugs, siteCopy, type PageSlug } from "../../../../lib/site-copy";
 import { richCopy } from "../../../../lib/rich-copy";
-import { getDeveloper, getDeveloperEnquiryLabel } from "../../../../lib/developers-data";
-import { getProperties } from "../../../../lib/api";
+import { getDeveloper, getProperties } from "../../../../lib/api";
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
@@ -286,10 +285,15 @@ function AboutContent({ locale }: Readonly<{ locale: Locale }>) {
   );
 }
 
-function ContactContent({ locale, query }: Readonly<{ locale: Locale; query: SearchParams }>) {
+async function ContactContent({ locale, query }: Readonly<{ locale: Locale; query: SearchParams }>) {
   const copy = siteCopy[locale].contact;
-  const developer = firstValue(query.topic) === "developer" ? getDeveloper(firstValue(query.developer)) : undefined;
-  const enquiryType = developer ? getDeveloperEnquiryLabel(developer.enquiryTypes[0], locale) : undefined;
+  const slug = firstValue(query.topic) === "developer" ? firstValue(query.developer) : undefined;
+  const developer = slug ? await getDeveloper(locale, slug) : null;
+  const enquiryType = developer ? ({
+    "new-booking": { en: "New booking enquiry", ar: "استفسار عن حجز جديد" },
+    "primary-sale": { en: "Primary-sale enquiry", ar: "استفسار عن بيع أولي" },
+    resale: { en: "Resale enquiry", ar: "استفسار عن إعادة البيع" },
+  } as const)[developer.enquiry_types[0] ?? "new-booking"][locale] : undefined;
 
   return (
     <section aria-labelledby="contact-form-title" className="inner-section contact-experience">
@@ -299,9 +303,9 @@ function ContactContent({ locale, query }: Readonly<{ locale: Locale; query: Sea
         <span>{copy.intro}</span>
       </div>
       <ContactPreviewForm
-        initialEnquiryType={developer?.enquiryTypes[0]}
+        initialEnquiryType={developer?.enquiry_types[0]}
         locale={locale}
-        selectedDeveloper={developer?.officialName}
+        selectedDeveloper={developer?.name}
         selectedEnquiryLabel={enquiryType}
       />
     </section>
