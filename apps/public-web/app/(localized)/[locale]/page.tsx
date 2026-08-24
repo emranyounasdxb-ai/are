@@ -14,7 +14,7 @@ import { SiteHeader } from "../../../components/navigation/site-header";
 import { DiscoverySearch } from "../../../components/search/discovery-search";
 import { homeCopy, isLocale, isPurpose, type Locale } from "../../../lib/home-copy";
 import { developers } from "../../../lib/developers-data";
-import { insightArticles } from "../../../lib/insights-data";
+import { getInsights } from "../../../lib/api";
 import { richCopy } from "../../../lib/rich-copy";
 
 type HomePageProps = Readonly<{
@@ -50,9 +50,10 @@ export default async function HomePage({ params, searchParams }: HomePageProps) 
   return <LocalizedHome locale={locale} initialPurpose={initialPurpose} />;
 }
 
-function LocalizedHome({ locale, initialPurpose }: { locale: Locale; initialPurpose: "buy" | "rent" | "off-plan" }) {
+async function LocalizedHome({ locale, initialPurpose }: { locale: Locale; initialPurpose: "buy" | "rent" | "off-plan" }) {
   const copy = homeCopy[locale];
   const editorial = richCopy[locale].home;
+  const insightArticles = await getInsights(locale);
   const selectedDevelopers = ["emaar-properties", "aldar-properties", "al-hamra"]
     .map((slug) => developers.find((developer) => developer.slug === slug))
     .filter((developer): developer is (typeof developers)[number] => Boolean(developer));

@@ -7,7 +7,8 @@ import { Breadcrumbs, Checklist, EditorialCards, FaqSection, FinalCta, ProcessLi
 import { Reveal } from "../../../../components/motion/reveal";
 import { SiteFooter } from "../../../../components/navigation/site-footer";
 import { SiteHeader } from "../../../../components/navigation/site-header";
-import { careerInterests, careersCopy, careerVacancies } from "../../../../lib/careers-data";
+import { careerInterests, careersCopy } from "../../../../lib/careers-data";
+import { getJobs } from "../../../../lib/api";
 import { homeCopy, isLocale, locales, type Locale } from "../../../../lib/home-copy";
 import { richCopy } from "../../../../lib/rich-copy";
 
@@ -32,9 +33,10 @@ export default async function CareersPage({ params }: Props) {
   return <LocalizedCareers locale={locale} />;
 }
 
-function LocalizedCareers({ locale }: Readonly<{ locale: Locale }>) {
+async function LocalizedCareers({ locale }: Readonly<{ locale: Locale }>) {
   const copy = careersCopy[locale];
   const isArabic = locale === "ar";
+  const careerVacancies = await getJobs(locale);
 
   return (
     <div className="careers-page" id="top">
@@ -65,7 +67,7 @@ function LocalizedCareers({ locale }: Readonly<{ locale: Locale }>) {
 
         <section aria-labelledby="opportunities-title" className="career-opportunities">
           <div className="career-opportunities__heading"><p>{copy.opportunities.eyebrow}</p><h2 id="opportunities-title">{copy.opportunities.title}</h2></div>
-          {careerVacancies.length === 0 ? <div className="career-opportunities__empty"><span aria-hidden="true">00</span><div><h3>{copy.opportunities.emptyTitle}</h3><p>{copy.opportunities.emptyText}</p><Link className="button button--primary" href="#application">{copy.opportunities.action}</Link></div></div> : null}
+          {careerVacancies.length === 0 ? <div className="career-opportunities__empty"><span aria-hidden="true">00</span><div><h3>{copy.opportunities.emptyTitle}</h3><p>{copy.opportunities.emptyText}</p><Link className="button button--primary" href="#application">{copy.opportunities.action}</Link></div></div> : <div className="career-vacancy-grid">{careerVacancies.map((job)=><article key={job.id}><span>{job.department}</span><h3>{job.title}</h3><p>{job.location} · {job.employment_type}</p><Link className="text-link" href={`/${locale}/careers/${job.slug}`}>{isArabic?"عرض الوظيفة":"View role"}</Link></article>)}</div>}
         </section>
 
         <section aria-labelledby="general-interest-title" className="content-section content-section--dark">

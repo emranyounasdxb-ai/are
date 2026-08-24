@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools==82.0.1"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "are-api"
+version = "0.1.0"
+description = "ALIYAS Real Estate modular FastAPI service"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+  "alembic==1.19.1",
+  "argon2-cffi==25.1.0",
+  "asyncpg==0.31.0",
+  "email-validator==2.3.0",
+  "fastapi==0.141.1",
+  "pydantic==2.13.4",
+  "pydantic-settings==2.15.0",
+  "python-multipart==0.0.32",
+  "redis==8.1.0",
+  "SQLAlchemy==2.0.52",
+  "uvicorn[standard]==0.52.4",
+]
+
+[project.optional-dependencies]
+dev = [
+  "httpx==0.28.1",
+  "mypy==2.3.1",
+  "pytest==9.1.1",
+  "pytest-asyncio==1.4.0",
+  "ruff==0.16.4",
+]
+
+[project.scripts]
+are-api = "app.main:run"
+are-create-super-admin = "app.cli:create_super_admin"
+are-seed-insights = "app.cli:seed_insights"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC", "S"]
+ignore = ["S101", "B008"]
+
+[tool.ruff.lint.per-file-ignores]
+"app/cli.py" = ["ASYNC240"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+plugins = ["pydantic.mypy"]
+exclude = ["alembic/versions"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+pythonpath = ["."]
+testpaths = ["tests"]

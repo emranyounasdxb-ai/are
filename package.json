@@ -15,7 +15,17 @@
   "scripts": {
     "dev:public": "npm run dev --workspace=@are/public-web",
     "dev:admin": "npm run dev --workspace=@are/admin-web",
+    "predev:api": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-port.ps1 -Port 50003 && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-port.ps1 -Port 50004 && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-port.ps1 -Port 50005",
+    "dev:api": "docker compose up --build api",
     "dev:mobile": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-port.ps1 -Port 50018 && npm run dev --workspace=@are/mobile",
+    "db:migrate": "docker compose run --rm api alembic upgrade head",
+    "db:downgrade": "docker compose run --rm api alembic downgrade -1",
+    "backend:format": "docker compose run --rm api ruff format --check .",
+    "backend:lint": "docker compose run --rm api ruff check .",
+    "backend:typecheck": "docker compose run --rm api mypy app",
+    "backend:test": "docker compose run --rm api pytest",
+    "admin:create-super-user": "docker compose run --rm api are-create-super-admin",
+    "content:seed-insights": "docker compose run --rm api are-seed-insights",
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "build": "npm run build --workspaces --if-present"

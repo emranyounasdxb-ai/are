@@ -8,11 +8,12 @@ import { Reveal } from "../../../../components/motion/reveal";
 import { SiteFooter } from "../../../../components/navigation/site-footer";
 import { SiteHeader } from "../../../../components/navigation/site-header";
 import { homeCopy, isLocale, locales, type Locale } from "../../../../lib/home-copy";
-import { insightArticles, verifiedUpdates } from "../../../../lib/insights-data";
+import { verifiedUpdates } from "../../../../lib/insights-data";
+import { getInsights } from "../../../../lib/api";
 import { richCopy } from "../../../../lib/rich-copy";
 
 type Props = Readonly<{ params: Promise<{ locale: string }> }>;
-export const dynamicParams = false;
+export const dynamic = "force-dynamic";
 export function generateStaticParams() { return locales.map((locale) => ({ locale })); }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
@@ -22,7 +23,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function InsightsPage({ params }: Props) { const { locale } = await params; if (!isLocale(locale)) notFound(); return <LocalizedInsights locale={locale} />; }
 
-function LocalizedInsights({ locale }: Readonly<{ locale: Locale }>) {
+async function LocalizedInsights({ locale }: Readonly<{ locale: Locale }>) {
+  const insightArticles = await getInsights(locale);
   const ar = locale === "ar";
   const copy = ar ? {
     eyebrow: "معرفة موثوقة", title: "رؤى تساعدك على طرح أسئلة أفضل.", intro: "مكتبة ثنائية اللغة من الأدلة العملية والرؤى المتوازنة والأخبار المرتبطة بمصادر رسمية. لا تحل هذه المواد محل التحقق الحالي أو المشورة المهنية.", featured: "موضوع مميز", featuredTitle: "ابدأ بروتينك اليومي قبل اختيار المجتمع", featuredText: "إطار يضع الأشخاص والرحلات والاحتياجات العقارية قبل الترتيب العام أو الادعاءات غير الموثقة.", featuredAction: "اقرأ الدليل", library: "مكتبة الرؤى", libraryTitle: "ابحث وصفِّ حسب ما تحتاجه الآن", standards: "معايير التحرير", standardsTitle: "كيف نتعامل مع المعلومات", standardsText: "نفرّق بين الإرشاد العام والمعلومات الحالية، ونربط الأخبار بالمصدر الرسمي، ونذكر تاريخ التحقق، ولا نخترع أسعاراً أو مخزوناً أو توقعات أو نصائح شخصية.", contactTitle: "هل لديك سؤال يحتاج إلى سياق؟", contactText: "رتّب استفسارك بوضوح، ثم تحقق من التفاصيل الحالية والوثائق المناسبة قبل اتخاذ قرار.", contactAction: "جهّز استفساراً", relatedTitle: "واصل الاستكشاف", ctaTitle: "حوّل القراءة إلى موجز واضح.", ctaText: "شارك أولوياتك والأسئلة التي تحتاج إلى تحقق حديث.", ctaAction: "ابدأ محادثة",

@@ -13,6 +13,8 @@ type SiteHeaderProps = Readonly<{
 }>;
 
 export function SiteHeader({ copy, locale }: SiteHeaderProps) {
+  const adminUrl = process.env.NEXT_PUBLIC_ARE_ADMIN_URL ?? "http://127.0.0.1:50002";
+  const adminLabel = locale === "ar" ? "دخول الإدارة" : "Admin Login";
   const [isOpen, setIsOpen] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const menuPanelRef = useRef<HTMLDivElement>(null);
@@ -183,6 +185,9 @@ export function SiteHeader({ copy, locale }: SiteHeaderProps) {
           </nav>
 
           <div className="site-header__actions">
+            <a aria-label={adminLabel} className="admin-login-link" href={adminUrl}>
+              {adminLabel}
+            </a>
             <nav aria-label={copy.language} className="locale-control">
               <Link
                 aria-current={locale === "en" ? "page" : undefined}
@@ -266,6 +271,9 @@ export function SiteHeader({ copy, locale }: SiteHeaderProps) {
             <div className="mobile-menu__footer">
               <p>{copy.activeLanguage}</p>
               <span>{copy.menuDescription}</span>
+              <a className="mobile-admin-login" href={adminUrl} onClick={closeMenu}>
+                {adminLabel}
+              </a>
               <nav aria-label={copy.language} className="mobile-menu__locales">
                 <Link
                   aria-current={locale === "en" ? "page" : undefined}

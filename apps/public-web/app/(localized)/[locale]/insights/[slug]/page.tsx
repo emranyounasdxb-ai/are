@@ -6,18 +6,18 @@ import { Breadcrumbs, Checklist, EditorialCards, FaqSection, FinalCta, RelatedPa
 import { SiteFooter } from "../../../../../components/navigation/site-footer";
 import { SiteHeader } from "../../../../../components/navigation/site-header";
 import { Reveal } from "../../../../../components/motion/reveal";
-import { homeCopy, isLocale, locales, type Locale } from "../../../../../lib/home-copy";
-import { calculateReadingTime, getInsightArticle, insightSlugs, isInsightSlug, type InsightSlug } from "../../../../../lib/insights-data";
+import { homeCopy, isLocale, type Locale } from "../../../../../lib/home-copy";
+import { calculateReadingTime, type InsightArticle } from "../../../../../lib/insights-data";
+import { getInsight } from "../../../../../lib/api";
 import { richCopy } from "../../../../../lib/rich-copy";
 
 type Props = Readonly<{ params: Promise<{ locale: string; slug: string }> }>;
-export const dynamicParams = false;
-export function generateStaticParams() { return locales.flatMap((locale) => insightSlugs.map((slug) => ({ locale, slug }))); }
-export async function generateMetadata({ params }: Props): Promise<Metadata> { const { locale, slug } = await params; if (!isLocale(locale) || !isInsightSlug(slug)) notFound(); const copy = getInsightArticle(slug).content[locale]; return { title: `${copy.title} | ALIYAS Real Estate`, description: copy.metaDescription }; }
-export default async function InsightArticlePage({ params }: Props) { const { locale, slug } = await params; if (!isLocale(locale) || !isInsightSlug(slug)) notFound(); return <LocalizedArticle locale={locale} slug={slug} />; }
+export const dynamic = "force-dynamic";
+export async function generateMetadata({ params }: Props): Promise<Metadata> { const { locale, slug } = await params; if (!isLocale(locale)) notFound(); const article = await getInsight(locale, slug); if (!article) return {}; const copy = article.content[locale]; return { title: `${copy.title} | ALIYAS Real Estate`, description: copy.metaDescription }; }
+export default async function InsightArticlePage({ params }: Props) { const { locale, slug } = await params; if (!isLocale(locale)) notFound(); const article = await getInsight(locale, slug); if (!article) notFound(); return <LocalizedArticle article={article} locale={locale} />; }
 
-function LocalizedArticle({ locale, slug }: Readonly<{ locale: Locale; slug: InsightSlug }>) {
-  const article = getInsightArticle(slug); const copy = article.content[locale]; const ar = locale === "ar"; const minutes = calculateReadingTime(article, locale);
+function LocalizedArticle({ locale, article }: Readonly<{ locale: Locale; article: InsightArticle }>) {
+  const copy = article.content[locale]; const ar = locale === "ar"; const minutes = calculateReadingTime(article, locale);
   return <div className="article-page" id="top"><SiteHeader copy={homeCopy[locale].header} locale={locale} /><main id="main-content">
     <article>
       <header className="article-hero"><div className="article-hero__inner"><Breadcrumbs items={[{ href: `/${locale}`, label: richCopy[locale].homeLabel }, { href: `/${locale}/insights`, label: homeCopy[locale].header.insights }, { label: copy.title }]} label={richCopy[locale].breadcrumb} /><Reveal className="article-hero__reveal" distance={18}><p>{copy.categoryLabel}</p><h1>{copy.title}</h1><div className="article-meta"><span>{ar ? "نُشر" : "Published"}: <time dateTime={article.published}>{article.published}</time></span><span>{ar ? "حُدث" : "Updated"}: <time dateTime={article.updated}>{article.updated}</time></span><span>{minutes} {ar ? "دقائق قراءة" : "min read"}</span></div></Reveal></div></header>

@@ -12,9 +12,14 @@
     "start": "next start --hostname 127.0.0.1 --port 50002"
   },
   "dependencies": {
+    "@tanstack/react-query": "5.102.2",
+    "@tanstack/react-table": "9.1.2",
+    "lucide-react": "1.34.0",
     "next": "16.3.2",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "react-hook-form": "7.86.0",
+    "zod": "4.4.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "4.3.3",

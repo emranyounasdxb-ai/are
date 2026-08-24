@@ -19,6 +19,7 @@ import { homeCopy, isLocale, locales, type Locale, type Purpose } from "../../..
 import { isPageSlug, pageSlugs, siteCopy, type PageSlug } from "../../../../lib/site-copy";
 import { richCopy } from "../../../../lib/rich-copy";
 import { getDeveloper, getDeveloperEnquiryLabel } from "../../../../lib/developers-data";
+import { getProperties } from "../../../../lib/api";
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
@@ -58,7 +59,7 @@ export default async function InnerPage({ params, searchParams }: InnerPageProps
   return <LocalizedInnerPage locale={locale} page={page} query={query} />;
 }
 
-function LocalizedInnerPage({
+async function LocalizedInnerPage({
   locale,
   page,
   query,
@@ -94,7 +95,7 @@ function LocalizedInnerPage({
             </div>
           </div>
         </section>
-        {renderPageContent(locale, page, query)}
+        {await renderPageContent(locale, page, query)}
         <PageEditorial locale={locale} page={page} />
       </main>
       <SiteFooter copy={home.header} locale={locale} />
@@ -134,7 +135,7 @@ function PageEditorial({ locale, page }: Readonly<{ locale: Locale; page: PageSl
   );
 }
 
-function renderPageContent(locale: Locale, page: PageSlug, query: SearchParams) {
+async function renderPageContent(locale: Locale, page: PageSlug, query: SearchParams) {
   if (page === "properties") {
     return <PropertiesContent locale={locale} query={query} />;
   }
@@ -158,7 +159,7 @@ function firstValue(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
 }
 
-function PropertiesContent({ locale, query }: Readonly<{ locale: Locale; query: SearchParams }>) {
+async function PropertiesContent({ locale, query }: Readonly<{ locale: Locale; query: SearchParams }>) {
   const home = homeCopy[locale];
   const copy = siteCopy[locale].properties;
   const locationValue = firstValue(query.location);
@@ -169,6 +170,11 @@ function PropertiesContent({ locale, query }: Readonly<{ locale: Locale; query: 
   const selectedPurpose = purposeValue === "buy" || purposeValue === "rent" ? purposeValue : undefined;
   const purpose: Purpose = selectedPurpose ?? "buy";
   const hasCriteria = Boolean(location || propertyType || selectedPurpose);
+  const apiQuery = new URLSearchParams();
+  if (selectedPurpose) apiQuery.set("purpose", selectedPurpose);
+  if (propertyType) apiQuery.set("property_type", propertyType.value);
+  if (location && location.value !== "all") apiQuery.set("emirate", location.value);
+  const properties = await getProperties(locale, apiQuery.toString() ? `&${apiQuery}` : "");
 
   return (
     <section aria-labelledby="property-search-title" className="inner-section property-workbench">
@@ -202,6 +208,10 @@ function PropertiesContent({ locale, query }: Readonly<{ locale: Locale; query: 
         )}
         <small>{copy.inventoryNote}</small>
       </aside>
+      <div className="cms-property-results">
+        <div className="inner-section__heading"><p>ARE / LIVE CMS</p><h2>{locale === "ar" ? "العقارات المنشورة" : "Published properties"}</h2></div>
+        {properties.length ? <div className="cms-property-grid">{properties.map((property) => <article key={property.id}><div className="cms-media-neutral" aria-hidden="true">ARE</div><div><span>{property.emirate} · {property.property_type}</span><h3>{property.title}</h3><p>{property.description}</p><dl><div><dt>{locale === "ar" ? "الغرض" : "Purpose"}</dt><dd>{property.purpose}</dd></div><div><dt>{locale === "ar" ? "السعر" : "Price"}</dt><dd>{property.price_on_request ? (locale === "ar" ? "السعر عند الطلب" : "Price on request") : `${property.currency} ${property.price}`}</dd></div></dl><Link className="text-link" href={`/${locale}/properties/${property.slug}`}>{locale === "ar" ? "عرض التفاصيل" : "View details"}</Link></div></article>)}</div> : <div className="career-opportunities__empty"><span aria-hidden="true">00</span><div><h3>{locale === "ar" ? "لا توجد عقارات منشورة حالياً" : "No published properties yet"}</h3><p>{locale === "ar" ? "لن تظهر هنا إلا السجلات المنشورة والمعتمدة." : "Only approved, published CMS records will appear here."}</p></div></div>}
+      </div>
     </section>
   );
 }
