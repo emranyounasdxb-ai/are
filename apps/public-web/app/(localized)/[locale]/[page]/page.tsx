@@ -18,6 +18,7 @@ import { DiscoverySearch } from "../../../../components/search/discovery-search"
 import { homeCopy, isLocale, locales, type Locale, type Purpose } from "../../../../lib/home-copy";
 import { isPageSlug, pageSlugs, siteCopy, type PageSlug } from "../../../../lib/site-copy";
 import { richCopy } from "../../../../lib/rich-copy";
+import { getDeveloper, getDeveloperEnquiryLabel } from "../../../../lib/developers-data";
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
@@ -150,7 +151,7 @@ function renderPageContent(locale: Locale, page: PageSlug, query: SearchParams) 
     return <AboutContent locale={locale} />;
   }
 
-  return <ContactContent locale={locale} />;
+  return <ContactContent locale={locale} query={query} />;
 }
 
 function firstValue(value: string | string[] | undefined) {
@@ -275,8 +276,10 @@ function AboutContent({ locale }: Readonly<{ locale: Locale }>) {
   );
 }
 
-function ContactContent({ locale }: Readonly<{ locale: Locale }>) {
+function ContactContent({ locale, query }: Readonly<{ locale: Locale; query: SearchParams }>) {
   const copy = siteCopy[locale].contact;
+  const developer = firstValue(query.topic) === "developer" ? getDeveloper(firstValue(query.developer)) : undefined;
+  const enquiryType = developer ? getDeveloperEnquiryLabel(developer.enquiryTypes[0], locale) : undefined;
 
   return (
     <section aria-labelledby="contact-form-title" className="inner-section contact-experience">
@@ -285,7 +288,12 @@ function ContactContent({ locale }: Readonly<{ locale: Locale }>) {
         <h2 id="contact-form-title">{locale === "ar" ? "معاينة استفسار واضحة وآمنة" : "A clear, safe enquiry preview"}</h2>
         <span>{copy.intro}</span>
       </div>
-      <ContactPreviewForm locale={locale} />
+      <ContactPreviewForm
+        initialEnquiryType={developer?.enquiryTypes[0]}
+        locale={locale}
+        selectedDeveloper={developer?.officialName}
+        selectedEnquiryLabel={enquiryType}
+      />
     </section>
   );
 }

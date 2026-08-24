@@ -14,6 +14,9 @@ type SiteHeaderProps = Readonly<{
 
 export function SiteHeader({ copy, locale }: SiteHeaderProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [isExploreOpen, setIsExploreOpen] = useState(false);
+  const exploreButtonRef = useRef<HTMLButtonElement>(null);
+  const exploreRef = useRef<HTMLDivElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const menuPanelRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
@@ -25,6 +28,38 @@ export function SiteHeader({ copy, locale }: SiteHeaderProps) {
     { href: `/${locale}/off-plan`, label: copy.offPlan },
     { href: `/${locale}/about`, label: copy.about },
   ];
+  const secondaryNavigation = [
+    { href: `/${locale}/developers`, label: copy.developers },
+    { href: `/${locale}/insights`, label: copy.insights },
+  ];
+  const mobileNavigation = [...navigation.slice(0, 4), ...secondaryNavigation, navigation[4]];
+
+  useEffect(() => {
+    if (!isExploreOpen) {
+      return;
+    }
+
+    function handleExploreKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setIsExploreOpen(false);
+        exploreButtonRef.current?.focus();
+      }
+    }
+
+    function handleOutsidePointer(event: PointerEvent) {
+      if (!exploreRef.current?.contains(event.target as Node)) {
+        setIsExploreOpen(false);
+      }
+    }
+
+    document.addEventListener("keydown", handleExploreKeyDown);
+    document.addEventListener("pointerdown", handleOutsidePointer);
+    return () => {
+      document.removeEventListener("keydown", handleExploreKeyDown);
+      document.removeEventListener("pointerdown", handleOutsidePointer);
+    };
+  }, [isExploreOpen]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -118,6 +153,14 @@ export function SiteHeader({ copy, locale }: SiteHeaderProps) {
       }
     }
 
+    if (suffix === "contact" && currentQuery.get("topic") === "developer") {
+      const developer = currentQuery.get("developer");
+      if (developer && /^[a-z0-9-]+$/.test(developer)) {
+        safeQuery.set("topic", "developer");
+        safeQuery.set("developer", developer);
+      }
+    }
+
     const query = safeQuery.toString();
     router.push(`${nextPath}${query ? `?${query}` : ""}`);
     closeMenu();
@@ -160,6 +203,32 @@ export function SiteHeader({ copy, locale }: SiteHeaderProps) {
                 {item.label}
               </Link>
             ))}
+            <div className="explore-menu" ref={exploreRef}>
+              <button
+                aria-controls="desktop-explore-menu"
+                aria-expanded={isExploreOpen}
+                className={secondaryNavigation.some((item) => pathname === item.href || pathname.startsWith(`${item.href}/`)) ? "is-active" : undefined}
+                onClick={() => setIsExploreOpen((open) => !open)}
+                ref={exploreButtonRef}
+                type="button"
+              >
+                {copy.explore}<span aria-hidden="true">⌄</span>
+              </button>
+              {isExploreOpen ? (
+                <div className="explore-menu__panel" id="desktop-explore-menu">
+                  {secondaryNavigation.map((item) => (
+                    <Link
+                      aria-current={pathname === item.href || pathname.startsWith(`${item.href}/`) ? "page" : undefined}
+                      href={item.href}
+                      key={item.href}
+                      onClick={() => setIsExploreOpen(false)}
+                    >
+                      {item.label}<span aria-hidden="true">↗</span>
+                    </Link>
+                  ))}
+                </div>
+              ) : null}
+            </div>
           </nav>
 
           <div className="site-header__actions">
@@ -228,9 +297,9 @@ export function SiteHeader({ copy, locale }: SiteHeaderProps) {
               </button>
             </div>
             <nav aria-label={copy.navigation}>
-              {navigation.map((item, index) => (
+              {mobileNavigation.map((item, index) => (
                 <Link
-                  aria-current={pathname === item.href ? "page" : undefined}
+                  aria-current={pathname === item.href || (item.href.endsWith("/insights") && pathname.startsWith(`${item.href}/`)) ? "page" : undefined}
                   href={item.href}
                   key={item.href}
                   onClick={(event) => {

@@ -1,0 +1,333 @@
+import type { FaqItem, RelatedItem } from "../components/content/editorial-content";
+import type { Locale } from "./home-copy";
+
+export const insightSlugs = [
+  "choosing-a-uae-community",
+  "understanding-off-plan-property",
+  "primary-sale-vs-resale",
+] as const;
+
+export type InsightSlug = (typeof insightSlugs)[number];
+export type InsightCategory = "guides" | "market-insights";
+
+type LocalizedArticle = Readonly<{
+  title: string;
+  metaDescription: string;
+  categoryLabel: string;
+  introduction: string;
+  sections: ReadonlyArray<Readonly<{ heading: string; paragraphs: ReadonlyArray<string> }>>;
+  checklistTitle: string;
+  checklistIntro: string;
+  checklist: ReadonlyArray<string>;
+  considerationsTitle: string;
+  considerations: ReadonlyArray<Readonly<{ title: string; text: string }>>;
+  limitationsTitle: string;
+  limitations: string;
+  faqTitle: string;
+  faq: ReadonlyArray<FaqItem>;
+  relatedTitle: string;
+  related: ReadonlyArray<RelatedItem>;
+  sourcesTitle: string;
+}>;
+
+export type InsightArticle = Readonly<{
+  slug: InsightSlug;
+  category: InsightCategory;
+  published: string;
+  updated: string;
+  sources: ReadonlyArray<Readonly<{ name: string; url: string }>>;
+  content: Readonly<Record<Locale, LocalizedArticle>>;
+}>;
+
+export const insightArticles: ReadonlyArray<InsightArticle> = [
+  {
+    slug: "choosing-a-uae-community",
+    category: "guides",
+    published: "2026-08-24",
+    updated: "2026-08-24",
+    sources: [
+      { name: "Dubai Land Department — official services", url: "https://dubailand.gov.ae/en/" },
+      { name: "Abu Dhabi Real Estate Centre — market data", url: "https://adrec.gov.ae/en/market-data" },
+    ],
+    content: {
+      en: {
+        title: "Choosing a UAE Community: Practical Lifestyle and Property Priorities",
+        metaDescription: "Use a practical, people-first framework to compare UAE communities by daily routine, property needs and verified local information.",
+        categoryLabel: "Guide",
+        introduction: "A community decision is not only a choice on a map. It shapes recurring journeys, time at home, access to the places that matter and the types of property likely to fit your routine. A useful comparison begins with your own week, then verifies the details that could change the decision.",
+        sections: [
+          {
+            heading: "Begin with an ordinary week",
+            paragraphs: [
+              "Write down the journeys your household repeats: work, education, care, shopping, recreation and visits to people who matter. Avoid relying on a single ideal travel-time claim. Routes and conditions vary, so test the journeys at times that reflect your likely routine.",
+              "Also consider what happens when you are not travelling. Some households value walkable daily services; others need privacy, outdoor space or room for home working. The right balance is personal and may change over time.",
+            ],
+          },
+          {
+            heading: "Connect the community to the property brief",
+            paragraphs: [
+              "A preferred area is useful only when its housing patterns support your essential needs. Compare apartment, townhouse and villa considerations as general categories, then examine the actual layout, access, building rules and shared facilities of any specific property through approved information.",
+              "Separate essentials from preferences. An extra room may be essential for one household and optional for another. A waterfront or urban setting can be a preference, while accessibility or a recurring journey may be non-negotiable.",
+            ],
+          },
+          {
+            heading: "Verify current details before shortlisting",
+            paragraphs: [
+              "Facilities, access arrangements, service availability and property supply can change. Use current authority, developer or property documents for specific claims, and visit the area where practical. A directory or guide can organise the search, but it cannot replace current evidence about a particular home.",
+            ],
+          },
+        ],
+        checklistTitle: "Community comparison checklist",
+        checklistIntro: "Use the same questions for every place so the comparison stays consistent.",
+        checklist: ["Recurring journeys and realistic route checks", "Household space, privacy and accessibility needs", "Essential services versus optional amenities", "Preferred property styles and practical layouts", "Budget compatibility across the full housing requirement", "Flexibility if work, family or mobility needs change", "Current details that require direct verification"],
+        considerationsTitle: "Decision considerations",
+        considerations: [
+          { title: "Routine", text: "Does the place support the week you actually live rather than an occasional visit?" },
+          { title: "Property fit", text: "Are suitable home types and layouts worth verifying there?" },
+          { title: "Trade-offs", text: "Which compromises are acceptable, and which would make the choice impractical?" },
+        ],
+        limitationsTitle: "What this guide cannot decide",
+        limitations: "This general guide does not rank communities, assess schools, promise travel times or confirm live property availability. Verify specific facts from appropriate current sources and use qualified advice when your decision requires it.",
+        faqTitle: "Questions about choosing a UAE community",
+        faq: [
+          { question: "Should I choose the community or property first?", answer: "Treat them as connected decisions. Start with routine and location priorities, then test whether suitable property types and layouts can support them." },
+          { question: "How should I compare commute times?", answer: "Use current route tools and test realistic travel periods. A single advertised time may not reflect your origin, destination or schedule." },
+          { question: "Are community rankings useful?", answer: "They can hide personal trade-offs. A consistent checklist based on your household is usually more informative than an unverified universal ranking." },
+          { question: "What should I verify before shortlisting?", answer: "Verify access, facilities, applicable rules, property details and any claim important to your decision through current approved sources." },
+          { question: "Can ALIYAS show live homes in each community?", answer: "Not in this preview. Live inventory and availability will appear only after approved property data is connected." },
+        ],
+        relatedTitle: "Continue your research",
+        related: [
+          { href: "/en/communities", label: "Explore communities", text: "Turn everyday priorities into a community brief." },
+          { href: "/en/properties", label: "Shape a property search", text: "Connect location preferences to home requirements." },
+          { href: "/en/contact", label: "Prepare an enquiry", text: "Share the questions that still need verified answers." },
+        ],
+        sourcesTitle: "Official reference points",
+      },
+      ar: {
+        title: "اختيار مجتمع في الإمارات: أولويات عملية للحياة والعقار",
+        metaDescription: "إطار عملي يتمحور حول الإنسان لمقارنة مجتمعات الإمارات وفق الروتين اليومي واحتياجات العقار والمعلومات الموثقة.",
+        categoryLabel: "دليل",
+        introduction: "اختيار المجتمع ليس مجرد تحديد موقع على الخريطة؛ فهو يؤثر في الرحلات المتكررة والوقت داخل المنزل والوصول إلى الأماكن المهمة وأنواع العقارات التي قد تلائم روتينك. تبدأ المقارنة المفيدة بأسبوعك المعتاد، ثم تتحقق من التفاصيل التي يمكن أن تغير القرار.",
+        sections: [
+          { heading: "ابدأ بأسبوع عادي", paragraphs: ["دوّن الرحلات التي تكررها الأسرة: العمل والتعليم والرعاية والتسوق والترفيه وزيارة الأشخاص المهمين. لا تعتمد على مدة تنقل مثالية واحدة؛ فالمسارات والظروف تتغير، لذلك اختبر الرحلات في أوقات تشبه روتينك.", "فكّر أيضاً في الوقت الذي تقضيه داخل المجتمع. قد تهم الخدمات اليومية القريبة أسرة، بينما تحتاج أسرة أخرى إلى الخصوصية أو مساحة خارجية أو غرفة للعمل من المنزل. التوازن المناسب شخصي وقد يتغير بمرور الوقت."] },
+          { heading: "اربط المجتمع بالموجز العقاري", paragraphs: ["لا تصبح المنطقة المفضلة مفيدة إلا عندما تدعم أنماط مساكنها احتياجاتك الأساسية. قارن الشقة والتاون هاوس والفيلا كفئات عامة، ثم راجع التصميم الفعلي وسهولة الوصول وقواعد المبنى والمرافق المشتركة لأي عقار محدد عبر معلومات معتمدة.", "افصل الضروريات عن التفضيلات. قد تكون الغرفة الإضافية أساسية لأسرة واختيارية لأخرى. ويمكن أن تكون البيئة الساحلية أو الحضرية تفضيلاً، بينما تكون سهولة الوصول أو رحلة متكررة شرطاً لا يمكن التنازل عنه."] },
+          { heading: "تحقق من التفاصيل الحالية قبل إعداد القائمة", paragraphs: ["قد تتغير المرافق وترتيبات الوصول والخدمات والمعروض العقاري. ارجع إلى وثائق الجهات الرسمية أو المطور أو العقار للتحقق من الادعاءات المحددة، وزر المنطقة عندما يكون ذلك عملياً. يساعد الدليل على تنظيم البحث لكنه لا يحل محل الأدلة الحالية عن منزل بعينه."] },
+        ],
+        checklistTitle: "قائمة مقارنة المجتمعات",
+        checklistIntro: "استخدم الأسئلة نفسها لكل مكان حتى تبقى المقارنة متسقة.",
+        checklist: ["الرحلات المتكررة واختبار المسارات الواقعية", "احتياجات الأسرة من المساحة والخصوصية وسهولة الوصول", "الخدمات الضرورية مقابل المرافق الاختيارية", "أنماط العقارات والتصاميم العملية", "ملاءمة الميزانية لكامل المتطلبات السكنية", "المرونة عند تغير العمل أو الأسرة أو الحركة", "التفاصيل الحالية التي تتطلب تحققاً مباشراً"],
+        considerationsTitle: "اعتبارات القرار",
+        considerations: [{ title: "الروتين", text: "هل يدعم المكان أسبوعك الفعلي لا الزيارة العارضة؟" }, { title: "ملاءمة العقار", text: "هل توجد أنواع وتصاميم منازل تستحق التحقق في هذا المكان؟" }, { title: "المفاضلات", text: "ما التنازلات المقبولة وما الذي يجعل الاختيار غير عملي؟" }],
+        limitationsTitle: "ما الذي لا يستطيع هذا الدليل حسمه؟",
+        limitations: "لا يصنّف هذا الدليل العام المجتمعات ولا يقيّم المدارس ولا يعد بأوقات تنقل أو يؤكد توفر عقارات مباشرة. تحقق من الحقائق المحددة عبر مصادر حالية مناسبة واطلب مشورة مؤهلة عند الحاجة.",
+        faqTitle: "أسئلة عن اختيار مجتمع في الإمارات",
+        faq: [
+          { question: "هل أختار المجتمع أم العقار أولاً؟", answer: "تعامل معهما كقرارين مترابطين. ابدأ بالروتين والموقع، ثم اختبر ما إذا كانت أنواع العقارات وتصاميمها تدعم تلك الأولويات." },
+          { question: "كيف أقارن أوقات التنقل؟", answer: "استخدم أدوات مسار حالية واختبر فترات واقعية. قد لا تعكس مدة معلنة واحدة نقطة البداية أو الوجهة أو الجدول الخاص بك." },
+          { question: "هل تصنيفات المجتمعات مفيدة؟", answer: "قد تخفي المفاضلات الشخصية. قائمة متسقة تستند إلى احتياجات أسرتك أفضل من ترتيب عام غير موثق." },
+          { question: "ما الذي أتحقق منه قبل إعداد القائمة؟", answer: "تحقق من الوصول والمرافق والقواعد وتفاصيل العقار وأي ادعاء مهم لقرارك عبر مصادر حالية معتمدة." },
+          { question: "هل تعرض ALIYAS منازل مباشرة في كل مجتمع؟", answer: "ليس في هذه المعاينة. لن يظهر المخزون والتوفر إلا بعد ربط بيانات عقارية معتمدة." },
+        ],
+        relatedTitle: "تابع بحثك",
+        related: [{ href: "/ar/communities", label: "استكشف المجتمعات", text: "حوّل الأولويات اليومية إلى موجز للمجتمع." }, { href: "/ar/properties", label: "صُغ بحثك العقاري", text: "اربط تفضيلات الموقع بمتطلبات المنزل." }, { href: "/ar/contact", label: "جهّز استفسارك", text: "شارك الأسئلة التي لا تزال بحاجة إلى إجابات موثقة." }],
+        sourcesTitle: "مراجع رسمية",
+      },
+    },
+  },
+  {
+    slug: "understanding-off-plan-property",
+    category: "guides",
+    published: "2026-08-24",
+    updated: "2026-08-24",
+    sources: [
+      { name: "Dubai Land Department — Register Project", url: "https://dubailand.gov.ae/en/eservices/register-project/" },
+      { name: "ADREC — Developer Journey", url: "https://adrec.gov.ae/en/sectors/regulatory-services/project-development/developer-journey" },
+    ],
+    content: {
+      en: {
+        title: "Understanding the UAE Off-Plan Property Journey",
+        metaDescription: "Understand the general UAE off-plan property journey, the documents and milestones to review, and the questions to verify before proceeding.",
+        categoryLabel: "Guide",
+        introduction: "Off-plan property is considered before construction is complete. That timing makes project registration, contractual documents, specifications, payment milestones and completion information especially important. The exact process differs by emirate, project and buyer circumstances, so general guidance should lead to verification—not replace it.",
+        sections: [
+          { heading: "Clarify the purpose and timeframe", paragraphs: ["Begin with why an off-plan route may fit your plans. A future home, a long-term holding and an early research exercise create different questions. Consider how your own timeframe relates to documented project milestones without assuming that an indicative date is guaranteed.", "Review the full commitment rather than an initial payment alone. Qualified legal and financial advisers can help interpret obligations and suitability for your circumstances."] },
+          { heading: "Review the project evidence", paragraphs: ["Ask for the current project registration, developer identity, applicable sales documentation, property specifications and the documented payment schedule. Official authority services explain that developers and projects pass through registration processes; a marketing summary is not a substitute for those records.", "Read provisions concerning changes, delays, cancellation, refunds, assignment and completion. These are contractual matters, so obtain independent legal advice rather than relying on a general website explanation."] },
+          { heading: "Follow milestones without treating them as promises", paragraphs: ["Keep copies of the signed documents and payment evidence. Compare updates with the governing agreement and current authority information. Construction percentages, handover dates, prices and availability can change and are not displayed in this preview unless current verification is available."] },
+        ],
+        checklistTitle: "General off-plan review checklist",
+        checklistIntro: "The documents and professional advice required depend on the project and your circumstances.",
+        checklist: ["Developer identity and current registration evidence", "Project registration and official project reference", "Sale agreement and property specifications", "Documented payment schedule and milestone triggers", "Completion information and provisions for change or delay", "Cancellation, refund and assignment terms", "Ongoing ownership and service considerations", "Independent legal and financial advice where appropriate"],
+        considerationsTitle: "Questions before proceeding",
+        considerations: [{ title: "Evidence", text: "Which statements are supported by current official or contractual documents?" }, { title: "Commitment", text: "What must you do at each stage, and what happens if circumstances change?" }, { title: "Advice", text: "Which parts require a qualified adviser who understands your position?" }],
+        limitationsTitle: "Educational guidance only",
+        limitations: "This article is not legal, financial, tax or investment advice. It does not assess a developer, project, contract or expected return, and it does not confirm approvals, availability, prices, progress or handover dates.",
+        faqTitle: "Questions about the off-plan journey",
+        faq: [
+          { question: "What does off-plan property mean?", answer: "It generally means a property considered before construction is complete. The specific status and obligations must be verified for each project." },
+          { question: "How can I check project registration?", answer: "Use the relevant emirate’s official land or real-estate authority service and match the records to the documents you receive." },
+          { question: "Is an expected completion date guaranteed?", answer: "Do not assume so. Review the governing agreement, current official information and the provisions that apply if timing changes." },
+          { question: "What should I ask about the payment plan?", answer: "Ask for the documented schedule, milestone triggers, payment destination, consequences of delay and any applicable change or cancellation terms." },
+          { question: "Does ALIYAS guarantee a booking or allocation?", answer: "No. Any enquiry is subject to current availability, transaction eligibility and verification." },
+        ],
+        relatedTitle: "Continue with verified context",
+        related: [{ href: "/en/off-plan", label: "Explore off-plan", text: "Review the wider discovery pathway." }, { href: "/en/developers", label: "View developers", text: "Browse a sourced starter directory." }, { href: "/en/contact", label: "Prepare an enquiry", text: "Organise project-specific questions." }],
+        sourcesTitle: "Official references",
+      },
+      ar: {
+        title: "فهم رحلة العقار على المخطط في الإمارات",
+        metaDescription: "تعرّف إلى الرحلة العامة للعقار على المخطط في الإمارات والوثائق والمراحل والأسئلة التي ينبغي التحقق منها قبل المتابعة.",
+        categoryLabel: "دليل",
+        introduction: "تتم دراسة العقار على المخطط قبل اكتمال البناء، لذلك تصبح تسجيلات المشروع والوثائق التعاقدية والمواصفات ومراحل الدفع ومعلومات الإنجاز ذات أهمية خاصة. تختلف الإجراءات الدقيقة حسب الإمارة والمشروع وظروف المشتري، لذا يجب أن يقود الإرشاد العام إلى التحقق لا أن يحل محله.",
+        sections: [
+          { heading: "حدّد الهدف والإطار الزمني", paragraphs: ["ابدأ بسبب ملاءمة هذا المسار لخططك. يطرح المنزل المستقبلي والاحتفاظ طويل الأجل والبحث الأولي أسئلة مختلفة. قارن توقيتك بمراحل المشروع الموثقة من دون اعتبار التاريخ التقريبي ضماناً.", "راجع الالتزام كاملاً لا الدفعة الأولى وحدها. ويمكن لمستشارين قانونيين وماليين مؤهلين المساعدة في فهم الالتزامات ومدى ملاءمتها لظروفك."] },
+          { heading: "راجع أدلة المشروع", paragraphs: ["اطلب تسجيل المشروع الحالي وهوية المطور ووثائق البيع والمواصفات وجدول الدفعات الموثق. توضح خدمات الجهات الرسمية أن المطورين والمشاريع يمرون بإجراءات تسجيل؛ ولا يحل الملخص التسويقي محل تلك السجلات.", "اقرأ أحكام التغيير والتأخير والإلغاء والاسترداد والتحويل والإنجاز. هذه مسائل تعاقدية تستلزم مشورة قانونية مستقلة بدلاً من الاعتماد على شرح عام."] },
+          { heading: "تابع المراحل من دون اعتبارها وعوداً", paragraphs: ["احتفظ بالوثائق الموقعة وإثباتات الدفع. قارن التحديثات بالاتفاقية والمعلومات الرسمية الحالية. قد تتغير نسب الإنجاز ومواعيد التسليم والأسعار والتوفر، ولا تعرضها هذه المعاينة من دون تحقق حديث."] },
+        ],
+        checklistTitle: "قائمة عامة لمراجعة العقار على المخطط",
+        checklistIntro: "تختلف الوثائق والمشورة اللازمة حسب المشروع وظروفك.",
+        checklist: ["هوية المطور ودليل التسجيل الحالي", "تسجيل المشروع ومرجعه الرسمي", "اتفاقية البيع ومواصفات العقار", "جدول الدفعات ومحفزات المراحل", "معلومات الإنجاز وأحكام التغيير أو التأخير", "شروط الإلغاء والاسترداد والتحويل", "اعتبارات الملكية والخدمات المستمرة", "مشورة قانونية ومالية مستقلة عند الحاجة"],
+        considerationsTitle: "أسئلة قبل المتابعة",
+        considerations: [{ title: "الأدلة", text: "ما العبارات المدعومة بوثائق رسمية أو تعاقدية حالية؟" }, { title: "الالتزام", text: "ما المطلوب في كل مرحلة وماذا يحدث إذا تغيرت الظروف؟" }, { title: "المشورة", text: "ما الجوانب التي تحتاج إلى مستشار مؤهل يفهم وضعك؟" }],
+        limitationsTitle: "إرشاد تعليمي فقط",
+        limitations: "هذه المقالة ليست مشورة قانونية أو مالية أو ضريبية أو استثمارية، ولا تقيّم مطوراً أو مشروعاً أو عقداً أو عائداً متوقعاً، ولا تؤكد الموافقات أو التوفر أو الأسعار أو التقدم أو مواعيد التسليم.",
+        faqTitle: "أسئلة عن رحلة العقار على المخطط",
+        faq: [
+          { question: "ما معنى عقار على المخطط؟", answer: "يعني عموماً عقاراً تتم دراسته قبل اكتمال بنائه. يجب التحقق من الحالة والالتزامات لكل مشروع." },
+          { question: "كيف أتحقق من تسجيل المشروع؟", answer: "استخدم خدمة الجهة الرسمية للأراضي أو العقارات في الإمارة وطابق السجلات مع الوثائق المستلمة." },
+          { question: "هل موعد الإنجاز المتوقع مضمون؟", answer: "لا تفترض ذلك. راجع الاتفاقية والمعلومات الرسمية الحالية والأحكام المطبقة عند تغير التوقيت." },
+          { question: "ماذا أسأل عن خطة الدفع؟", answer: "اطلب الجدول الموثق ومحفزات المراحل ووجهة الدفع وآثار التأخير وشروط التغيير أو الإلغاء." },
+          { question: "هل تضمن ALIYAS الحجز أو التخصيص؟", answer: "لا. يخضع أي استفسار للتوفر الحالي وأهلية المعاملة والتحقق." },
+        ],
+        relatedTitle: "تابع ضمن سياق موثوق",
+        related: [{ href: "/ar/off-plan", label: "استكشف على المخطط", text: "راجع مسار الاكتشاف الأوسع." }, { href: "/ar/developers", label: "تصفح المطورين", text: "استعرض دليلاً أولياً موثق المصادر." }, { href: "/ar/contact", label: "جهّز استفسارك", text: "نظّم الأسئلة الخاصة بالمشروع." }],
+        sourcesTitle: "مراجع رسمية",
+      },
+    },
+  },
+  {
+    slug: "primary-sale-vs-resale",
+    category: "market-insights",
+    published: "2026-08-24",
+    updated: "2026-08-24",
+    sources: [
+      { name: "Dubai Land Department — official services", url: "https://dubailand.gov.ae/en/" },
+      { name: "Abu Dhabi Real Estate Centre — transactions services", url: "https://adrec.gov.ae/en/sectors/consumer/transactions" },
+    ],
+    content: {
+      en: {
+        title: "Primary Sale vs Resale: Questions UAE Buyers Should Consider",
+        metaDescription: "Compare primary-sale and resale property routes in the UAE through practical questions about evidence, timing, property condition and transaction readiness.",
+        categoryLabel: "Market insight",
+        introduction: "A primary sale generally begins with a developer or its approved sales route, while a resale involves an existing owner transferring a property interest. Those labels do not make one route universally better. They change the evidence, timing, property condition and transaction questions a buyer may need to examine.",
+        sections: [
+          { heading: "Understand what is being compared", paragraphs: ["A primary-sale option may be completed or off-plan. A resale may involve a completed home, a tenanted property or rights under an existing contract, subject to the applicable rules and documents. Confirm the actual status instead of relying on the category label.", "Compare like with like: intended use, location, property specification, timing and full documented commitment. An advertised headline price alone cannot explain all of those differences."] },
+          { heading: "Trace the evidence and transaction path", paragraphs: ["For either route, verify the parties, property or project record, authority documents and contractual terms. The required steps vary by emirate and transaction. Ask which approvals, clearances, registrations, payments and professional reviews apply to the specific case.", "For resale, inspect the property condition and understand occupancy or tenancy status where relevant. For a primary sale, verify the developer, project, specifications, milestone information and governing agreement."] },
+          { heading: "Match timing to your real requirement", paragraphs: ["A completed resale can still require inspections, finance, clearances and transfer coordination. A primary or off-plan purchase may involve a longer documented milestone path. Neither route should be treated as instant or guaranteed. Build flexibility around verified steps rather than promotional timing."] },
+        ],
+        checklistTitle: "Route-comparison checklist",
+        checklistIntro: "Use the same core questions, then add route-specific evidence.",
+        checklist: ["Actual property or project status", "Identity and authority of the selling party", "Applicable agreement and transaction documents", "Property specifications and physical condition", "Occupancy, tenancy or handover status where relevant", "Documented costs, payments and milestone timing", "Approvals, clearances and transfer requirements", "Independent legal, financial and technical advice"],
+        considerationsTitle: "A useful comparison frame",
+        considerations: [{ title: "Readiness", text: "What must be completed before occupation, handover or transfer?" }, { title: "Condition", text: "What can be inspected now, and what remains a documented specification?" }, { title: "Certainty", text: "Which details are verified, contractual, indicative or still pending?" }],
+        limitationsTitle: "No universal recommendation",
+        limitations: "This article does not recommend primary sale or resale, estimate costs or returns, or provide legal, tax, mortgage or investment advice. Current transaction eligibility, property status, pricing and availability require case-specific verification.",
+        faqTitle: "Questions about primary sale and resale",
+        faq: [
+          { question: "Is a primary sale always off-plan?", answer: "No. A primary sale can relate to a developer-held completed or under-development property. Verify the specific status and documents." },
+          { question: "Is resale always ready to move into?", answer: "No. Condition, occupancy, tenancy, finance, clearances and transfer timing can affect readiness." },
+          { question: "Which route is less expensive?", answer: "There is no universal answer. Compare the full documented commitment and obtain qualified advice rather than relying on the headline price." },
+          { question: "What should be inspected in a resale?", answer: "Use qualified inspection where appropriate and verify condition, alterations, records, occupancy and documents relevant to the transaction." },
+          { question: "Can ALIYAS help with both routes?", answer: "ALIYAS may assist with enquiries for primary-sale and resale opportunities, subject to current availability, transaction eligibility and verification." },
+        ],
+        relatedTitle: "Compare your next route",
+        related: [{ href: "/en/properties", label: "Property discovery", text: "Define the requirement before comparing routes." }, { href: "/en/developers", label: "Developer directory", text: "Review sourced developer references." }, { href: "/en/contact", label: "Prepare an enquiry", text: "Share the route and questions you want to verify." }],
+        sourcesTitle: "Official reference points",
+      },
+      ar: {
+        title: "البيع الأولي أم إعادة البيع: أسئلة ينبغي للمشتري في الإمارات مراعاتها",
+        metaDescription: "قارن بين البيع الأولي وإعادة البيع في الإمارات عبر أسئلة عملية عن الأدلة والتوقيت وحالة العقار وجاهزية المعاملة.",
+        categoryLabel: "رؤية سوقية",
+        introduction: "يبدأ البيع الأولي عموماً مع المطور أو عبر مسار بيع معتمد، بينما تتضمن إعادة البيع نقل مالك قائم لمصلحته في العقار. لا تجعل هذه المسميات أحد المسارين أفضل دائماً، لكنها تغيّر الأدلة والتوقيت وحالة العقار وأسئلة المعاملة التي ينبغي للمشتري مراجعتها.",
+        sections: [
+          { heading: "افهم ما تتم مقارنته", paragraphs: ["قد يكون خيار البيع الأولي مكتملاً أو على المخطط، وقد تشمل إعادة البيع منزلاً مكتملاً أو عقاراً مؤجراً أو حقوقاً في عقد قائم وفق القواعد والوثائق المطبقة. تحقق من الحالة الفعلية بدلاً من الاعتماد على التصنيف.", "قارن المتشابه بالمتشابه: الاستخدام والموقع والمواصفات والتوقيت والالتزام الموثق كاملاً. لا يشرح السعر المعلن وحده كل هذه الفروق."] },
+          { heading: "تتبّع الأدلة ومسار المعاملة", paragraphs: ["تحقق في كلا المسارين من الأطراف وسجل العقار أو المشروع ووثائق الجهة الرسمية والشروط التعاقدية. تختلف الخطوات حسب الإمارة والمعاملة، لذا اسأل عن الموافقات والتصاريح والتسجيلات والدفعات والمراجعات المهنية المطلوبة.", "في إعادة البيع افحص حالة العقار وافهم الإشغال أو الإيجار عند الحاجة. وفي البيع الأولي تحقق من المطور والمشروع والمواصفات والمراحل والاتفاقية الحاكمة."] },
+          { heading: "وازن التوقيت مع احتياجك الحقيقي", paragraphs: ["قد يتطلب العقار المكتمل في إعادة البيع فحصاً وتمويلاً وتصاريح وتنسيق نقل الملكية. وقد يمر الشراء الأولي أو على المخطط بمراحل موثقة أطول. لا ينبغي اعتبار أي مسار فورياً أو مضموناً؛ ابنِ المرونة حول الخطوات الموثقة لا التوقيت التسويقي."] },
+        ],
+        checklistTitle: "قائمة مقارنة المسارين",
+        checklistIntro: "استخدم الأسئلة الأساسية نفسها ثم أضف أدلة كل مسار.",
+        checklist: ["الحالة الفعلية للعقار أو المشروع", "هوية وسلطة الطرف البائع", "الاتفاقية ووثائق المعاملة", "مواصفات العقار وحالته الفعلية", "الإشغال أو الإيجار أو التسليم عند الحاجة", "التكاليف والدفعات والمراحل الموثقة", "الموافقات والتصاريح ومتطلبات النقل", "مشورة قانونية ومالية وفنية مستقلة"],
+        considerationsTitle: "إطار مفيد للمقارنة",
+        considerations: [{ title: "الجاهزية", text: "ما الذي يجب إنجازه قبل الإشغال أو التسليم أو النقل؟" }, { title: "الحالة", text: "ما الذي يمكن فحصه الآن وما الذي لا يزال مواصفة موثقة؟" }, { title: "اليقين", text: "ما التفاصيل الموثقة أو التعاقدية أو التقريبية أو المعلقة؟" }],
+        limitationsTitle: "لا توجد توصية واحدة للجميع",
+        limitations: "لا توصي المقالة بالبيع الأولي أو إعادة البيع، ولا تقدّر التكاليف أو العوائد، ولا تقدم مشورة قانونية أو ضريبية أو تمويلية أو استثمارية. تتطلب أهلية المعاملة والحالة والأسعار والتوفر تحققاً خاصاً بكل حالة.",
+        faqTitle: "أسئلة عن البيع الأولي وإعادة البيع",
+        faq: [
+          { question: "هل البيع الأولي دائماً على المخطط؟", answer: "لا. قد يتعلق بعقار مكتمل أو قيد التطوير يحتفظ به المطور. تحقق من الحالة والوثائق." },
+          { question: "هل إعادة البيع تعني جاهزية السكن دائماً؟", answer: "لا. قد تؤثر الحالة والإشغال والإيجار والتمويل والتصاريح وتوقيت النقل في الجاهزية." },
+          { question: "أي المسارين أقل تكلفة؟", answer: "لا توجد إجابة عامة. قارن الالتزام الموثق كاملاً واطلب مشورة مؤهلة بدلاً من الاعتماد على السعر المعلن." },
+          { question: "ما الذي ينبغي فحصه في إعادة البيع؟", answer: "استعن بفحص مؤهل عند الحاجة وتحقق من الحالة والتعديلات والسجلات والإشغال والوثائق المرتبطة بالمعاملة." },
+          { question: "هل يمكن لـ ALIYAS المساعدة في المسارين؟", answer: "يمكن لـ ALIYAS المساعدة في استفسارات البيع الأولي وإعادة البيع، رهناً بالتوفر الحالي وأهلية المعاملة والتحقق." },
+        ],
+        relatedTitle: "قارن خطوتك التالية",
+        related: [{ href: "/ar/properties", label: "اكتشاف العقارات", text: "حدّد المتطلبات قبل مقارنة المسارات." }, { href: "/ar/developers", label: "دليل المطورين", text: "راجع مراجع المطورين الموثقة المصادر." }, { href: "/ar/contact", label: "جهّز استفسارك", text: "شارك المسار والأسئلة التي تريد التحقق منها." }],
+        sourcesTitle: "مراجع رسمية",
+      },
+    },
+  },
+];
+
+export type VerifiedUpdate = Readonly<{
+  id: string;
+  sourceName: string;
+  sourceUrl: string;
+  published: string;
+  verified: string;
+  title: Readonly<Record<Locale, string>>;
+  summary: Readonly<Record<Locale, string>>;
+}>;
+
+export const verifiedUpdates: ReadonlyArray<VerifiedUpdate> = [
+  {
+    id: "dld-ips-2026",
+    sourceName: "Dubai Land Department",
+    sourceUrl: "https://dubailand.gov.ae/en/news-media/in-partnership-with-dubai-land-department-dubai-to-host-the-22nd-edition-of-ips-2026-next-september/",
+    published: "2026-08-03",
+    verified: "2026-08-24",
+    title: { en: "Dubai Land Department confirms IPS 2026 dates", ar: "دائرة الأراضي والأملاك في دبي تؤكد مواعيد معرض IPS 2026" },
+    summary: { en: "The official announcement confirms that the 22nd IPS edition is scheduled for 7–9 September 2026 at Dubai World Trade Centre. Event details should be checked at the source before planning attendance.", ar: "يؤكد الإعلان الرسمي إقامة الدورة الثانية والعشرين من المعرض بين 7 و9 سبتمبر 2026 في مركز دبي التجاري العالمي. ينبغي مراجعة المصدر قبل التخطيط للحضور." },
+  },
+  {
+    id: "adrec-h1-2026",
+    sourceName: "Abu Dhabi Real Estate Centre (ADREC)",
+    sourceUrl: "https://adrec.gov.ae/en/news/press-release-27---adrec-h1-2026-transaction-report",
+    published: "2026-07-17",
+    verified: "2026-08-24",
+    title: { en: "ADREC publishes its H1 2026 transaction report", ar: "مركز أبوظبي العقاري ينشر تقرير معاملات النصف الأول من 2026" },
+    summary: { en: "ADREC’s official release reports the emirate’s first-half transaction activity and regulatory developments. The figures describe a defined reporting period and should not be treated as a forecast or a property-specific return indicator.", ar: "يعرض البيان الرسمي لمركز أبوظبي العقاري نشاط المعاملات والتطورات التنظيمية خلال النصف الأول. تصف الأرقام فترة محددة ولا تمثل توقعاً أو مؤشراً لعائد عقار بعينه." },
+  },
+  {
+    id: "dld-rental-2025",
+    sourceName: "Dubai Land Department",
+    sourceUrl: "https://dubailand.gov.ae/en/news-media/dubai-s-rental-sector-records-strong-growth-in-2025-underscoring-market-stability-and-the-strength-of-the-emirate-s-real-estate-ecosystem",
+    published: "2026-02-23",
+    verified: "2026-08-24",
+    title: { en: "DLD releases its review of Dubai’s 2025 rental sector", ar: "دائرة الأراضي والأملاك تنشر مراجعتها لقطاع الإيجارات في دبي لعام 2025" },
+    summary: { en: "The DLD release summarises registered tenancy-contract activity for 2025. It is a market-level retrospective, not a statement about the price, availability or suitability of an individual home.", ar: "يلخص بيان الدائرة نشاط عقود الإيجار المسجلة خلال 2025. وهو استعراض للسوق ولا يحدد سعر منزل بعينه أو توفره أو ملاءمته." },
+  },
+];
+
+export function isInsightSlug(value: string): value is InsightSlug {
+  return insightSlugs.includes(value as InsightSlug);
+}
+
+export function getInsightArticle(slug: InsightSlug) {
+  return insightArticles.find((article) => article.slug === slug)!;
+}
+
+export function calculateReadingTime(article: InsightArticle, locale: Locale) {
+  const copy = article.content[locale];
+  const text = [copy.introduction, ...copy.sections.flatMap((section) => section.paragraphs), ...copy.checklist, ...copy.considerations.map((item) => `${item.title} ${item.text}`), copy.limitations, ...copy.faq.map((item) => `${item.question} ${item.answer}`)].join(" ");
+  const words = text.trim().split(/\s+/).length;
+  return Math.max(3, Math.ceil(words / (locale === "ar" ? 180 : 220)));
+}

@@ -15,6 +15,8 @@ export function SiteFooter({ copy, locale }: Readonly<{ copy: HeaderCopy; locale
     { href: `/${locale}/properties`, label: copy.properties },
     { href: `/${locale}/communities`, label: copy.communities },
     { href: `/${locale}/off-plan`, label: copy.offPlan },
+    { href: `/${locale}/developers`, label: copy.developers },
+    { href: `/${locale}/insights`, label: copy.insights },
     { href: `/${locale}/about`, label: copy.about },
     { href: `/${locale}/contact`, label: copy.contact },
   ];
@@ -32,6 +34,14 @@ export function SiteFooter({ copy, locale }: Readonly<{ copy: HeaderCopy; locale
         if (value) {
           safeQuery.set(key, value);
         }
+      }
+    }
+
+    if (suffix === "contact" && currentQuery.get("topic") === "developer") {
+      const developer = currentQuery.get("developer");
+      if (developer && /^[a-z0-9-]+$/.test(developer)) {
+        safeQuery.set("topic", "developer");
+        safeQuery.set("developer", developer);
       }
     }
 
@@ -57,7 +67,7 @@ export function SiteFooter({ copy, locale }: Readonly<{ copy: HeaderCopy; locale
         <nav aria-label={common.footerNavigation} className="site-footer__navigation">
           {navigation.map((item) => (
             <Link
-              aria-current={pathname === item.href ? "page" : undefined}
+              aria-current={pathname === item.href || (item.href.endsWith("/insights") && pathname.startsWith(`${item.href}/`)) ? "page" : undefined}
               href={item.href}
               key={item.href}
               onClick={(event) => resetCurrentRoute(event, item.href)}

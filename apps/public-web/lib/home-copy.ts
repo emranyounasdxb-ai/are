@@ -9,7 +9,10 @@ export type HeaderCopy = Readonly<{
   closeMenu: string;
   communities: string;
   contact: string;
+  developers: string;
+  explore: string;
   home: string;
+  insights: string;
   language: string;
   menu: string;
   menuDescription: string;
@@ -91,7 +94,10 @@ export const homeCopy: Readonly<Record<Locale, HomeCopy>> = {
       closeMenu: "Close navigation menu",
       communities: "Communities",
       contact: "Enquire",
+      developers: "Developers",
+      explore: "Explore",
       home: "Home",
+      insights: "Insights",
       language: "Language",
       menu: "Navigation",
       menuDescription: "English homepage preview with an equivalent Arabic experience available.",
@@ -188,7 +194,10 @@ export const homeCopy: Readonly<Record<Locale, HomeCopy>> = {
       closeMenu: "إغلاق قائمة التنقل",
       communities: "المجتمعات",
       contact: "استفسر",
+      developers: "المطورون",
+      explore: "استكشف",
       home: "الرئيسية",
+      insights: "الرؤى",
       language: "اللغة",
       menu: "التنقل",
       menuDescription: "معاينة عربية للصفحة الرئيسية مع تجربة إنجليزية مكافئة.",

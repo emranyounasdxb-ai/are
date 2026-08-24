@@ -5,7 +5,17 @@ import { useState } from "react";
 import { siteCopy } from "../../lib/site-copy";
 import type { Locale } from "../../lib/home-copy";
 
-export function ContactPreviewForm({ locale }: Readonly<{ locale: Locale }>) {
+export function ContactPreviewForm({
+  initialEnquiryType,
+  locale,
+  selectedDeveloper,
+  selectedEnquiryLabel,
+}: Readonly<{
+  initialEnquiryType?: string;
+  locale: Locale;
+  selectedDeveloper?: string;
+  selectedEnquiryLabel?: string;
+}>) {
   const copy = siteCopy[locale].contact;
   const [message, setMessage] = useState("");
   const [state, setState] = useState<"idle" | "error" | "success">("idle");
@@ -38,11 +48,21 @@ export function ContactPreviewForm({ locale }: Readonly<{ locale: Locale }>) {
     >
       <label>
         <span>{copy.enquiryTypeLabel}</span>
-        <select aria-invalid={state === "error"} defaultValue="" name="enquiryType" required>
+        <select aria-invalid={state === "error"} defaultValue={initialEnquiryType ?? ""} name="enquiryType" required>
           <option disabled value="">{copy.enquiryTypeLabel}</option>
           {copy.enquiryTypes.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+          {initialEnquiryType && !copy.enquiryTypes.some((item) => item.value === initialEnquiryType)
+            ? <option value={initialEnquiryType}>{selectedEnquiryLabel ?? initialEnquiryType}</option>
+            : null}
         </select>
       </label>
+      {selectedDeveloper ? (
+        <div className="contact-form__selection">
+          <span>{locale === "ar" ? "المطور المحدد" : "Selected developer"}</span>
+          <strong dir="ltr">{selectedDeveloper}</strong>
+          <input name="developer" type="hidden" value={selectedDeveloper} />
+        </div>
+      ) : null}
       <label>
         <span>{copy.nameLabel}</span>
         <input
