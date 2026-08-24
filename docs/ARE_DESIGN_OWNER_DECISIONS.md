@@ -209,6 +209,10 @@ These deferrals do not block the bounded `ARE-DS-01` token and typography founda
 - Codex and implementation agents must not silently reinterpret, broaden, replace, or partially ignore these decisions.
 - A conflict must stop the affected task and be reported rather than resolved by assumption.
 
+## Public-web typography supersession — 24 August 2026
+
+For the public website only, the owner explicitly supersedes the earlier Latin-family restriction: **Manrope** is the primary English body, navigation, form and UI face; **Playfair Display** is a restrained luxury accent for selected English headings only; and **IBM Plex Sans Arabic** remains the required Arabic heading and body face with Arabic-specific line height and no fallback to the English production faces. Fonts are delivered through the Next.js font system as self-hosted application assets, with no browser-time Google Fonts dependency. This decision does not change Admin or mobile typography.
+
 ## ARE-DS-01 authorization boundary
 
 **`ARE-DS-01 — Cross-Platform Design Tokens and Typography Foundation` is authorized as the next bounded task, but is not executed by `ARE-DS-00B`.**

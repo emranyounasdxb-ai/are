@@ -44,7 +44,7 @@ body {
 body.are-site {
   background: var(--are-ivory);
   color: var(--are-ink);
-  font-family: "Roboto Flex", "Roboto", Arial, system-ui, sans-serif;
+  font-family: var(--are-font-body);
   font-optical-sizing: auto;
   text-rendering: optimizeLegibility;
 }
@@ -2419,6 +2419,380 @@ html[dir="rtl"] .featured-insight p { letter-spacing: normal; text-transform: no
   .search-submit:focus-visible,
   .discovery-card:hover,
   .discovery-card:focus-within {
+    transform: none;
+  }
+}
+
+/* ARE-WEB-05: owner-approved cinematic typography, gold and motion system. */
+:root {
+  --are-font-body: var(--font-body-latin), "Manrope", Arial, sans-serif;
+  --are-font-accent: var(--font-luxury-accent), "Playfair Display", serif;
+  --are-font-arabic: var(--font-arabic), "IBM Plex Sans Arabic", Tahoma, Arial, sans-serif;
+  --are-gold: #c7a66a;
+  --are-gold-light: #e2c98f;
+  --are-gold-deep: #755521;
+  --are-cinematic-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --are-header-height: 4.4375rem;
+}
+
+body.are-site,
+button,
+input,
+select,
+textarea {
+  font-family: var(--are-font-body);
+}
+
+html[lang="en"] :where(h1, h2, h3, h4, h5, h6) {
+  font-family: var(--are-font-body);
+}
+
+html[lang="en"] :where(
+  .hero-copy h1,
+  .inner-hero__copy h1,
+  .editorial-hero h1,
+  .developer-hero h1,
+  .article-hero h1,
+  .careers-hero__copy h1,
+  .featured-insight h2
+) {
+  font-family: var(--are-font-accent);
+  font-weight: 600;
+}
+
+html[lang="ar"] body.are-site,
+html[lang="ar"] :where(button, input, select, textarea, h1, h2, h3, h4, h5, h6) {
+  font-family: var(--are-font-arabic);
+}
+
+html[lang="ar"] body.are-site {
+  line-height: 1.72;
+}
+
+html[lang="ar"] :where(h1, h2, h3, h4, h5, h6) {
+  font-weight: 600;
+  letter-spacing: normal;
+  line-height: 1.28;
+}
+
+html[lang="ar"] :where(p, span, a, button, label, input, select, textarea, small, strong) {
+  letter-spacing: normal;
+}
+
+:focus-visible {
+  outline-color: var(--are-gold-deep);
+}
+
+.site-header :focus-visible,
+.hero-section :focus-visible,
+.content-section--dark :focus-visible {
+  outline-color: var(--are-gold-light);
+}
+
+.site-header__inner {
+  min-height: var(--are-header-height);
+  gap: clamp(0.85rem, 2vw, 2rem);
+}
+
+.brand-mark__plate {
+  width: 3.75rem;
+  height: 3.75rem;
+  border-radius: 0 0 0.75rem 0.75rem;
+}
+
+.brand-mark img {
+  width: 3.2rem;
+  height: 3.2rem;
+}
+
+.desktop-navigation {
+  gap: clamp(0.65rem, 1.1vw, 1.15rem);
+}
+
+.desktop-navigation a {
+  padding-block: 0.65rem;
+  font-weight: 500;
+}
+
+.desktop-navigation a::after {
+  background: var(--are-gold-light);
+  transform-origin: center;
+}
+
+.locale-control,
+.header-cta,
+.menu-button {
+  min-height: 2.75rem;
+}
+
+.header-cta {
+  border-color: rgba(226, 201, 143, 0.48);
+  font-weight: 600;
+}
+
+.header-cta[aria-current="page"],
+.header-cta:hover,
+.header-cta:focus-visible {
+  border-color: var(--are-gold-light);
+}
+
+.content-heading > p,
+.hero-eyebrow,
+.editorial-hero__reveal > p,
+.developer-hero__reveal > p,
+.article-hero__reveal > p,
+.careers-hero__copy > p,
+.featured-insight > div > p {
+  color: var(--are-gold-deep);
+}
+
+.hero-section :where(.hero-eyebrow, .scene-caption small),
+.content-section--dark .content-heading > p,
+.editorial-hero__reveal > p,
+.developer-hero__reveal > p,
+.article-hero__reveal > p,
+.careers-hero__copy > p,
+.featured-insight > div > p {
+  color: var(--are-gold-light);
+}
+
+.content-heading::before,
+.article-body > section::before {
+  display: block;
+  width: 3.5rem;
+  height: 1px;
+  margin-block-end: 1rem;
+  background: var(--are-gold);
+  content: "";
+  transform: scaleX(0.45);
+  transform-origin: inline-start;
+  transition: transform 640ms var(--are-cinematic-ease);
+}
+
+.motion-section--visible .content-heading::before,
+.motion-section--visible.article-body > section::before,
+.article-body > .motion-section--visible::before {
+  transform: scaleX(1);
+}
+
+html[dir="rtl"] .content-heading::before,
+html[dir="rtl"] .article-body > section::before {
+  transform-origin: inline-end;
+}
+
+.process-list li > span,
+.home-developer-list > article > span,
+.article-body > section > span,
+.feature-pathways > a > span {
+  color: var(--are-gold-deep);
+}
+
+.content-section--dark .process-list li > span,
+.feature-pathways > a > span {
+  color: var(--are-gold-light);
+}
+
+.button--primary,
+.search-submit {
+  border-color: var(--are-gold);
+}
+
+.button--primary:hover,
+.button--primary:focus-visible,
+.search-submit:hover,
+.search-submit:focus-visible {
+  border-color: var(--are-gold-light);
+}
+
+.desktop-navigation a,
+.site-footer__navigation a,
+.site-footer__languages a,
+.article-body a {
+  text-decoration-color: var(--are-gold);
+  text-underline-offset: 0.3em;
+}
+
+.page-progress {
+  position: fixed;
+  z-index: 60;
+  inset-block-start: var(--are-header-height);
+  inset-inline: 0;
+  height: 2px;
+  background: var(--are-gold-light);
+  pointer-events: none;
+  transform-origin: inline-start;
+}
+
+html[dir="rtl"] .page-progress {
+  transform-origin: inline-end;
+}
+
+.motion-document {
+  min-height: 100vh;
+}
+
+.motion-section {
+  --motion-x: 0px;
+  --motion-y: 32px;
+  opacity: 0.12;
+  transform: translate3d(var(--motion-x), var(--motion-y), 0);
+  transition:
+    opacity 640ms var(--are-cinematic-ease),
+    transform 640ms var(--are-cinematic-ease);
+  will-change: opacity, transform;
+}
+
+.motion-section--visible {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+  will-change: auto;
+}
+
+.motion-section :where(.content-heading > p, .hero-eyebrow, h1, h2, .content-lead, .hero-description, .hero-actions, .hero-visual-wrap, .search-panel) {
+  transition:
+    opacity 700ms var(--are-cinematic-ease),
+    transform 700ms var(--are-cinematic-ease);
+}
+
+.motion-section:not(.motion-section--visible) :where(.content-heading > p, .hero-eyebrow) {
+  opacity: 0.35;
+  transform: translateY(10px);
+}
+
+.motion-section:not(.motion-section--visible) :where(h1, h2) {
+  opacity: 0.35;
+  transform: translateY(24px);
+}
+
+.motion-section:not(.motion-section--visible) :where(.content-lead, .hero-description, .hero-actions) {
+  opacity: 0.45;
+  transform: translateY(18px);
+}
+
+.motion-section:not(.motion-section--visible) :where(.hero-visual-wrap, .search-panel) {
+  opacity: 0.45;
+  transform: translateY(24px) scale(0.992);
+}
+
+.motion-section--visible :where(h1, h2) { transition-delay: 80ms; }
+.motion-section--visible :where(.content-lead, .hero-description) { transition-delay: 150ms; }
+.motion-section--visible .hero-actions { transition-delay: 220ms; }
+.motion-section--visible .hero-visual-wrap { transition-delay: 190ms; }
+.motion-section--visible .search-panel { transition-delay: 280ms; }
+
+.motion-section :where(.editorial-cards > article, .discovery-grid > article, .home-insight-grid > article, .home-developer-list > article, .process-list > li) {
+  transition:
+    opacity 620ms var(--are-cinematic-ease),
+    transform 620ms var(--are-cinematic-ease),
+    border-color 220ms ease,
+    box-shadow 220ms ease;
+}
+
+.motion-section:not(.motion-section--visible) :where(.editorial-cards > article, .discovery-grid > article, .home-insight-grid > article, .home-developer-list > article, .process-list > li) {
+  opacity: 0.35;
+  transform: translateY(24px);
+}
+
+.motion-section--visible :where(.editorial-cards > article, .discovery-grid > article, .home-insight-grid > article, .home-developer-list > article, .process-list > li):nth-child(2) { transition-delay: 80ms; }
+.motion-section--visible :where(.editorial-cards > article, .discovery-grid > article, .home-insight-grid > article, .home-developer-list > article, .process-list > li):nth-child(3) { transition-delay: 150ms; }
+.motion-section--visible :where(.editorial-cards > article, .discovery-grid > article, .home-insight-grid > article, .home-developer-list > article, .process-list > li):nth-child(n + 4) { transition-delay: 210ms; }
+
+@media (hover: hover) and (pointer: fine) {
+  :where(.discovery-card, .editorial-cards article, .home-insight-grid article, .developer-card, .insight-card):hover {
+    border-color: var(--are-gold);
+    box-shadow: 0 22px 55px rgba(23, 17, 14, 0.12);
+    transform: translateY(-5px);
+  }
+
+  :where(.button, .header-cta, .search-submit):hover {
+    transform: translateY(-2px);
+  }
+}
+
+:where(.button, .header-cta, .search-submit):active {
+  transform: scale(0.985);
+}
+
+.faq-list details[open] > :not(summary) {
+  animation: faq-content-in 220ms var(--are-cinematic-ease) both;
+}
+
+.faq-list summary span:last-child {
+  transition: color 180ms ease, transform 220ms var(--are-cinematic-ease);
+}
+
+.faq-list details[open] summary span:last-child {
+  color: var(--are-gold-deep);
+  transform: rotate(45deg);
+}
+
+.purpose-field__options button[aria-pressed="true"] {
+  border-color: var(--are-gold-deep);
+  box-shadow: inset 0 -2px var(--are-gold);
+}
+
+@keyframes faq-content-in {
+  from { opacity: 0.55; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes header-entrance {
+  from { opacity: 0.92; transform: translateY(-12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.site-header {
+  animation: header-entrance 560ms var(--are-cinematic-ease) both;
+}
+
+.mobile-menu-backdrop { animation: faq-content-in 180ms ease both; }
+.mobile-menu { animation: drawer-in 240ms var(--are-cinematic-ease) both; }
+
+@keyframes drawer-in {
+  from { opacity: 0.85; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+html[dir="rtl"] .mobile-menu { animation-name: drawer-in-rtl; }
+
+@keyframes drawer-in-rtl {
+  from { opacity: 0.85; transform: translateX(-20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@media (max-width: 1199px) {
+  :root { --are-header-height: 3.9375rem; }
+  .site-header__inner { min-height: var(--are-header-height); }
+  .brand-mark__plate { width: 3.45rem; height: 3.45rem; }
+  .brand-mark img { width: 2.95rem; height: 2.95rem; }
+  .menu-button { width: 2.75rem; height: 2.75rem; }
+}
+
+@media (max-width: 680px) {
+  .motion-section { --motion-y: 24px; }
+  .page-progress { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-progress { display: none; }
+  .motion-section,
+  .motion-section:not(.motion-section--visible) :where(
+    .content-heading > p,
+    .hero-eyebrow,
+    h1,
+    h2,
+    .content-lead,
+    .hero-description,
+    .hero-actions,
+    .hero-visual-wrap,
+    .search-panel,
+    .editorial-cards > article,
+    .discovery-grid > article,
+    .home-insight-grid > article,
+    .home-developer-list > article,
+    .process-list > li
+  ) {
+    opacity: 1;
     transform: none;
   }
 }

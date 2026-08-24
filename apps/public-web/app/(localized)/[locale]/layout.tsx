@@ -1,7 +1,9 @@
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 
+import { MotionProvider } from "../../../components/motion/motion-provider";
 import { isLocale, locales } from "../../../lib/home-copy";
+import { publicFontVariables } from "../../fonts";
 import "../../globals.css";
 
 export const dynamicParams = false;
@@ -24,8 +26,8 @@ export default async function LocaleRootLayout({
   }
 
   return (
-    <html lang={locale} dir={locale === "ar" ? "rtl" : "ltr"}>
-      <body className="are-site">{children}</body>
+    <html className={publicFontVariables} lang={locale} dir={locale === "ar" ? "rtl" : "ltr"}>
+      <body className="are-site"><MotionProvider>{children}</MotionProvider></body>
     </html>
   );
 }
