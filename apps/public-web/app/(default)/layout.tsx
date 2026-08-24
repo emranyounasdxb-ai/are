@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
 
-import "./globals.css";
+import "../globals.css";
 
-export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
+export default function DefaultRootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
     <html lang="en" dir="ltr">
       <body className="are-site">{children}</body>

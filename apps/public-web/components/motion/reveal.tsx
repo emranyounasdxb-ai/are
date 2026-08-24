@@ -17,8 +17,8 @@ export function Reveal({ children, className, delay = 0, distance = 16 }: Reveal
       <LazyMotion features={domAnimation} strict>
         <m.div
           className={className}
-          initial={{ opacity: 0.82, y: distance }}
-          transition={{ delay, duration: 0.56, ease: [0.16, 1, 0.3, 1] }}
+          initial={{ opacity: 0.94, y: distance }}
+          transition={{ delay, duration: 0.42, ease: [0.16, 1, 0.3, 1] }}
           viewport={{ amount: 0.4, once: true }}
           whileInView={{ opacity: 1, y: 0 }}
         >

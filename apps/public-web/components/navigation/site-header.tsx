@@ -1,20 +1,30 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
-const navigation = [
-  { href: "#top", label: "Home" },
-  { href: "#search", label: "Properties" },
-  { href: "#discovery", label: "Communities" },
-  { href: "#off-plan", label: "Off-Plan" },
-  { href: "#approach", label: "About" },
-] as const;
+import type { HeaderCopy, Locale } from "../../lib/home-copy";
 
-export function SiteHeader() {
+type SiteHeaderProps = Readonly<{
+  copy: HeaderCopy;
+  locale: Locale;
+}>;
+
+export function SiteHeader({ copy, locale }: SiteHeaderProps) {
   const [isOpen, setIsOpen] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const menuPanelRef = useRef<HTMLDivElement>(null);
+  const pathname = usePathname();
+  const router = useRouter();
+  const navigation = [
+    { href: `/${locale}`, label: copy.home },
+    { href: `/${locale}/properties`, label: copy.properties },
+    { href: `/${locale}/communities`, label: copy.communities },
+    { href: `/${locale}/off-plan`, label: copy.offPlan },
+    { href: `/${locale}/about`, label: copy.about },
+  ];
 
   useEffect(() => {
     if (!isOpen) {
@@ -24,10 +34,14 @@ export function SiteHeader() {
     const previousOverflow = document.body.style.overflow;
     const menuButton = menuButtonRef.current;
     const panel = menuPanelRef.current;
+    const main = document.getElementById("main-content");
+    const header = document.querySelector<HTMLElement>(".site-header");
     const focusableSelector =
       'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
     document.body.style.overflow = "hidden";
+    main?.setAttribute("inert", "");
+    header?.setAttribute("inert", "");
     panel?.querySelector<HTMLElement>(focusableSelector)?.focus();
 
     function handleKeyDown(event: KeyboardEvent) {
@@ -69,6 +83,8 @@ export function SiteHeader() {
 
     return () => {
       document.body.style.overflow = previousOverflow;
+      main?.removeAttribute("inert");
+      header?.removeAttribute("inert");
       document.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("resize", handleResize);
       menuButton?.focus();
@@ -79,53 +95,109 @@ export function SiteHeader() {
     setIsOpen(false);
   }
 
+  function resetCurrentRoute(event: React.MouseEvent<HTMLAnchorElement>, href: string) {
+    if (pathname === href) {
+      event.preventDefault();
+      window.scrollTo({ top: 0 });
+    }
+  }
+
+  function switchLocale(nextLocale: Locale) {
+    const segments = pathname.split("/").filter(Boolean);
+    const suffix = segments.slice(1).join("/");
+    const nextPath = `/${nextLocale}${suffix ? `/${suffix}` : ""}`;
+    const currentQuery = new URLSearchParams(window.location.search);
+    const safeQuery = new URLSearchParams();
+
+    if (suffix === "properties") {
+      for (const key of ["location", "type", "purpose"]) {
+        const value = currentQuery.get(key);
+        if (value) {
+          safeQuery.set(key, value);
+        }
+      }
+    }
+
+    const query = safeQuery.toString();
+    router.push(`${nextPath}${query ? `?${query}` : ""}`);
+    closeMenu();
+  }
+
   return (
     <>
       <a className="skip-link" href="#main-content">
-        Skip to main content
+        {copy.skipLink}
       </a>
       <header className="site-header">
         <div className="site-header__inner">
-          <a aria-label="ALIYAS Real Estate home" className="brand-mark" href="#top">
+          <Link
+            aria-label="ALIYAS Real Estate"
+            className="brand-mark"
+            href={`/${locale}`}
+            onClick={(event) => resetCurrentRoute(event, `/${locale}`)}
+          >
             <span className="brand-mark__plate">
               <Image
                 alt="ALIYAS Real Estate logo"
                 fetchPriority="high"
                 height={2885}
                 loading="eager"
+                sizes="(max-width: 900px) 60px, 70px"
                 src="/brand/aliyas-real-estate-logo.png"
                 width={2885}
               />
             </span>
-          </a>
+          </Link>
 
-          <nav aria-label="Primary navigation" className="desktop-navigation">
+          <nav aria-label={copy.navigation} className="desktop-navigation">
             {navigation.map((item) => (
-              <a href={item.href} key={item.href}>
+              <Link
+                aria-current={pathname === item.href ? "page" : undefined}
+                href={item.href}
+                key={item.href}
+                onClick={(event) => resetCurrentRoute(event, item.href)}
+              >
                 {item.label}
-              </a>
+              </Link>
             ))}
           </nav>
 
           <div className="site-header__actions">
-            <div aria-label="Language" className="locale-control">
-              <span aria-current="true">EN</span>
-              <button
-                aria-label="Arabic preview is not available in this phase"
-                disabled
-                title="Arabic preview will follow in an approved locale phase"
-                type="button"
+            <nav aria-label={copy.language} className="locale-control">
+              <Link
+                aria-current={locale === "en" ? "page" : undefined}
+                href={pathname.replace(/^\/(en|ar)/, "/en")}
+                hrefLang="en"
+                onClick={(event) => {
+                  event.preventDefault();
+                  switchLocale("en");
+                }}
+              >
+                EN
+              </Link>
+              <Link
+                aria-current={locale === "ar" ? "page" : undefined}
+                href={pathname.replace(/^\/(en|ar)/, "/ar")}
+                hrefLang="ar"
+                onClick={(event) => {
+                  event.preventDefault();
+                  switchLocale("ar");
+                }}
               >
                 العربية
-              </button>
-            </div>
-            <a className="header-cta" href="#search">
-              Start discovering
-            </a>
+              </Link>
+            </nav>
+            <Link
+              aria-current={pathname === `/${locale}/contact` ? "page" : undefined}
+              className="header-cta"
+              href={`/${locale}/contact`}
+            >
+              {copy.contact}
+            </Link>
             <button
-              aria-controls="mobile-navigation"
+              aria-controls={isOpen ? "mobile-navigation" : undefined}
               aria-expanded={isOpen}
-              aria-label={isOpen ? "Close navigation menu" : "Open navigation menu"}
+              aria-label={isOpen ? copy.closeMenu : copy.openMenu}
               className="menu-button"
               onClick={() => setIsOpen((open) => !open)}
               ref={menuButtonRef}
@@ -141,7 +213,7 @@ export function SiteHeader() {
       {isOpen ? (
         <div className="mobile-menu-backdrop" onMouseDown={closeMenu}>
           <div
-            aria-label="Mobile navigation"
+            aria-labelledby="mobile-navigation-title"
             aria-modal="true"
             className="mobile-menu"
             id="mobile-navigation"
@@ -150,25 +222,57 @@ export function SiteHeader() {
             role="dialog"
           >
             <div className="mobile-menu__topline">
-              <span>Navigation</span>
-              <button aria-label="Close navigation menu" onClick={closeMenu} type="button">
-                Close
+              <span id="mobile-navigation-title">{copy.menu}</span>
+              <button aria-label={copy.closeMenu} onClick={closeMenu} type="button">
+                {locale === "ar" ? "إغلاق" : "Close"}
               </button>
             </div>
-            <nav aria-label="Mobile primary navigation">
+            <nav aria-label={copy.navigation}>
               {navigation.map((item, index) => (
-                <a href={item.href} key={item.href} onClick={closeMenu}>
+                <Link
+                  aria-current={pathname === item.href ? "page" : undefined}
+                  href={item.href}
+                  key={item.href}
+                  onClick={(event) => {
+                    resetCurrentRoute(event, item.href);
+                    closeMenu();
+                  }}
+                >
                   <span>{String(index + 1).padStart(2, "0")}</span>
                   {item.label}
-                </a>
+                </Link>
               ))}
             </nav>
             <div className="mobile-menu__footer">
-              <p>English preview</p>
-              <span>Arabic navigation will follow its approved locale implementation.</span>
-              <a href="#search" onClick={closeMenu}>
-                Explore property discovery
-              </a>
+              <p>{copy.activeLanguage}</p>
+              <span>{copy.menuDescription}</span>
+              <nav aria-label={copy.language} className="mobile-menu__locales">
+                <Link
+                  aria-current={locale === "en" ? "page" : undefined}
+                  href={pathname.replace(/^\/(en|ar)/, "/en")}
+                  hrefLang="en"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    switchLocale("en");
+                  }}
+                >
+                  EN
+                </Link>
+                <Link
+                  aria-current={locale === "ar" ? "page" : undefined}
+                  href={pathname.replace(/^\/(en|ar)/, "/ar")}
+                  hrefLang="ar"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    switchLocale("ar");
+                  }}
+                >
+                  العربية
+                </Link>
+              </nav>
+              <Link href={`/${locale}/contact`} onClick={closeMenu}>
+                {copy.contact}
+              </Link>
             </div>
           </div>
         </div>
