@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { type FieldErrors, useForm, useWatch } from "react-hook-form";
 
 import { api, PUBLIC_WEB_URL, type ResourceRecord } from "../lib/api";
+import { ConfirmationDialog, StatusBadge } from "./admin-ui";
 import { useAuth } from "./auth-provider";
 import { GuardedLink, useNavigationGuard } from "./navigation-guard";
 
@@ -63,6 +64,7 @@ export function DeveloperEditor({ id }: Readonly<{ id?: string }>) {
   const [activeLocale, setActiveLocale] = useState<"en" | "ar">("en");
   const [slugEdited, setSlugEdited] = useState(Boolean(id));
   const [pendingAction, setPendingAction] = useState<"draft" | "published" | "archived" | null>(null);
+  const [confirmArchive, setConfirmArchive] = useState(false);
   const errorSummaryRef = useRef<HTMLDivElement>(null);
   const record = useQuery({ queryKey: ["developer", id], queryFn: () => api<ResourceRecord>(`/admin/developers/${id}`), enabled: Boolean(id) });
   const { register, handleSubmit, reset, setError, clearErrors, setFocus, setValue, control, formState: { errors, isDirty } } = useForm<Values>({ defaultValues: empty });
@@ -120,7 +122,6 @@ export function DeveloperEditor({ id }: Readonly<{ id?: string }>) {
     requestAnimationFrame(() => { errorSummaryRef.current?.focus(); if (firstArabic ?? names[0]) setFocus(firstArabic ?? names[0]); });
   }
   const submit = (nextStatus: "draft" | "published" | "archived") => handleSubmit((formValues) => save(formValues, nextStatus), invalid);
-  const archive = () => { if (window.confirm("Archive this developer? It will no longer appear on the public website.")) void submit("archived")(); };
   const addItem = (field: "selectedProjects" | "additionalSourceUrls") => setValue(field, [...(values[field] ?? []), ""], { shouldDirty: true });
   const removeItem = (field: "selectedProjects" | "additionalSourceUrls", index: number) => {
     const next = (values[field] ?? []).filter((_, itemIndex) => itemIndex !== index);
@@ -137,11 +138,11 @@ export function DeveloperEditor({ id }: Readonly<{ id?: string }>) {
       {status === "published" ? <a className="secondary-button" href={`${PUBLIC_WEB_URL}/en/developers#${record.data?.slug}`} rel="noreferrer" target="_blank">View on website<ExternalLink aria-hidden size={16}/></a> : null}
     </header>
 
-    <form className="editor-form developer-editor-form" noValidate onSubmit={(event) => void submit("draft")(event)}>
+    <form className="editor-form developer-editor-form" noValidate onSubmit={(event) => void submit("draft")(event)}><div className="editor-workspace"><nav className="editor-step-rail" aria-label="Developer form sections"><a href="#developer-identity"><span>1</span>Identity</a><a href="#developer-content"><span>2</span>Content</a><a href="#developer-provenance"><span>3</span>Provenance</a><a href="#developer-review"><span>4</span>Review</a></nav><div className="editor-main">
       {(errors.root?.message || errorEntries.length) ? <div className="error-summary" ref={errorSummaryRef} role="alert" tabIndex={-1}><strong>Review the form before continuing.</strong>{errors.root?.message ? <p>{errors.root.message}</p> : null}{errorEntries.length ? <ul>{errorEntries.map(([name, error]) => <li key={name}><button onClick={() => { if (String(name).endsWith("Ar")) setActiveLocale("ar"); else if (String(name).endsWith("En")) setActiveLocale("en"); requestAnimationFrame(() => setFocus(name)); }} type="button">{error.message ?? `${name} is invalid.`}</button></li>)}</ul> : null}</div> : null}
       {notice ? <div className="form-success" role="status"><Check aria-hidden size={18}/>{notice}</div> : null}
 
-      <fieldset className="form-section"><legend>1. Identity and publication</legend><p className="section-guidance">Identity fields are required by the current data contract. Optional relationship fields may remain empty in a Draft.</p><div className="form-grid">
+      <fieldset className="form-section" id="developer-identity"><legend>1. Identity and publication</legend><p className="section-guidance">Identity fields are required by the current data contract. Optional relationship fields may remain empty in a Draft.</p><div className="form-grid">
         <label>English official name<span className="field-hint">Used to suggest the initial stable slug.</span><input autoComplete="organization" {...register("nameEn", { required: requiredMessage, minLength: { value: 2, message: "English official name must be at least 2 characters." } })}/><FieldError message={errors.nameEn?.message}/></label>
         <label>Stable slug<span className="field-hint">Lowercase letters, numbers and hyphens only.</span><input dir="ltr" {...register("slug", { required: requiredMessage, pattern: { value: /^[a-z0-9]+(?:-[a-z0-9]+)*$/, message: "Use a lowercase hyphenated slug." }, onChange: () => setSlugEdited(true) })}/><FieldError message={errors.slug?.message}/></label>
         <div className="path-preview wide"><span>Public path preview</span><code dir="ltr">/en/developers#{values.slug || "developer-slug"}</code></div>
@@ -152,12 +153,12 @@ export function DeveloperEditor({ id }: Readonly<{ id?: string }>) {
         <label>Display order<span className="field-hint">Lower numbers appear first. Preserve the approved sequence for existing records.</span><input dir="ltr" min="0" max="10000" type="number" {...register("displayOrder", { required: requiredMessage, min: { value: 0, message: "Display order cannot be negative." } })}/><FieldError message={errors.displayOrder?.message}/></label>
       </div></fieldset>
 
-      <fieldset className="form-section bilingual-section"><legend>2. Bilingual content</legend><p className="section-guidance">Both language panels must be complete before publication. Drafts remain private while editorial review continues.</p>
+      <fieldset className="form-section bilingual-section" id="developer-content"><legend>2. Bilingual content</legend><p className="section-guidance">Both language panels must be complete before publication. Drafts remain private while editorial review continues.</p>
         <div className="locale-tabs" role="tablist" aria-label="Developer content language"><button aria-controls="developer-panel-en" aria-selected={activeLocale === "en"} id="developer-tab-en" onClick={() => setActiveLocale("en")} role="tab" type="button">English <span className={`completion${englishComplete ? " complete" : ""}`}>{englishComplete ? "Complete" : "Incomplete"}</span></button><button aria-controls="developer-panel-ar" aria-selected={activeLocale === "ar"} id="developer-tab-ar" onClick={() => setActiveLocale("ar")} role="tab" type="button">العربية <span className={`completion${arabicComplete ? " complete" : ""}`}>{arabicComplete ? "مكتمل" : "غير مكتمل"}</span></button></div>
         <div aria-labelledby={`developer-tab-${activeLocale}`} className={`locale-panel locale-panel--${activeLocale}`} dir={activeLocale === "ar" ? "rtl" : "ltr"} id={`developer-panel-${activeLocale}`} role="tabpanel">{activeLocale === "en" ? <EnglishFields register={register} errors={errors}/> : <ArabicFields register={register} errors={errors}/>}</div>
       </fieldset>
 
-      <fieldset className="form-section"><legend>3. Provenance and verification</legend><p className="section-guidance">Official provenance and a verification date are required before publication. URLs and technical values remain left-to-right.</p><div className="form-grid">
+      <fieldset className="form-section" id="developer-provenance"><legend>3. Provenance and verification</legend><p className="section-guidance">Official provenance and a verification date are required before publication. URLs and technical values remain left-to-right.</p><div className="form-grid">
         <label>Official website<input dir="ltr" inputMode="url" type="url" {...register("officialWebsite", { required: requiredMessage, validate: validWebUrl })}/><FieldError message={errors.officialWebsite?.message}/></label>
         <label>Primary source URL<input dir="ltr" inputMode="url" type="url" {...register("sourceUrl", { required: requiredMessage, validate: validWebUrl })}/><FieldError message={errors.sourceUrl?.message}/></label>
         <label>Verification date<input dir="ltr" type="date" {...register("verificationDate", { required: requiredMessage })}/><FieldError message={errors.verificationDate?.message}/></label>
@@ -165,8 +166,7 @@ export function DeveloperEditor({ id }: Readonly<{ id?: string }>) {
         <Repeater errors={errors} field="additionalSourceUrls" label="Additional official source URLs" values={values.additionalSourceUrls ?? [""]} register={register} onAdd={() => addItem("additionalSourceUrls")} onRemove={(index) => removeItem("additionalSourceUrls", index)} urls />
       </div></fieldset>
 
-      <div className="sticky-actions"><div><strong>{isDirty ? "Unsaved changes" : "All changes saved"}</strong><span>{status === "published" ? "Publishing updates the live directory." : "Save privately or publish when complete."}</span></div><div className="developer-actions"><button className="action-button" disabled={busy} type="submit"><Save aria-hidden size={17}/>{pendingAction === "draft" ? "Saving…" : "Save Draft"}</button><button className="action-button action-button--publish" disabled={busy} onClick={() => void submit("published")()} type="button"><Send aria-hidden size={17}/>{pendingAction === "published" ? "Publishing…" : "Publish"}</button>{id && status !== "archived" ? <button className="action-button action-button--archive" disabled={busy} onClick={archive} type="button"><Archive aria-hidden size={17}/>{pendingAction === "archived" ? "Archiving…" : "Archive"}</button> : null}</div></div>
-    </form>
+      <div className="sticky-actions" id="developer-review"><div><strong>{isDirty ? "Unsaved changes" : id ? "No unsaved changes" : "Not saved yet"}</strong><span>{status === "published" ? "Publishing updates the live directory." : "Save privately or publish when complete."}</span></div><div className="developer-actions"><button className="action-button" disabled={busy} type="submit"><Save aria-hidden size={17}/>{pendingAction === "draft" ? "Saving…" : "Save Draft"}</button><button className="action-button action-button--publish" disabled={busy} onClick={() => void submit("published")()} type="button"><Send aria-hidden size={17}/>{pendingAction === "published" ? "Publishing…" : "Publish"}</button>{id && status !== "archived" ? <button className="action-button action-button--archive" disabled={busy} onClick={() => setConfirmArchive(true)} type="button"><Archive aria-hidden size={17}/>{pendingAction === "archived" ? "Archiving…" : "Archive"}</button> : null}</div></div></div><aside className="editor-context"><p className="eyebrow">Record summary</p><dl><div><dt>Status</dt><dd><StatusBadge status={status}/></dd></div><div><dt>English</dt><dd>{englishComplete ? "Complete" : "Incomplete"}</dd></div><div><dt>Arabic</dt><dd>{arabicComplete ? "Complete" : "Incomplete"}</dd></div><div><dt>Provenance</dt><dd>{complete([values.officialWebsite, values.sourceUrl, values.verificationDate]) ? "Complete" : "Incomplete"}</dd></div><div><dt>Slug</dt><dd><code dir="ltr">{values.slug || "Not set"}</code></dd></div><div><dt>Featured</dt><dd>{values.featured ? "Yes" : "No"}</dd></div></dl></aside></div></form><ConfirmationDialog confirmLabel="Archive developer" description="The developer will no longer appear on the public website." onCancel={() => setConfirmArchive(false)} onConfirm={() => { setConfirmArchive(false); void submit("archived")(); }} open={confirmArchive} title="Archive this developer?"/>
   </section>;
 }
 

@@ -26,7 +26,7 @@ export function DeveloperList() {
   const filtered = Boolean(search || status || emirate || featured);
 
   return <section className="developer-list-page">
-    <header className="developer-list-header"><div><p className="eyebrow">Canonical data</p><h1>Developers</h1><p>Manage verified bilingual developer records and publication state.</p></div><Link className="primary-button" href="/developers/new"><Plus aria-hidden size={17}/>Add Developer</Link></header>
+    <header className="developer-list-header"><div><p className="eyebrow">Developer directory</p><h1>Developers</h1><p>Manage verified bilingual developer records and publication state.</p></div><Link className="primary-button" href="/developers/new"><Plus aria-hidden size={17}/>Add Developer</Link></header>
     <div className="developer-counts" aria-label="Developer publication counts"><div><strong>{countsQuery.isLoading ? "—" : counts.published}</strong><span>Published</span></div><div><strong>{countsQuery.isLoading ? "—" : counts.draft}</strong><span>Draft</span></div><div><strong>{countsQuery.isLoading ? "—" : counts.archived}</strong><span>Archived</span></div></div>
     <div className="developer-toolbar">
       <label className="search-control"><span>Search</span><div><Search aria-hidden size={16}/><input onChange={(event) => setSearch(event.target.value)} placeholder="Name or slug" type="search" value={search}/></div></label>
