@@ -20,12 +20,12 @@ export function SiteHeader({ copy, locale }: SiteHeaderProps) {
   const router = useRouter();
   const directNavigation = [
     { href: `/${locale}`, label: copy.home },
+    { href: `/${locale}/about`, label: copy.about },
     { href: `/${locale}/properties`, label: copy.properties },
     { href: `/${locale}/off-plan`, label: copy.offPlan },
     { href: `/${locale}/communities`, label: copy.communities },
     { href: `/${locale}/developers`, label: copy.developers },
     { href: `/${locale}/insights`, label: copy.insights },
-    { href: `/${locale}/about`, label: copy.about },
     { href: `/${locale}/careers`, label: copy.careers },
   ];
   const contactNavigationLabel = locale === "ar" ? "التواصل" : "Contact";
