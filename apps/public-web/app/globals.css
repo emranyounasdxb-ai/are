@@ -1733,9 +1733,8 @@ html[dir="rtl"] .criteria-summary > p:first-child {
 
 .content-section--split { display: grid; grid-template-columns: minmax(18rem, 0.75fr) minmax(0, 1fr); gap: clamp(3rem, 9vw, 9rem); }
 .content-checklist { margin: 0; padding: 0; list-style: none; }
-.content-checklist li { position: relative; padding: 1.3rem 0 1.3rem 2.4rem; border-block-start: 1px solid var(--are-border); line-height: 1.6; }
+.content-checklist li { position: relative; padding-block: 1.3rem; padding-inline: 2.4rem 0; border-block-start: 1px solid var(--are-border); line-height: 1.6; }
 .content-checklist li::before { position: absolute; inset-block-start: 1.25rem; inset-inline-start: 0; color: var(--are-copper); content: "✓"; font-weight: 800; }
-html[dir="rtl"] .content-checklist li { padding: 1.3rem 2.4rem 1.3rem 0; }
 
 .content-section--faq { display: grid; grid-template-columns: minmax(18rem, 0.7fr) minmax(0, 1.2fr); gap: clamp(3rem, 9vw, 9rem); background: var(--are-stone); }
 .faq-list details { border-block-start: 1px solid var(--are-border); }
@@ -1744,8 +1743,7 @@ html[dir="rtl"] .content-checklist li { padding: 1.3rem 2.4rem 1.3rem 0; }
 .faq-list summary::-webkit-details-marker { display: none; }
 .faq-list summary span { color: var(--are-copper); font-size: 1.5rem; transition: transform 180ms ease; }
 .faq-list details[open] summary span { transform: rotate(45deg); }
-.faq-list details > p { max-width: 46rem; margin: 0; padding: 0 3rem 1.6rem 0; color: var(--are-muted); line-height: 1.75; }
-html[dir="rtl"] .faq-list details > p { padding: 0 0 1.6rem 3rem; }
+.faq-list details > p { max-width: 46rem; margin: 0; padding-block: 0 1.6rem; padding-inline: 0 3rem; color: var(--are-muted); line-height: 1.75; }
 
 .content-section--related .content-heading h2 { font-size: clamp(2.3rem, 4vw, 4.4rem); }
 .related-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-block-start: 3rem; gap: 1rem; }
@@ -2420,6 +2418,104 @@ html[dir="rtl"] .featured-insight p { letter-spacing: normal; text-transform: no
   .discovery-card:hover,
   .discovery-card:focus-within {
     transform: none;
+  }
+}
+
+/* ARE-WEB-05A: shared surface insets and compact section separation. */
+:root {
+  --are-surface-inset-inline: clamp(1.25rem, 4vw, 3.5rem);
+  --are-surface-inset-block: clamp(1.75rem, 4vw, 4rem);
+  --are-section-separation: clamp(1rem, 2.6vw, 1.5rem);
+  --are-content-stack-gap: clamp(1rem, 2vw, 2rem);
+}
+
+.discovery-section,
+.inner-section,
+.content-section,
+.career-opportunities,
+.career-application {
+  padding-inline: var(--are-surface-inset-inline);
+}
+
+.content-section--dark {
+  padding-inline: max(
+    var(--are-surface-inset-inline),
+    calc((100% - var(--are-container)) / 2)
+  );
+  padding-block: var(--are-surface-inset-block);
+}
+
+.content-section.content-section--faq {
+  padding-block: var(--are-surface-inset-block);
+}
+
+.property-workbench__search,
+.contact-form,
+.career-form,
+.article-checklist {
+  padding-block: var(--are-surface-inset-block);
+  padding-inline: var(--are-surface-inset-inline);
+}
+
+.faq-list {
+  min-width: 0;
+}
+
+.faq-list summary {
+  padding-inline: 0.25rem;
+}
+
+.faq-list details > p {
+  padding-block: 0 1.6rem;
+  padding-inline: 0.25rem 3rem;
+}
+
+main > :where(
+  .discovery-section,
+  .inner-section,
+  .content-section,
+  .feature-pathways,
+  .featured-insight,
+  .insights-contact,
+  .career-opportunities,
+  .career-application,
+  .closing-cta
+) + :where(
+  .discovery-section,
+  .inner-section,
+  .content-section,
+  .feature-pathways,
+  .featured-insight,
+  .insights-contact,
+  .career-opportunities,
+  .career-application,
+  .closing-cta
+),
+main > article + .content-section {
+  margin-block-start: var(--are-section-separation);
+}
+
+.featured-insight,
+.insights-contact {
+  margin-block: var(--are-section-separation);
+}
+
+.content-heading,
+.inner-section__heading,
+.career-opportunities__heading,
+.career-application__heading {
+  min-width: 0;
+}
+
+@media (max-width: 900px) {
+  .content-section--faq {
+    gap: var(--are-content-stack-gap);
+  }
+}
+
+@media (max-width: 680px) {
+  .faq-list details > p {
+    padding-inline-end: 1.5rem;
   }
 }
 
