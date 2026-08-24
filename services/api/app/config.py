@@ -18,6 +18,12 @@ class Settings(BaseSettings):
     session_lifetime_minutes: int = 480
     login_rate_limit_attempts: int = 5
     login_rate_limit_window_seconds: int = 900
+    submission_rate_limit_attempts: int = 8
+    submission_rate_limit_window_seconds: int = 900
+    private_storage_backend: Literal["local", "object"] = "local"
+    private_storage_path: str = "/app/private-storage"
+    enquiry_retention_days: int | None = None
+    application_retention_days: int | None = None
 
     @field_validator("database_url")
     @classmethod

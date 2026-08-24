@@ -1,6 +1,6 @@
 "use client";
 
-import { BriefcaseBusiness, Building2, FileText, Gauge, LogOut, ScrollText } from "lucide-react";
+import { BriefcaseBusiness, Building2, FileText, Gauge, Inbox, LogOut, ScrollText, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
@@ -10,6 +10,7 @@ import { useAuth } from "./auth-provider";
 const links = [
   ["/dashboard", "Dashboard", Gauge], ["/properties", "Properties", Building2],
   ["/insights", "Insights", FileText], ["/careers/jobs", "Career jobs", BriefcaseBusiness],
+  ["/enquiries", "Enquiries", Inbox], ["/careers/applications", "Applications", Users],
   ["/audit", "Audit log", ScrollText],
 ] as const;
 

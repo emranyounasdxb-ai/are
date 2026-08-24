@@ -197,7 +197,7 @@ const richCopyBase = {
             { title: "Editorial quality", text: "Natural Arabic phrasing takes priority over literal word-for-word substitution." },
           ]},
           { eyebrow: "CAPABILITY ROADMAP", title: "Grow only when approved foundations are ready.", text: "The public preview establishes discovery pathways. Data-driven capabilities remain visibly pending until their sources and contracts are approved.", items: [
-            { title: "Available now", text: "Bilingual navigation, page guidance, search-brief routing and a non-transmitting enquiry preview." },
+            { title: "Available now", text: "Bilingual navigation, page guidance, search-brief routing and secure enquiry submission." },
             { title: "Pending approved data", text: "Live property inventory, prices, availability, result counts and project records." },
             { title: "Future governed growth", text: "Additional capabilities should follow the approved architecture, content authority and validation gates." },
           ]},
@@ -208,13 +208,13 @@ const richCopyBase = {
           { question: "Is all property information live?", answer: "No. The current public experience does not represent live inventory. It clearly marks data-driven capabilities as pending." },
           { question: "Why is the experience bilingual?", answer: "English and Arabic parity is a core product requirement, intended to make the same pathways and cautions understandable in both languages." },
           { question: "How is content kept trustworthy?", answer: "The preview avoids invented business facts and separates verified, pending and illustrative information." },
-          { question: "How can I begin?", answer: "Explore properties or communities to shape your needs, then use the contact preview to prepare a concise enquiry." },
+          { question: "How can I begin?", answer: "Explore properties or communities to shape your needs, then use Contact to send a concise enquiry." },
         ]},
         related: { title: "See the approach in practice", items: [enRelated.properties, enRelated.communities, enRelated.contact] },
         cta: { title: "Begin with what matters to you.", text: "Shape a property brief or prepare the questions you would like to explore.", action: "Start discovering", href: "/en/properties" },
       },
       contact: {
-        intro: { eyebrow: "CHOOSE AN ENQUIRY TYPE", title: "Give the conversation a useful starting point.", text: "Select the purpose that best matches your question, then share only the context needed for an initial response. This local preview validates the form but sends and stores nothing." },
+        intro: { eyebrow: "CHOOSE AN ENQUIRY TYPE", title: "Give the conversation a useful starting point.", text: "Select the purpose that best matches your question, then share only the context needed for an authorized response." },
         sections: [
           { eyebrow: "WHAT TO INCLUDE", title: "A short brief is more useful than a long unstructured message.", text: "Keep the first enquiry focused and avoid sensitive information.", items: [
             { title: "Purpose", text: "Say whether you want to buy, rent, compare communities, explore off-plan or ask a general question." },
@@ -224,19 +224,19 @@ const richCopyBase = {
             { title: "Timeframe", text: "Give an indicative timeframe and explain where you have flexibility." },
             { title: "Important requirements", text: "Identify essential lifestyle needs and questions that still require verified information." },
           ]},
-          { eyebrow: "WHAT HAPPENS NEXT", title: "This preview stops before transmission.", text: "A future approved phase may connect secure enquiry handling. Until then, the form proves the interaction only.", items: [
-            { title: "Review", text: "The browser checks that the required fields are complete and that the message has useful minimum detail." },
-            { title: "Preview confirmation", text: "A clear message explains that no information was sent or stored." },
-            { title: "Future routing", text: "Secure submission, response times and operational contact details remain pending owner-approved implementation." },
+          { eyebrow: "WHAT HAPPENS NEXT", title: "Your enquiry enters a secure review queue.", text: "Authorized ALIYAS Admin users can review the request and update its internal status.", items: [
+            { title: "Validate", text: "The browser and server check that required fields are complete and safely formatted." },
+            { title: "Reference", text: "A confirmation displays the reference ID for your submitted enquiry." },
+            { title: "Authorized review", text: "Submitted details are available only to authorized Admin users for follow-up; no response time is promised." },
           ]},
         ],
         checklist: { eyebrow: "PRIVACY GUIDANCE", title: "Keep sensitive information out of an initial enquiry", text: "Share only what is necessary to describe the question.", items: ["Do not include passport or identity-document numbers", "Do not include banking, card or account information", "Do not send passwords, access codes or private credentials", "Avoid detailed personal records unless a secure approved process requests them", "Verify the recipient and purpose before sharing documents"] },
         faq: { eyebrow: "CONTACT FAQ", title: "Preparing an enquiry", items: [
-          { question: "Does this form send my information?", answer: "No. In this local preview it validates the fields and displays a confirmation, but it does not transmit or store the information." },
+          { question: "Does this form send my information?", answer: "Yes. It securely stores the necessary enquiry details for review by authorized ALIYAS Admin users." },
           { question: "What enquiry types can I choose?", answer: "You can prepare a buying, renting, community, off-plan or general property enquiry." },
           { question: "What should I write in the message?", answer: "Include your purpose, broad location or property preferences, indicative timeframe and the questions you want answered." },
-          { question: "Should I attach personal documents?", answer: "No. This preview has no upload function, and sensitive documents should never be included in an initial unsecured enquiry." },
-          { question: "When will I receive a response?", answer: "No response time is claimed because this preview does not submit enquiries. Operational routing remains pending an approved phase." },
+          { question: "Should I attach personal documents?", answer: "No. This enquiry form has no upload function, and sensitive documents should never be included in an initial enquiry." },
+          { question: "When will I receive a response?", answer: "Your reference confirms receipt, but no specific response time is promised." },
         ]},
         related: { title: "Prepare before you enquire", items: [enRelated.properties, enRelated.communities, enRelated.offPlan] },
         cta: { title: "Want to refine your brief first?", text: "Return to property discovery and organise the criteria that matter most.", action: "Explore properties", href: "/en/properties" },
@@ -358,18 +358,18 @@ const arPages: Record<PageSlug, PageRichCopy> = {
         { title: "تكافؤ المحتوى", text: "الإرشادات والتنبيهات والروابط والتفاعلات الأساسية متاحة باللغتين." }, { title: "تكافؤ الواجهة", text: "يتكيف الاتجاه والتنقل وعناصر التحكم من دون فقدان المعنى." }, { title: "جودة التحرير", text: "نفضّل الصياغة العربية الطبيعية على النقل الحرفي." },
       ]},
       { eyebrow: "مسار الإمكانات", title: "نتوسع عندما تصبح الأسس المعتمدة جاهزة.", text: "تؤسس المعاينة مسارات الاكتشاف، بينما تنتظر الخصائص المعتمدة على البيانات مصادرها وعقودها.", items: [
-        { title: "متاح الآن", text: "تنقل ثنائي اللغة ومسارات صفحات وتوجيه موجز البحث ومعاينة استفسار غير مرسلة." }, { title: "بانتظار بيانات معتمدة", text: "المخزون والأسعار والتوفر وأعداد النتائج وسجلات المشاريع." }, { title: "نمو مستقبلي منضبط", text: "تتبع الإمكانات الجديدة البنية وسلطة المحتوى وبوابات التحقق المعتمدة." },
+        { title: "متاح الآن", text: "تنقل ثنائي اللغة ومسارات صفحات وتوجيه موجز البحث وإرسال آمن للاستفسارات." }, { title: "بانتظار بيانات معتمدة", text: "المخزون والأسعار والتوفر وأعداد النتائج وسجلات المشاريع." }, { title: "نمو مستقبلي منضبط", text: "تتبع الإمكانات الجديدة البنية وسلطة المحتوى وبوابات التحقق المعتمدة." },
       ]},
     ],
     checklist: { eyebrow: "معيار المحتوى", title: "ما لن تخترعه هذه المعاينة", text: "تبدأ الثقة بإظهار حدود المنتج الحالي.", items: ["العقارات أو المشاريع أو الأسعار أو التوفر", "إحصاءات السوق أو التصنيفات أو عوائد الاستثمار", "بيانات اتصال أو ادعاءات خدمة بلا اعتماد", "أوقات تنقل أو مرافق أو ضمانات بلا تحقق", "مشورة قانونية أو مالية أو تعاقدية"] },
     faq: { eyebrow: "أسئلة من نحن", title: "فهم تجربة ARE الحالية", items: [
-      { question: "ما الذي تبنيه ALIYAS Real Estate؟", answer: "تجربة ثنائية اللغة لاكتشاف العقارات في الإمارات، مصممة لربط البيانات والخدمات المعتمدة في مراحل لاحقة." }, { question: "هل كل المعلومات العقارية مباشرة؟", answer: "لا. لا تعرض التجربة الحالية مخزوناً مباشراً وتوضح الإمكانات المؤجلة." }, { question: "لماذا التجربة ثنائية اللغة؟", answer: "لأن تكافؤ العربية والإنجليزية متطلب أساسي لتقديم المسارات والتنبيهات نفسها بوضوح." }, { question: "كيف يبقى المحتوى موثوقاً؟", answer: "نتجنب الحقائق المختلقة ونفصل بين المعلومات الموثقة والمؤجلة والتوضيحية." }, { question: "كيف أبدأ؟", answer: "استكشف العقارات أو المجتمعات لتحديد احتياجاتك ثم استخدم معاينة التواصل." },
+      { question: "ما الذي تبنيه ALIYAS Real Estate؟", answer: "تجربة ثنائية اللغة لاكتشاف العقارات في الإمارات، مصممة لربط البيانات والخدمات المعتمدة في مراحل لاحقة." }, { question: "هل كل المعلومات العقارية مباشرة؟", answer: "لا. لا تعرض التجربة الحالية مخزوناً مباشراً وتوضح الإمكانات المؤجلة." }, { question: "لماذا التجربة ثنائية اللغة؟", answer: "لأن تكافؤ العربية والإنجليزية متطلب أساسي لتقديم المسارات والتنبيهات نفسها بوضوح." }, { question: "كيف يبقى المحتوى موثوقاً؟", answer: "نتجنب الحقائق المختلقة ونفصل بين المعلومات الموثقة والمؤجلة والتوضيحية." }, { question: "كيف أبدأ؟", answer: "استكشف العقارات أو المجتمعات لتحديد احتياجاتك ثم استخدم صفحة التواصل لإرسال استفسار موجز." },
     ]},
     related: { title: "شاهد النهج عملياً", items: [arRelated.properties, arRelated.communities, arRelated.contact] },
     cta: { title: "ابدأ بما يهمك.", text: "صُغ موجزاً عقارياً أو جهّز الأسئلة التي ترغب في استكشافها.", action: "ابدأ الاكتشاف", href: "/ar/properties" },
   },
   contact: {
-    intro: { eyebrow: "اختر نوع الاستفسار", title: "امنح الحوار نقطة بداية مفيدة.", text: "اختر الغرض الأقرب إلى سؤالك ثم شارك السياق اللازم فقط. تتحقق هذه المعاينة المحلية من النموذج ولا ترسل أو تخزن شيئاً." },
+    intro: { eyebrow: "اختر نوع الاستفسار", title: "امنح الحوار نقطة بداية مفيدة.", text: "اختر الغرض الأقرب إلى سؤالك ثم شارك فقط السياق اللازم لرد المستخدمين المخولين." },
     sections: [
       { eyebrow: "ما الذي تذكره", title: "الموجز القصير أفضل من رسالة طويلة غير منظمة.", text: "حافظ على تركيز الاستفسار الأول وتجنب المعلومات الحساسة.", items: [
         { title: "الهدف", text: "وضّح إن كنت تريد الشراء أو الاستئجار أو مقارنة المجتمعات أو استكشاف عقار على المخطط أو طرح سؤال عام." },
@@ -379,13 +379,13 @@ const arPages: Record<PageSlug, PageRichCopy> = {
         { title: "الإطار الزمني", text: "اذكر توقيتاً تقريبياً ووضّح مواضع المرونة." },
         { title: "المتطلبات المهمة", text: "حدّد احتياجات الحياة الأساسية والأسئلة التي لا تزال بحاجة إلى معلومات موثقة." },
       ]},
-      { eyebrow: "ما الذي يحدث لاحقاً", title: "تتوقف هذه المعاينة قبل الإرسال.", text: "قد تربط مرحلة معتمدة لاحقة معالجة آمنة للاستفسارات. حتى ذلك الحين يثبت النموذج التفاعل فقط.", items: [
-        { title: "المراجعة", text: "يتحقق المتصفح من اكتمال الحقول ووجود حد أدنى مفيد للرسالة." }, { title: "تأكيد المعاينة", text: "توضح رسالة أن المعلومات لم تُرسل ولم تُخزن." }, { title: "التوجيه المستقبلي", text: "يبقى الإرسال الآمن ووقت الرد وبيانات التواصل التشغيلية قيد الاعتماد." },
+      { eyebrow: "ما الذي يحدث لاحقاً", title: "يدخل استفسارك إلى قائمة مراجعة آمنة.", text: "يمكن لمستخدمي إدارة ALIYAS المخولين مراجعة الطلب وتحديث حالته الداخلية.", items: [
+        { title: "التحقق", text: "يتحقق المتصفح والخادم من اكتمال الحقول وصحة تنسيقها." }, { title: "الرقم المرجعي", text: "يعرض التأكيد رقماً مرجعياً للاستفسار المرسل." }, { title: "المراجعة المخولة", text: "تتاح البيانات للمستخدمين المخولين للمتابعة فقط، من دون وعد بوقت رد محدد." },
       ]},
     ],
     checklist: { eyebrow: "إرشادات الخصوصية", title: "تجنب المعلومات الحساسة في الاستفسار الأول", text: "شارك ما يلزم لوصف السؤال فقط.", items: ["لا تذكر أرقام جواز السفر أو الهوية", "لا تذكر بيانات البنك أو البطاقة أو الحساب", "لا ترسل كلمات المرور أو رموز الدخول", "تجنب السجلات الشخصية المفصلة إلا عبر إجراء آمن معتمد", "تحقق من المستلم والغرض قبل مشاركة الوثائق"] },
     faq: { eyebrow: "أسئلة التواصل", title: "إعداد الاستفسار", items: [
-      { question: "هل يرسل النموذج معلوماتي؟", answer: "لا. يتحقق من الحقول ويعرض تأكيداً محلياً، لكنه لا يرسل المعلومات ولا يخزنها." }, { question: "ما أنواع الاستفسار المتاحة؟", answer: "يمكنك إعداد استفسار عن الشراء أو الاستئجار أو المجتمعات أو العقار على المخطط أو سؤال عقاري عام." }, { question: "ماذا أكتب في الرسالة؟", answer: "اذكر الهدف والموقع أو نوع العقار والإطار الزمني التقريبي والأسئلة المطلوبة." }, { question: "هل أرفق وثائق شخصية؟", answer: "لا. لا توفر المعاينة رفع ملفات، ولا ينبغي إرسال وثائق حساسة في استفسار أول غير مؤمّن." }, { question: "متى أتلقى رداً؟", answer: "لا ندّعي وقتاً للرد لأن المعاينة لا ترسل الاستفسار. يبقى التوجيه التشغيلي لمرحلة معتمدة." },
+      { question: "هل يرسل النموذج معلوماتي؟", answer: "نعم. يخزن بيانات الاستفسار اللازمة بأمان لمراجعتها من مستخدمي إدارة ALIYAS المخولين." }, { question: "ما أنواع الاستفسار المتاحة؟", answer: "يمكنك إعداد استفسار عن الشراء أو الاستئجار أو المجتمعات أو العقار على المخطط أو سؤال عقاري عام." }, { question: "ماذا أكتب في الرسالة؟", answer: "اذكر الهدف والموقع أو نوع العقار والإطار الزمني التقريبي والأسئلة المطلوبة." }, { question: "هل أرفق وثائق شخصية؟", answer: "لا. لا يوفر نموذج الاستفسار رفع ملفات، ولا ينبغي إرسال وثائق حساسة في استفسار أول." }, { question: "متى أتلقى رداً؟", answer: "يؤكد الرقم المرجعي الاستلام، لكننا لا نعد بوقت رد محدد." },
     ]},
     related: { title: "استعد قبل الاستفسار", items: [arRelated.properties, arRelated.communities, arRelated.offPlan] },
     cta: { title: "هل تريد تحسين موجزك أولاً؟", text: "عد إلى اكتشاف العقارات ونظّم المعايير الأكثر أهمية.", action: "استكشف العقارات", href: "/ar/properties" },

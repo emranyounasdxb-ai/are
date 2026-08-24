@@ -12,7 +12,7 @@ import { getJobs } from "../../../../lib/api";
 import { homeCopy, isLocale, locales, type Locale } from "../../../../lib/home-copy";
 import { richCopy } from "../../../../lib/rich-copy";
 
-type Props = Readonly<{ params: Promise<{ locale: string }> }>;
+type Props = Readonly<{ params: Promise<{ locale: string }>; searchParams: Promise<{ job?: string }> }>;
 
 export const dynamicParams = false;
 
@@ -27,13 +27,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return { title: copy.metaTitle, description: copy.metaDescription };
 }
 
-export default async function CareersPage({ params }: Props) {
+export default async function CareersPage({ params, searchParams }: Props) {
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
-  return <LocalizedCareers locale={locale} />;
+  return <LocalizedCareers jobSlug={(await searchParams).job} locale={locale} />;
 }
 
-async function LocalizedCareers({ locale }: Readonly<{ locale: Locale }>) {
+async function LocalizedCareers({ jobSlug, locale }: Readonly<{ jobSlug?: string; locale: Locale }>) {
   const copy = careersCopy[locale];
   const isArabic = locale === "ar";
   const careerVacancies = await getJobs(locale);
@@ -87,7 +87,7 @@ async function LocalizedCareers({ locale }: Readonly<{ locale: Locale }>) {
 
         <section aria-labelledby="application-title" className="career-application" id="application">
           <div className="career-application__heading"><p>{copy.application.eyebrow}</p><h2 id="application-title">{copy.application.title}</h2><span>{copy.application.text}</span></div>
-          <CareersApplicationForm locale={locale} />
+          <CareersApplicationForm jobSlug={jobSlug} locale={locale} />
         </section>
 
         <section aria-labelledby="privacy-title" className="career-privacy content-section content-section--split">

@@ -9,16 +9,45 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import delete, select
 from sqlalchemy.orm import selectinload
 
+from app.config import get_settings
 from app.db import SessionLocal
 from app.main import app
-from app.models import AuditLog, InsightPost, JobOpening, Property, Role, Session, User
+from app.models import (
+    AuditLog,
+    CareerApplication,
+    ContactEnquiry,
+    InsightPost,
+    JobOpening,
+    Property,
+    Role,
+    Session,
+    User,
+)
 from app.security import hash_password
+from app.storage import PrivateStorage
 
 
 @pytest.fixture(autouse=True)
 async def clean_disposable_records() -> AsyncIterator[None]:
     yield
     async with SessionLocal() as db:
+        applications = (
+            await db.scalars(
+                select(CareerApplication)
+                .where(CareerApplication.email.like("%@qa.are-cms.invalid-example-domain.com"))
+                .options(selectinload(CareerApplication.file))
+            )
+        ).all()
+        storage = PrivateStorage(get_settings())
+        for application in applications:
+            if application.file:
+                storage.delete(application.file.storage_key)
+            await db.delete(application)
+        await db.execute(
+            delete(ContactEnquiry).where(
+                ContactEnquiry.email.like("%@qa.are-cms.invalid-example-domain.com")
+            )
+        )
         await db.execute(delete(AuditLog).where(AuditLog.request_correlation_id.like("qa-%")))
         await db.execute(delete(Property).where(Property.slug.like("qa-%")))
         await db.execute(delete(InsightPost).where(InsightPost.slug.like("qa-%")))

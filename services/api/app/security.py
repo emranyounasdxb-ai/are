@@ -64,6 +64,23 @@ async def enforce_login_rate_limit(
         )
 
 
+async def enforce_submission_rate_limit(
+    redis: Redis, request: Request, workflow: str, settings: Settings
+) -> None:
+    key = f"are:submission:{workflow}:{client_fingerprint(request)}"
+    attempts = await redis.incr(key)
+    if attempts == 1:
+        await redis.expire(key, settings.submission_rate_limit_window_seconds)
+    if attempts > settings.submission_rate_limit_attempts:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={
+                "code": "submission_rate_limited",
+                "message": "Please wait before trying again.",
+            },
+        )
+
+
 async def create_session(
     db: AsyncSession,
     user: User,

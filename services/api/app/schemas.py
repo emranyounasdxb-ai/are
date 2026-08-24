@@ -16,7 +16,7 @@ from pydantic import (
     model_validator,
 )
 
-from app.models import JobStatus, PublicationStatus, Purpose
+from app.models import ApplicationStatus, EnquiryStatus, JobStatus, PublicationStatus, Purpose
 
 SLUG_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
@@ -199,3 +199,53 @@ class AuditResponse(BaseModel):
     after_summary: dict[str, Any] | None
     request_correlation_id: str
     metadata_summary: dict[str, Any] | None
+
+
+class ContactEnquiryInput(StrictModel):
+    enquiry_type: str = Field(min_length=2, max_length=120)
+    name: str = Field(min_length=2, max_length=180)
+    email: EmailStr
+    phone: str = Field(min_length=7, max_length=48, pattern=r"^[+0-9 ()-]+$")
+    message: str = Field(min_length=10, max_length=5000)
+    selected_developer: str | None = Field(default=None, max_length=180)
+    selected_property: str | None = Field(default=None, max_length=180)
+    locale: Literal["en", "ar"]
+    preferred_contact_method: Literal["email", "phone", "whatsapp"]
+    contact_consent: Literal[True]
+    marketing_consent: bool = False
+    attribution: dict[str, str] = Field(default_factory=dict)
+    website: str = Field(default="", max_length=0)
+
+    @field_validator("attribution")
+    @classmethod
+    def safe_attribution(cls, value: dict[str, str]) -> dict[str, str]:
+        allowed = {"utm_source", "utm_medium", "utm_campaign", "referrer"}
+        if set(value) - allowed or any(len(item) > 300 for item in value.values()):
+            raise ValueError("Unsupported attribution context")
+        return value
+
+
+class EnquiryUpdate(StrictModel):
+    status: EnquiryStatus
+    internal_note: str | None = Field(default=None, max_length=5000)
+
+
+class CareerApplicationInput(StrictModel):
+    applicant_name: str = Field(min_length=2, max_length=180)
+    email: EmailStr
+    phone: str = Field(min_length=7, max_length=48, pattern=r"^[+0-9 ()-]+$")
+    current_location: str = Field(min_length=2, max_length=180)
+    job_slug: str | None = Field(default=None, max_length=180)
+    context_label: str = Field(min_length=2, max_length=240)
+    linkedin_url: HttpUrl | None = None
+    portfolio_url: HttpUrl | None = None
+    cover_note: str = Field(min_length=20, max_length=10000)
+    locale: Literal["en", "ar"]
+    acknowledgement_consent: Literal[True]
+    marketing_consent: bool = False
+    website: str = Field(default="", max_length=0)
+
+
+class ApplicationUpdate(StrictModel):
+    status: ApplicationStatus
+    internal_note: str | None = Field(default=None, max_length=5000)

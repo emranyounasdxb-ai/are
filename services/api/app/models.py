@@ -45,6 +45,24 @@ class Purpose(StrEnum):
     OFF_PLAN = "off-plan"
 
 
+class EnquiryStatus(StrEnum):
+    NEW = "new"
+    IN_REVIEW = "in-review"
+    CONTACTED = "contacted"
+    QUALIFIED = "qualified"
+    CLOSED = "closed"
+    SPAM = "spam"
+
+
+class ApplicationStatus(StrEnum):
+    NEW = "new"
+    REVIEWED = "reviewed"
+    SHORTLISTED = "shortlisted"
+    INTERVIEW = "interview"
+    SELECTED = "selected"
+    REJECTED = "rejected"
+
+
 class TimestampMixin:
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -270,6 +288,88 @@ class AuditLog(Base):
     metadata_summary: Mapped[dict[str, Any] | None] = mapped_column(JSON)
 
 
+class ContactEnquiry(TimestampMixin, Base):
+    __tablename__ = "contact_enquiries"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    reference_code: Mapped[str] = mapped_column(String(24), unique=True, nullable=False)
+    enquiry_type: Mapped[str] = mapped_column(String(120), nullable=False)
+    name: Mapped[str] = mapped_column(String(180), nullable=False)
+    email: Mapped[str] = mapped_column(String(320), nullable=False)
+    phone: Mapped[str] = mapped_column(String(48), nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    context: Mapped[dict[str, str] | None] = mapped_column(JSON)
+    locale: Mapped[str] = mapped_column(String(2), nullable=False)
+    preferred_contact_method: Mapped[str] = mapped_column(String(24), nullable=False)
+    contact_consent: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    marketing_consent: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    attribution: Mapped[dict[str, str] | None] = mapped_column(JSON)
+    status: Mapped[EnquiryStatus] = mapped_column(
+        Enum(EnquiryStatus, name="enquiry_status"), default=EnquiryStatus.NEW, nullable=False
+    )
+    internal_note: Mapped[str | None] = mapped_column(Text)
+    idempotency_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+
+
+class CareerApplication(TimestampMixin, Base):
+    __tablename__ = "career_applications"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    reference_code: Mapped[str] = mapped_column(String(24), unique=True, nullable=False)
+    applicant_name: Mapped[str] = mapped_column(String(180), nullable=False)
+    email: Mapped[str] = mapped_column(String(320), nullable=False)
+    phone: Mapped[str] = mapped_column(String(48), nullable=False)
+    current_location: Mapped[str] = mapped_column(String(180), nullable=False)
+    job_opening_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("job_openings.id")
+    )
+    context_label: Mapped[str] = mapped_column(String(240), nullable=False)
+    linkedin_url: Mapped[str | None] = mapped_column(Text)
+    portfolio_url: Mapped[str | None] = mapped_column(Text)
+    cover_note: Mapped[str] = mapped_column(Text, nullable=False)
+    locale: Mapped[str] = mapped_column(String(2), nullable=False)
+    acknowledgement_consent: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    marketing_consent: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    status: Mapped[ApplicationStatus] = mapped_column(
+        Enum(ApplicationStatus, name="application_status"),
+        default=ApplicationStatus.NEW,
+        nullable=False,
+    )
+    internal_note: Mapped[str | None] = mapped_column(Text)
+    idempotency_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    file: Mapped[PrivateFileMetadata | None] = relationship(
+        back_populates="application", cascade="all, delete-orphan", lazy="selectin"
+    )
+
+
+class PrivateFileMetadata(Base):
+    __tablename__ = "private_file_metadata"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    career_application_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("career_applications.id", ondelete="CASCADE"),
+        unique=True,
+        nullable=False,
+    )
+    storage_key: Mapped[str] = mapped_column(String(180), unique=True, nullable=False)
+    original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    declared_mime_type: Mapped[str] = mapped_column(String(120), nullable=False)
+    verified_format: Mapped[str] = mapped_column(String(16), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    application: Mapped[CareerApplication] = relationship(back_populates="file")
+
+
 Index("ix_properties_search", Property.slug, Property.property_type, Property.emirate)
 Index("ix_insight_posts_search", InsightPost.slug, InsightPost.category)
 Index("ix_job_openings_search", JobOpening.slug, JobOpening.department)
+Index("ix_contact_enquiries_status_created", ContactEnquiry.status, ContactEnquiry.created_at)
+Index(
+    "ix_career_applications_status_created", CareerApplication.status, CareerApplication.created_at
+)

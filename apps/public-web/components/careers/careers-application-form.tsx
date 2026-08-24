@@ -35,13 +35,15 @@ function validateFile(file: File | undefined, locale: Locale) {
   return undefined;
 }
 
-export function CareersApplicationForm({ locale }: Readonly<{ locale: Locale }>) {
+export function CareersApplicationForm({ jobSlug, locale }: Readonly<{ jobSlug?: string; locale: Locale }>) {
   const copy = careersCopy[locale].form;
   const formRef = useRef<HTMLFormElement>(null);
+  const idempotencyRef = useRef<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [errors, setErrors] = useState<Errors>({});
   const [selectedFile, setSelectedFile] = useState<File>();
   const [result, setResult] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   function focusField(field: FieldName) {
     const control = formRef.current?.elements.namedItem(field);
@@ -80,7 +82,7 @@ export function CareersApplicationForm({ locale }: Readonly<{ locale: Locale }>)
     fileRef.current?.focus();
   }
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const value = (name: FieldName) => String(form.get(name) ?? "").trim();
@@ -110,7 +112,32 @@ export function CareersApplicationForm({ locale }: Readonly<{ locale: Locale }>)
       requestAnimationFrame(() => focusField(firstInvalid));
       return;
     }
-    setResult(copy.validResult);
+    setSubmitting(true);
+    try {
+      form.set("applicant_name", value("fullName"));
+      form.set("current_location", value("location"));
+      form.set("context_label", `${value("interest")} | ${value("experience")}`);
+      form.set("cover_note", value("coverMessage"));
+      form.set("linkedin_url", linkedin);
+      form.set("portfolio_url", portfolio);
+      form.set("locale", locale);
+      form.set("acknowledgement_consent", "true");
+      form.set("marketing_consent", form.get("marketingConsent") ? "true" : "false");
+      form.set("website", "");
+      if (jobSlug) form.set("job_slug", jobSlug);
+      if (selectedFile) form.set("cv", selectedFile);
+      idempotencyRef.current ??= crypto.randomUUID();
+      const response = await fetch(`${process.env.NEXT_PUBLIC_ARE_API_URL ?? "http://127.0.0.1:50003/api/v1"}/public/applications`, { method: "POST", headers: { "Idempotency-Key": idempotencyRef.current }, body: form });
+      const body = await response.json() as { reference_id?: string };
+      if (!response.ok || !body.reference_id) throw new Error();
+      setResult(`${locale === "ar" ? "تم استلام طلبك. الرقم المرجعي" : "Your application was received. Reference"}: ${body.reference_id}`);
+      idempotencyRef.current = null;
+      setErrors({});
+    } catch {
+      setResult(locale === "ar" ? "تعذر إرسال طلبك. يرجى المحاولة مرة أخرى." : "We could not submit your application. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   function resetForm() {
@@ -149,7 +176,9 @@ export function CareersApplicationForm({ locale }: Readonly<{ locale: Locale }>)
       </div>
 
       <div className="career-form__acknowledgement"><input aria-describedby={describedBy("acknowledge")} aria-invalid={Boolean(errors.acknowledge)} id="acknowledge" name="acknowledge" onKeyDown={(event) => { if (event.key === " ") { event.preventDefault(); event.currentTarget.click(); } }} required type="checkbox" /><label htmlFor="acknowledge">{copy.acknowledge}</label>{errors.acknowledge ? <p className="career-form__error" id="acknowledge-error">{errors.acknowledge}</p> : null}</div>
-      <div className="career-form__actions"><button className="button button--primary" onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); formRef.current?.requestSubmit(); } }} type="submit">{copy.submit}</button><button className="career-form__reset" onClick={resetForm} type="button">{copy.reset}</button></div>
+      <div className="career-form__acknowledgement"><input id="marketingConsent" name="marketingConsent" type="checkbox"/><label htmlFor="marketingConsent">{locale === "ar" ? "أرغب في تلقي تحديثات التوظيف والتسويق (اختياري)." : "I would like recruitment and marketing updates (optional)."}</label></div>
+      <p className="career-form__hint">{locale === "ar" ? "سيتم تخزين سيرتك الذاتية بشكل خاص واستخدامها لمراجعة طلبك." : "Your CV is stored privately and used to review your application."}</p>
+      <div className="career-form__actions"><button className="button button--primary" disabled={submitting} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); formRef.current?.requestSubmit(); } }} type="submit">{copy.submit}</button><button className="career-form__reset" onClick={resetForm} type="button">{copy.reset}</button></div>
       <p aria-live="polite" className="career-form__result" role="status">{result}</p>
     </form>
   );

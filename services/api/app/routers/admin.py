@@ -21,6 +21,8 @@ from app.dependencies import (
 )
 from app.models import (
     AuditLog,
+    CareerApplication,
+    ContactEnquiry,
     InsightPost,
     InsightPostTranslation,
     JobOpening,
@@ -76,6 +78,8 @@ async def dashboard(
         ("properties", Property),
         ("insights", InsightPost),
         ("jobs", JobOpening),
+        ("enquiries", ContactEnquiry),
+        ("applications", CareerApplication),
     ):
         counts[key] = int(await db.scalar(select(func.count()).select_from(model)) or 0)
     return counts

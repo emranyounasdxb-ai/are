@@ -15,7 +15,7 @@ from sqlalchemy import text
 from app.config import get_settings
 from app.db import SessionLocal, engine
 from app.middleware import RequestContextMiddleware, configure_logging
-from app.routers import admin, auth, public
+from app.routers import admin, auth, public, submissions
 
 configure_logging()
 settings = get_settings()
@@ -40,11 +40,12 @@ app.add_middleware(
     allow_origins=settings.allowed_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "X-CSRF-Token", "X-Request-ID"],
+    allow_headers=["Content-Type", "Idempotency-Key", "X-CSRF-Token", "X-Request-ID"],
 )
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")
 app.include_router(public.router, prefix="/api/v1")
+app.include_router(submissions.router, prefix="/api/v1")
 
 
 def error_payload(
