@@ -8,8 +8,6 @@ export type HeaderCopy = Readonly<{
   activeLanguage: string;
   careers: string;
   closeMenu: string;
-  company: string;
-  companyMenuLabel: string;
   communities: string;
   contact: string;
   developers: string;
@@ -95,8 +93,6 @@ export const homeCopy: Readonly<Record<Locale, HomeCopy>> = {
       activeLanguage: "English",
       careers: "Careers",
       closeMenu: "Close navigation menu",
-      company: "Company",
-      companyMenuLabel: "Open Company navigation",
       communities: "Communities",
       contact: "Enquire",
       developers: "Developers",
@@ -197,8 +193,6 @@ export const homeCopy: Readonly<Record<Locale, HomeCopy>> = {
       activeLanguage: "العربية",
       careers: "الوظائف",
       closeMenu: "إغلاق قائمة التنقل",
-      company: "الشركة",
-      companyMenuLabel: "فتح قائمة الشركة",
       communities: "المجتمعات",
       contact: "استفسر",
       developers: "المطورون",

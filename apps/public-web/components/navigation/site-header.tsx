@@ -14,9 +14,6 @@ type SiteHeaderProps = Readonly<{
 
 export function SiteHeader({ copy, locale }: SiteHeaderProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [isCompanyOpen, setIsCompanyOpen] = useState(false);
-  const companyButtonRef = useRef<HTMLButtonElement>(null);
-  const companyRef = useRef<HTMLDivElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const menuPanelRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
@@ -28,48 +25,18 @@ export function SiteHeader({ copy, locale }: SiteHeaderProps) {
     { href: `/${locale}/communities`, label: copy.communities },
     { href: `/${locale}/developers`, label: copy.developers },
     { href: `/${locale}/insights`, label: copy.insights },
-  ];
-  const companyNavigation = [
     { href: `/${locale}/about`, label: copy.about },
     { href: `/${locale}/careers`, label: copy.careers },
   ];
   const contactNavigationLabel = locale === "ar" ? "التواصل" : "Contact";
   const mobileNavigation = [
     ...directNavigation,
-    ...companyNavigation,
     { href: `/${locale}/contact`, label: contactNavigationLabel },
   ];
 
   function isActive(href: string) {
     return pathname === href || (href.endsWith("/insights") && pathname.startsWith(`${href}/`));
   }
-
-  useEffect(() => {
-    if (!isCompanyOpen) {
-      return;
-    }
-
-    function handleCompanyKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        setIsCompanyOpen(false);
-        companyButtonRef.current?.focus();
-      }
-    }
-
-    function handleOutsidePointer(event: PointerEvent) {
-      if (!companyRef.current?.contains(event.target as Node)) {
-        setIsCompanyOpen(false);
-      }
-    }
-
-    document.addEventListener("keydown", handleCompanyKeyDown);
-    document.addEventListener("pointerdown", handleOutsidePointer);
-    return () => {
-      document.removeEventListener("keydown", handleCompanyKeyDown);
-      document.removeEventListener("pointerdown", handleOutsidePointer);
-    };
-  }, [isCompanyOpen]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -213,46 +180,6 @@ export function SiteHeader({ copy, locale }: SiteHeaderProps) {
                 {item.label}
               </Link>
             ))}
-            <div className="company-menu" ref={companyRef}>
-              <button
-                aria-controls="desktop-company-menu"
-                aria-expanded={isCompanyOpen}
-                aria-label={copy.companyMenuLabel}
-                className={companyNavigation.some((item) => isActive(item.href)) ? "is-active" : undefined}
-                onClick={() => setIsCompanyOpen((open) => !open)}
-                onKeyDown={(event) => {
-                  if (event.key === "Tab" && !event.shiftKey && isCompanyOpen) {
-                    event.preventDefault();
-                    companyRef.current?.querySelector<HTMLAnchorElement>("a")?.focus();
-                    return;
-                  }
-                  if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    setIsCompanyOpen((open) => !open);
-                  }
-                }}
-                ref={companyButtonRef}
-                type="button"
-              >
-                {copy.company}<span aria-hidden="true" className="company-menu__chevron">⌄</span>
-              </button>
-              {isCompanyOpen ? (
-                <div className="company-menu__panel-wrap">
-                  <div className="company-menu__panel" id="desktop-company-menu">
-                    {companyNavigation.map((item) => (
-                      <Link
-                        aria-current={isActive(item.href) ? "page" : undefined}
-                        href={item.href}
-                        key={item.href}
-                        onClick={() => setIsCompanyOpen(false)}
-                      >
-                        {item.label}
-                      </Link>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-            </div>
           </nav>
 
           <div className="site-header__actions">

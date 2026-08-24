@@ -180,20 +180,6 @@ select {
   scale: 1 1;
 }
 
-.company-menu { position: relative; display: flex; align-items: center; }
-.company-menu > button { position: relative; display: flex; align-items: center; gap: 0.4rem; min-height: 2.75rem; border: 0; padding-inline: 0; background: transparent; color: rgba(248, 246, 242, 0.78); font-size: 0.82rem; font-weight: 600; letter-spacing: 0.03em; cursor: pointer; }
-.company-menu > button::after { position: absolute; inset-block-end: .25rem; inset-inline: 0; height: 1px; background: var(--are-champagne); content: ""; scale: 0 1; transition: scale 240ms var(--are-ease); }
-.company-menu > button:hover,
-.company-menu > button:focus-visible,
-.company-menu > button.is-active { color: var(--are-white); }
-.company-menu > button.is-active::after { scale: 1 1; }
-.company-menu__chevron { font-size: .82rem; transition: rotate 180ms ease; }
-.company-menu > button[aria-expanded="true"] .company-menu__chevron { rotate: 180deg; }
-.company-menu__panel-wrap { position: absolute; z-index: 60; inset-block-start: 100%; inset-inline-end: -.75rem; width: 13rem; padding-block-start: .45rem; }
-.company-menu__panel { display: grid; overflow: hidden; border: 1px solid rgba(255,255,255,.14); border-radius: .85rem; background: rgba(23,17,14,.98); box-shadow: 0 18px 50px rgba(0,0,0,.32); }
-.company-menu__panel a { padding: .95rem 1rem; }
-.company-menu__panel a + a { border-block-start: 1px solid rgba(255,255,255,.1); }
-
 .site-header__actions {
   display: flex;
   align-items: center;
