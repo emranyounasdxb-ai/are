@@ -112,9 +112,9 @@ Development, design, content preparation and testing will be completed in contro
 
 This project and its contents are intended for ALIYAS Real Estate. All brand assets, content, designs and source code are subject to the company’s ownership and usage policies.
 
-## Local Frontend Development
+## Local Web and API Development
 
-The current frontend is a development-only technical scaffold. It does not contain the real homepage, Admin Dashboard, authentication, business data, or final ARE design system.
+The workspace contains the bilingual Public Web, the authenticated Admin CMS and the versioned FastAPI service. Public inventory remains empty until approved records are published through the Admin application.
 
 ### Prerequisites
 
@@ -133,11 +133,23 @@ Run `npm run dev:public`, then use `http://127.0.0.1:50001`.
 
 Run `npm run dev:admin`, then use `http://127.0.0.1:50002`.
 
+### Run the local data and API stack
+
+Copy `.env.example` to the ignored `.env` file and provide a strong local PostgreSQL password and matching SQLAlchemy URL. Run `npm run db:migrate`, then `npm run dev:api`. The API health endpoint is `http://127.0.0.1:50003/health`.
+
+Create the first owner-controlled Super Admin interactively with `npm run admin:create-super-user`. The command prompts for the email, display name and password without writing the password to the repository.
+
+Seed the three approved bilingual insights idempotently with `npm run content:seed-insights`.
+
 ### Validate the workspace
 
 * `npm run lint`
 * `npm run typecheck`
 * `npm run build`
+* `npm run backend:format`
+* `npm run backend:lint`
+* `npm run backend:typecheck`
+* `npm run backend:test`
 
 Port `3000` belongs to another protected local project. ARE commands must never bind, stop, restart, or otherwise interfere with port `3000`.
 

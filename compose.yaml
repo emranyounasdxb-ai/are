@@ -1,0 +1,53 @@
+name: are-local
+
+services:
+  postgres:
+    image: postgres:18.1-alpine
+    environment:
+      POSTGRES_DB: ${ARE_POSTGRES_DB:?Set ARE_POSTGRES_DB}
+      POSTGRES_PASSWORD: ${ARE_POSTGRES_PASSWORD:?Set ARE_POSTGRES_PASSWORD}
+      POSTGRES_USER: ${ARE_POSTGRES_USER:?Set ARE_POSTGRES_USER}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    ports:
+      - "127.0.0.1:50004:5432"
+    volumes:
+      - are-postgres-data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:8.4.0-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    ports:
+      - "127.0.0.1:50005:6379"
+
+  api:
+    build:
+      context: ./services/api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      PYTHONPATH: /app
+      ARE_CORS_ORIGINS: ${ARE_CORS_ORIGINS:-http://127.0.0.1:50001,http://127.0.0.1:50002}
+      ARE_DATABASE_URL: ${ARE_DATABASE_URL:?Set ARE_DATABASE_URL}
+      ARE_ENVIRONMENT: ${ARE_ENVIRONMENT:-local}
+      ARE_REDIS_URL: ${ARE_REDIS_URL:-redis://redis:6379/0}
+      ARE_SESSION_COOKIE_SECURE: ${ARE_SESSION_COOKIE_SECURE:-false}
+    ports:
+      - "127.0.0.1:50003:8000"
+    volumes:
+      - ./services/api:/app
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+volumes:
+  are-postgres-data:

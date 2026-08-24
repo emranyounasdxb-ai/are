@@ -1,0 +1,24 @@
+import type { InsightArticle } from "./insights-data";
+import type { Locale } from "./home-copy";
+
+const API_URL = process.env.ARE_API_URL ?? process.env.NEXT_PUBLIC_ARE_API_URL ?? "http://127.0.0.1:50003/api/v1";
+export type PublicProperty = { id:string;slug:string;purpose:string;property_type:string;emirate:string;community:string;developer:string|null;bedrooms:number|null;bathrooms:number|null;area:string|null;area_unit:string|null;price:string|null;price_on_request:boolean;currency:string;featured:boolean;published_at:string|null;title:string;description:string };
+export type PublicJob = { id:string;slug:string;department:string;location:string;employment_type:string;closing_date:string|null;status:string;title:string;description:string;responsibilities:string[];requirements:string[];benefits:string[] };
+type PublicInsight = { id:string;slug:string;category:InsightArticle["category"];published_at:string|null;updated_at:string;source_links:InsightArticle["sources"];body:InsightArticle["content"][Locale] };
+type Page<T> = { items:T[]; meta:{total:number} };
+
+async function get<T>(path:string):Promise<T|null>{
+  try { const response=await fetch(`${API_URL}${path}`,{cache:"no-store",signal:AbortSignal.timeout(3500)}); return response.ok ? response.json() as Promise<T> : null; } catch { return null; }
+}
+export async function getProperties(locale:Locale,query=""){ return (await get<Page<PublicProperty>>(`/public/properties?locale=${locale}&page_size=100${query}`))?.items ?? []; }
+export async function getProperty(locale:Locale,slug:string){ return get<PublicProperty>(`/public/properties/${encodeURIComponent(slug)}?locale=${locale}`); }
+export async function getJobs(locale:Locale){ return (await get<Page<PublicJob>>(`/public/jobs?locale=${locale}`))?.items ?? []; }
+export async function getJob(locale:Locale,slug:string){ return get<PublicJob>(`/public/jobs/${encodeURIComponent(slug)}?locale=${locale}`); }
+export async function getInsights(locale:Locale){
+  const items=(await get<Page<PublicInsight>>(`/public/insights?locale=${locale}&page_size=100`))?.items ?? [];
+  return items.map((item):InsightArticle=>({slug:item.slug,category:item.category,published:item.published_at?.slice(0,10)??item.updated_at.slice(0,10),updated:item.updated_at.slice(0,10),sources:item.source_links,content:{en:item.body,ar:item.body}}));
+}
+export async function getInsight(locale:Locale,slug:string){
+  const item=await get<PublicInsight>(`/public/insights/${encodeURIComponent(slug)}?locale=${locale}`);
+  return item ? ({slug:item.slug,category:item.category,published:item.published_at?.slice(0,10)??item.updated_at.slice(0,10),updated:item.updated_at.slice(0,10),sources:item.source_links,content:{en:item.body,ar:item.body}} satisfies InsightArticle) : null;
+}

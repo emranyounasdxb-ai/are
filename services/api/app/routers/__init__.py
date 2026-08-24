@@ -1,0 +1,1 @@
+"""ARE API route modules."""
