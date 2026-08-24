@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import shutil
 import uuid
-from collections.abc import AsyncIterator, Callable, Coroutine
+from collections.abc import AsyncIterator, Callable, Coroutine, Iterator
 from typing import Any
 
 import pytest
@@ -9,7 +10,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import delete, select
 from sqlalchemy.orm import selectinload
 
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.db import SessionLocal
 from app.main import app
 from app.models import (
@@ -27,8 +28,20 @@ from app.security import hash_password
 from app.storage import PrivateStorage
 
 
+@pytest.fixture(scope="session")
+def test_settings(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Settings]:
+    storage_path = tmp_path_factory.mktemp("private-storage")
+    settings = get_settings().model_copy(update={"private_storage_path": str(storage_path)})
+    app.dependency_overrides[get_settings] = lambda: settings
+    try:
+        yield settings
+    finally:
+        app.dependency_overrides.pop(get_settings, None)
+        shutil.rmtree(storage_path)
+
+
 @pytest.fixture(autouse=True)
-async def clean_disposable_records() -> AsyncIterator[None]:
+async def clean_disposable_records(test_settings: Settings) -> AsyncIterator[None]:
     yield
     async with SessionLocal() as db:
         applications = (
@@ -38,7 +51,7 @@ async def clean_disposable_records() -> AsyncIterator[None]:
                 .options(selectinload(CareerApplication.file))
             )
         ).all()
-        storage = PrivateStorage(get_settings())
+        storage = PrivateStorage(test_settings)
         for application in applications:
             if application.file:
                 storage.delete(application.file.storage_key)
