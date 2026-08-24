@@ -1,23 +1,43 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Plus } from "lucide-react";
+import { ExternalLink, Plus, Search, Star } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
-import { api, type PageResponse, type ResourceRecord } from "../lib/api";
+import { api, PUBLIC_WEB_URL, type PageResponse, type ResourceRecord } from "../lib/api";
 
-const emirates = ["Dubai", "Abu Dhabi", "Ras Al Khaimah"];
+const emirates = ["Abu Dhabi", "Ajman", "Dubai", "Fujairah", "Ras Al Khaimah", "Sharjah", "Umm Al Quwain"];
 
 export function DeveloperList() {
-  const [search, setSearch] = useState(""); const [status, setStatus] = useState("");
-  const [emirate, setEmirate] = useState(""); const [featured, setFeatured] = useState("");
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState("");
+  const [emirate, setEmirate] = useState("");
+  const [featured, setFeatured] = useState("");
   const params = new URLSearchParams({ page_size: "100" });
-  if (search) params.set("search", search); if (status) params.set("status", status);
-  if (emirate) params.set("emirate", emirate); if (featured) params.set("featured", featured);
+  if (search) params.set("search", search);
+  if (status) params.set("status", status);
+  if (emirate) params.set("emirate", emirate);
+  if (featured) params.set("featured", featured);
   const query = useQuery({ queryKey: ["developers", search, status, emirate, featured], queryFn: () => api<PageResponse<ResourceRecord>>(`/admin/developers?${params}`) });
-  return <section><div className="page-heading"><div><p className="eyebrow">Canonical data</p><h1>Developers</h1><p>{query.data?.meta.total ?? 0} database records</p></div><Link className="primary-button" href="/developers/new"><Plus aria-hidden size={17}/>New developer</Link></div>
-    <div className="toolbar"><label>Search<input onChange={(event) => setSearch(event.target.value)} placeholder="Name or slug" type="search" value={search}/></label><label>Status<select onChange={(event) => setStatus(event.target.value)} value={status}><option value="">All statuses</option>{["draft", "published", "archived"].map((item) => <option key={item}>{item}</option>)}</select></label><label>Primary emirate<select onChange={(event) => setEmirate(event.target.value)} value={emirate}><option value="">All emirates</option>{emirates.map((item) => <option key={item}>{item}</option>)}</select></label><label>Featured<select onChange={(event) => setFeatured(event.target.value)} value={featured}><option value="">All</option><option value="true">Featured</option><option value="false">Not featured</option></select></label></div>
-    {query.isLoading ? <div className="panel-state">Loading developers…</div> : query.error ? <div className="panel-state form-error" role="alert">{query.error.message}</div> : !query.data?.items.length ? <div className="panel-state"><h2>No developers found</h2><p>Adjust the filters or create an approved developer record.</p></div> : <div className="table-wrap"><table><thead><tr><th>Name</th><th>Primary emirate</th><th>Status</th><th>Featured</th><th>Updated</th><th/></tr></thead><tbody>{query.data.items.map((item) => { const translations = item.translations as Record<string, Record<string, unknown>>; return <tr key={item.id}><td><strong>{String(translations.en?.name ?? item.slug)}</strong><br/><small>{String(item.slug)}</small></td><td>{String(item.primary_emirate)}</td><td><span className="status-chip">{String(item.status)}</span></td><td>{item.featured ? "Yes" : "No"}</td><td>{item.updated_at ? new Date(item.updated_at).toLocaleString() : "—"}</td><td><Link className="table-link" href={`/developers/${item.id}`}>Edit</Link></td></tr>; })}</tbody></table></div>}
+  const countsQuery = useQuery({ queryKey: ["developer-counts"], queryFn: () => api<PageResponse<ResourceRecord>>("/admin/developers?page_size=100") });
+  const counts = { published: 0, draft: 0, archived: 0 };
+  countsQuery.data?.items.forEach((item) => { const key = item.status as keyof typeof counts; if (key in counts) counts[key] += 1; });
+  const filtered = Boolean(search || status || emirate || featured);
+
+  return <section className="developer-list-page">
+    <header className="developer-list-header"><div><p className="eyebrow">Canonical data</p><h1>Developers</h1><p>Manage verified bilingual developer records and publication state.</p></div><Link className="primary-button" href="/developers/new"><Plus aria-hidden size={17}/>Add Developer</Link></header>
+    <div className="developer-counts" aria-label="Developer publication counts"><div><strong>{countsQuery.isLoading ? "—" : counts.published}</strong><span>Published</span></div><div><strong>{countsQuery.isLoading ? "—" : counts.draft}</strong><span>Draft</span></div><div><strong>{countsQuery.isLoading ? "—" : counts.archived}</strong><span>Archived</span></div></div>
+    <div className="developer-toolbar">
+      <label className="search-control"><span>Search</span><div><Search aria-hidden size={16}/><input onChange={(event) => setSearch(event.target.value)} placeholder="Name or slug" type="search" value={search}/></div></label>
+      <label><span>Status</span><select onChange={(event) => setStatus(event.target.value)} value={status}><option value="">All statuses</option>{["draft", "published", "archived"].map((item) => <option key={item}>{item}</option>)}</select></label>
+      <label><span>Primary emirate</span><select onChange={(event) => setEmirate(event.target.value)} value={emirate}><option value="">All emirates</option>{emirates.map((item) => <option key={item}>{item}</option>)}</select></label>
+      <label><span>Featured</span><select onChange={(event) => setFeatured(event.target.value)} value={featured}><option value="">All records</option><option value="true">Featured</option><option value="false">Not featured</option></select></label>
+    </div>
+    {query.isLoading ? <div className="panel-state">Loading developers…</div> : query.error ? <div className="panel-state form-error" role="alert">{query.error.message}</div> : !query.data?.items.length ? <div className="panel-state"><h2>{filtered ? "No developers match these filters" : "No developers yet"}</h2><p>{filtered ? "Adjust or clear the filters to see other records." : "Create a verified developer record when approved data is available."}</p>{filtered ? <button className="clear-filter-button" onClick={() => { setSearch(""); setStatus(""); setEmirate(""); setFeatured(""); }} type="button">Clear filters</button> : null}</div> : <div className="table-wrap developer-table"><table><thead><tr><th>Developer</th><th>Primary emirate</th><th>Verified</th><th>Publication</th><th>Featured</th><th><span className="visually-hidden">Actions</span></th></tr></thead><tbody>{query.data.items.map((item) => {
+      const translations = item.translations as Record<string, Record<string, unknown>>;
+      const itemStatus = String(item.status);
+      return <tr key={item.id}><td><strong>{String(translations.en?.name ?? item.slug)}</strong><code dir="ltr">{String(item.slug)}</code></td><td>{String(item.primary_emirate)}</td><td><time dateTime={String(item.verification_date)}>{String(item.verification_date)}</time></td><td><span className={`status-chip status-chip--${itemStatus}`}>{itemStatus}</span></td><td>{item.featured ? <span className="featured-indicator"><Star aria-hidden fill="currentColor" size={14}/>Featured</span> : <span className="muted-value">—</span>}</td><td><div className="row-actions"><Link className="table-link" href={`/developers/${item.id}`}>Edit</Link>{itemStatus === "published" ? <a className="table-link" href={`${PUBLIC_WEB_URL}/en/developers#${item.slug}`} rel="noreferrer" target="_blank">View website<ExternalLink aria-hidden size={14}/></a> : null}</div></td></tr>;
+    })}</tbody></table></div>}
   </section>;
 }
