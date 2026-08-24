@@ -52,7 +52,7 @@ export function InsightsExplorer({ articles, locale, updates }: Readonly<{
           return <article className="insight-card" key={article.slug}>
             <div><span>{content.categoryLabel}</span><time dateTime={article.updated}>{copy.updated}: {article.updated}</time></div>
             <h3>{content.title}</h3><p>{content.introduction}</p>
-            <Link href={`/${locale}/insights/${article.slug}`}>{copy.read}<span aria-hidden="true" className="directional-icon">↗</span></Link>
+            <Link href={`/${locale}/insights/${article.slug}`}>{copy.read}</Link>
           </article>;
         })}
         {visibleUpdates.map((update) => <article className="insight-card insight-card--news" key={update.id}>

@@ -35,7 +35,7 @@ export function DeveloperDirectory({ developers, locale }: Readonly<{ developers
           {developer.note ? <p><strong>{copy.note}:</strong> {developer.note[locale]}</p> : null}
           <div className="source-links"><a href={developer.officialWebsite} rel="noreferrer" target="_blank">{copy.website} ↗</a><a href={developer.governmentSourceUrl} rel="noreferrer" target="_blank">{copy.government} ↗</a></div>
         </div></details>
-        <Link className="button button--secondary" href={`/${locale}/contact?topic=developer&developer=${developer.slug}`}>{copy.enquire}<span aria-hidden="true" className="directional-icon">↗</span></Link>
+        <Link className="button button--secondary" href={`/${locale}/contact?topic=developer&developer=${developer.slug}`}>{copy.enquire}</Link>
         <span className="visually-hidden">{getDeveloperEnquiryLabel(developer.enquiryTypes[0], locale)}</span>
       </article>)}
     </div>

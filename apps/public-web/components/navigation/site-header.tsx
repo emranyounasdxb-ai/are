@@ -14,52 +14,62 @@ type SiteHeaderProps = Readonly<{
 
 export function SiteHeader({ copy, locale }: SiteHeaderProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [isExploreOpen, setIsExploreOpen] = useState(false);
-  const exploreButtonRef = useRef<HTMLButtonElement>(null);
-  const exploreRef = useRef<HTMLDivElement>(null);
+  const [isCompanyOpen, setIsCompanyOpen] = useState(false);
+  const companyButtonRef = useRef<HTMLButtonElement>(null);
+  const companyRef = useRef<HTMLDivElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const menuPanelRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
   const router = useRouter();
-  const navigation = [
+  const directNavigation = [
     { href: `/${locale}`, label: copy.home },
     { href: `/${locale}/properties`, label: copy.properties },
-    { href: `/${locale}/communities`, label: copy.communities },
     { href: `/${locale}/off-plan`, label: copy.offPlan },
-    { href: `/${locale}/about`, label: copy.about },
-  ];
-  const secondaryNavigation = [
+    { href: `/${locale}/communities`, label: copy.communities },
     { href: `/${locale}/developers`, label: copy.developers },
     { href: `/${locale}/insights`, label: copy.insights },
   ];
-  const mobileNavigation = [...navigation.slice(0, 4), ...secondaryNavigation, navigation[4]];
+  const companyNavigation = [
+    { href: `/${locale}/about`, label: copy.about },
+    { href: `/${locale}/careers`, label: copy.careers },
+  ];
+  const contactNavigationLabel = locale === "ar" ? "التواصل" : "Contact";
+  const mobileNavigation = [
+    ...directNavigation,
+    ...companyNavigation,
+    { href: `/${locale}/contact`, label: contactNavigationLabel },
+  ];
+
+  function isActive(href: string) {
+    return pathname === href || (href.endsWith("/insights") && pathname.startsWith(`${href}/`));
+  }
 
   useEffect(() => {
-    if (!isExploreOpen) {
+    if (!isCompanyOpen) {
       return;
     }
 
-    function handleExploreKeyDown(event: KeyboardEvent) {
+    function handleCompanyKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         event.preventDefault();
-        setIsExploreOpen(false);
-        exploreButtonRef.current?.focus();
+        setIsCompanyOpen(false);
+        companyButtonRef.current?.focus();
       }
     }
 
     function handleOutsidePointer(event: PointerEvent) {
-      if (!exploreRef.current?.contains(event.target as Node)) {
-        setIsExploreOpen(false);
+      if (!companyRef.current?.contains(event.target as Node)) {
+        setIsCompanyOpen(false);
       }
     }
 
-    document.addEventListener("keydown", handleExploreKeyDown);
+    document.addEventListener("keydown", handleCompanyKeyDown);
     document.addEventListener("pointerdown", handleOutsidePointer);
     return () => {
-      document.removeEventListener("keydown", handleExploreKeyDown);
+      document.removeEventListener("keydown", handleCompanyKeyDown);
       document.removeEventListener("pointerdown", handleOutsidePointer);
     };
-  }, [isExploreOpen]);
+  }, [isCompanyOpen]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -108,7 +118,7 @@ export function SiteHeader({ copy, locale }: SiteHeaderProps) {
     }
 
     function handleResize() {
-      if (window.innerWidth > 900) {
+      if (window.innerWidth >= 1200) {
         setIsOpen(false);
       }
     }
@@ -193,9 +203,9 @@ export function SiteHeader({ copy, locale }: SiteHeaderProps) {
           </Link>
 
           <nav aria-label={copy.navigation} className="desktop-navigation">
-            {navigation.map((item) => (
+            {directNavigation.map((item) => (
               <Link
-                aria-current={pathname === item.href ? "page" : undefined}
+                aria-current={isActive(item.href) ? "page" : undefined}
                 href={item.href}
                 key={item.href}
                 onClick={(event) => resetCurrentRoute(event, item.href)}
@@ -203,29 +213,43 @@ export function SiteHeader({ copy, locale }: SiteHeaderProps) {
                 {item.label}
               </Link>
             ))}
-            <div className="explore-menu" ref={exploreRef}>
+            <div className="company-menu" ref={companyRef}>
               <button
-                aria-controls="desktop-explore-menu"
-                aria-expanded={isExploreOpen}
-                className={secondaryNavigation.some((item) => pathname === item.href || pathname.startsWith(`${item.href}/`)) ? "is-active" : undefined}
-                onClick={() => setIsExploreOpen((open) => !open)}
-                ref={exploreButtonRef}
+                aria-controls="desktop-company-menu"
+                aria-expanded={isCompanyOpen}
+                aria-label={copy.companyMenuLabel}
+                className={companyNavigation.some((item) => isActive(item.href)) ? "is-active" : undefined}
+                onClick={() => setIsCompanyOpen((open) => !open)}
+                onKeyDown={(event) => {
+                  if (event.key === "Tab" && !event.shiftKey && isCompanyOpen) {
+                    event.preventDefault();
+                    companyRef.current?.querySelector<HTMLAnchorElement>("a")?.focus();
+                    return;
+                  }
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    setIsCompanyOpen((open) => !open);
+                  }
+                }}
+                ref={companyButtonRef}
                 type="button"
               >
-                {copy.explore}<span aria-hidden="true">⌄</span>
+                {copy.company}<span aria-hidden="true" className="company-menu__chevron">⌄</span>
               </button>
-              {isExploreOpen ? (
-                <div className="explore-menu__panel" id="desktop-explore-menu">
-                  {secondaryNavigation.map((item) => (
-                    <Link
-                      aria-current={pathname === item.href || pathname.startsWith(`${item.href}/`) ? "page" : undefined}
-                      href={item.href}
-                      key={item.href}
-                      onClick={() => setIsExploreOpen(false)}
-                    >
-                      {item.label}<span aria-hidden="true">↗</span>
-                    </Link>
-                  ))}
+              {isCompanyOpen ? (
+                <div className="company-menu__panel-wrap">
+                  <div className="company-menu__panel" id="desktop-company-menu">
+                    {companyNavigation.map((item) => (
+                      <Link
+                        aria-current={isActive(item.href) ? "page" : undefined}
+                        href={item.href}
+                        key={item.href}
+                        onClick={() => setIsCompanyOpen(false)}
+                      >
+                        {item.label}
+                      </Link>
+                    ))}
+                  </div>
                 </div>
               ) : null}
             </div>
@@ -299,7 +323,7 @@ export function SiteHeader({ copy, locale }: SiteHeaderProps) {
             <nav aria-label={copy.navigation}>
               {mobileNavigation.map((item, index) => (
                 <Link
-                  aria-current={pathname === item.href || (item.href.endsWith("/insights") && pathname.startsWith(`${item.href}/`)) ? "page" : undefined}
+                  aria-current={isActive(item.href) ? "page" : undefined}
                   href={item.href}
                   key={item.href}
                   onClick={(event) => {
@@ -339,9 +363,6 @@ export function SiteHeader({ copy, locale }: SiteHeaderProps) {
                   العربية
                 </Link>
               </nav>
-              <Link href={`/${locale}/contact`} onClick={closeMenu}>
-                {copy.contact}
-              </Link>
             </div>
           </div>
         </div>

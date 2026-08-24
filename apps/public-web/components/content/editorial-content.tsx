@@ -91,7 +91,7 @@ export function RelatedPages({
       <div className="related-grid">
         {items.map((item) => (
           <Link href={item.href} key={item.href}>
-            <span>{item.label}</span><p>{item.text}</p><b aria-hidden="true">↗</b>
+            <span>{item.label}</span><p>{item.text}</p>
           </Link>
         ))}
       </div>
@@ -109,7 +109,7 @@ export function FinalCta({
   return (
     <section aria-labelledby="closing-title" className="closing-cta">
       <div><p>ARE / {locale === "ar" ? "الخطوة التالية" : "NEXT STEP"}</p><h2 id="closing-title">{heading}</h2><span>{text}</span></div>
-      <Link className="button button--primary" href={href}>{action}<span aria-hidden="true" className="directional-icon">↗</span></Link>
+      <Link className="button button--primary" href={href}>{action}</Link>
     </section>
   );
 }

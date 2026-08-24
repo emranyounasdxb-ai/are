@@ -6,11 +6,13 @@ export type Purpose = "buy" | "rent" | "off-plan";
 export type HeaderCopy = Readonly<{
   about: string;
   activeLanguage: string;
+  careers: string;
   closeMenu: string;
+  company: string;
+  companyMenuLabel: string;
   communities: string;
   contact: string;
   developers: string;
-  explore: string;
   home: string;
   insights: string;
   language: string;
@@ -91,11 +93,13 @@ export const homeCopy: Readonly<Record<Locale, HomeCopy>> = {
     header: {
       about: "About",
       activeLanguage: "English",
+      careers: "Careers",
       closeMenu: "Close navigation menu",
+      company: "Company",
+      companyMenuLabel: "Open Company navigation",
       communities: "Communities",
       contact: "Enquire",
       developers: "Developers",
-      explore: "Explore",
       home: "Home",
       insights: "Insights",
       language: "Language",
@@ -191,11 +195,13 @@ export const homeCopy: Readonly<Record<Locale, HomeCopy>> = {
     header: {
       about: "من نحن",
       activeLanguage: "العربية",
+      careers: "الوظائف",
       closeMenu: "إغلاق قائمة التنقل",
+      company: "الشركة",
+      companyMenuLabel: "فتح قائمة الشركة",
       communities: "المجتمعات",
       contact: "استفسر",
       developers: "المطورون",
-      explore: "استكشف",
       home: "الرئيسية",
       insights: "الرؤى",
       language: "اللغة",
@@ -203,7 +209,7 @@ export const homeCopy: Readonly<Record<Locale, HomeCopy>> = {
       menuDescription: "معاينة عربية للصفحة الرئيسية مع تجربة إنجليزية مكافئة.",
       navigation: "التنقل الرئيسي",
       openMenu: "فتح قائمة التنقل",
-      offPlan: "على المخطط",
+      offPlan: "المشاريع على المخطط",
       properties: "العقارات",
       skipLink: "الانتقال إلى المحتوى الرئيسي",
       startDiscovering: "ابدأ الاستكشاف",

@@ -10,16 +10,27 @@ export function SiteFooter({ copy, locale }: Readonly<{ copy: HeaderCopy; locale
   const pathname = usePathname();
   const router = useRouter();
   const common = siteCopy[locale].common;
-  const navigation = [
-    { href: `/${locale}`, label: copy.home },
-    { href: `/${locale}/properties`, label: copy.properties },
-    { href: `/${locale}/communities`, label: copy.communities },
-    { href: `/${locale}/off-plan`, label: copy.offPlan },
-    { href: `/${locale}/developers`, label: copy.developers },
-    { href: `/${locale}/insights`, label: copy.insights },
-    { href: `/${locale}/about`, label: copy.about },
-    { href: `/${locale}/contact`, label: copy.contact },
+  const contactNavigationLabel = locale === "ar" ? "التواصل" : "Contact";
+  const groups = [
+    { heading: locale === "ar" ? "اكتشف" : "Discover", links: [
+      { href: `/${locale}/properties`, label: copy.properties },
+      { href: `/${locale}/off-plan`, label: copy.offPlan },
+      { href: `/${locale}/communities`, label: copy.communities },
+      { href: `/${locale}/developers`, label: copy.developers },
+    ] },
+    { heading: locale === "ar" ? "المصادر" : "Resources", links: [
+      { href: `/${locale}/insights`, label: copy.insights },
+    ] },
+    { heading: locale === "ar" ? "الشركة" : "Company", links: [
+      { href: `/${locale}/about`, label: copy.about },
+      { href: `/${locale}/careers`, label: copy.careers },
+      { href: `/${locale}/contact`, label: contactNavigationLabel },
+    ] },
   ];
+
+  function isActive(href: string) {
+    return pathname === href || (href.endsWith("/insights") && pathname.startsWith(`${href}/`));
+  }
 
   function switchLocale(nextLocale: Locale) {
     const segments = pathname.split("/").filter(Boolean);
@@ -64,18 +75,12 @@ export function SiteFooter({ copy, locale }: Readonly<{ copy: HeaderCopy; locale
           <p>{common.footerLabel}</p>
           <small>{common.footerDescription}</small>
         </div>
-        <nav aria-label={common.footerNavigation} className="site-footer__navigation">
-          {navigation.map((item) => (
-            <Link
-              aria-current={pathname === item.href || (item.href.endsWith("/insights") && pathname.startsWith(`${item.href}/`)) ? "page" : undefined}
-              href={item.href}
-              key={item.href}
-              onClick={(event) => resetCurrentRoute(event, item.href)}
-            >
-              {item.label}
-            </Link>
-          ))}
-        </nav>
+        <div aria-label={common.footerNavigation} className="site-footer__groups" role="group">
+          {groups.map((group) => <nav aria-label={group.heading} className="site-footer__navigation" key={group.heading}>
+            <strong>{group.heading}</strong>
+            {group.links.map((item) => <Link aria-current={isActive(item.href) ? "page" : undefined} href={item.href} key={item.href} onClick={(event) => resetCurrentRoute(event, item.href)}>{item.label}</Link>)}
+          </nav>)}
+        </div>
         <nav aria-label={common.language} className="site-footer__languages">
           <Link
             aria-current={locale === "en" ? "page" : undefined}

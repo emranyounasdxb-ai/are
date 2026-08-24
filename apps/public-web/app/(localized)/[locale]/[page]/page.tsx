@@ -226,7 +226,7 @@ function CommunitiesContent({ locale }: Readonly<{ locale: Locale }>) {
       </div>
       <div className="inner-actions">
         <Link className="button button--primary" href={`/${locale}/properties`}>{copy.discoveryAction}</Link>
-        <Link className="text-link" href={`/${locale}/contact`}>{copy.enquiryAction} <span aria-hidden="true" className="directional-icon">↗</span></Link>
+        <Link className="text-link" href={`/${locale}/contact`}>{copy.enquiryAction}</Link>
       </div>
     </section>
   );
@@ -251,7 +251,7 @@ function OffPlanContent({ locale }: Readonly<{ locale: Locale }>) {
       </ol>
       <div className="inner-actions">
         <Link className="button button--primary" href={`/${locale}/contact`}>{copy.enquiryAction}</Link>
-        <Link className="text-link" href={`/${locale}/properties`}>{copy.searchAction} <span aria-hidden="true" className="directional-icon">↗</span></Link>
+        <Link className="text-link" href={`/${locale}/properties`}>{copy.searchAction}</Link>
       </div>
     </section>
   );

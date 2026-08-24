@@ -83,9 +83,6 @@ function LocalizedHome({ locale, initialPurpose }: { locale: Locale; initialPurp
                 <div className="hero-actions">
                   <Link className="button button--primary" href={`/${locale}/properties`}>
                     {copy.hero.primaryAction}
-                    <span aria-hidden="true" className="directional-icon">
-                      ↗
-                    </span>
                   </Link>
                   <Link className="button button--secondary" href={`/${locale}/about`}>
                     {copy.hero.secondaryAction}
@@ -180,9 +177,6 @@ function LocalizedHome({ locale, initialPurpose }: { locale: Locale; initialPurp
                     }
                   >
                     {card.linkLabel}
-                    <span aria-hidden="true" className="directional-icon">
-                      ↗
-                    </span>
                   </Link>
                 </div>
               </article>
