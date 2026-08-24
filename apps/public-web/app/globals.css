@@ -1756,7 +1756,11 @@ html[dir="rtl"] .criteria-summary > p:first-child {
 
 .closing-cta {
   display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end;
-  margin-block-end: clamp(5rem, 9vw, 9rem); border-radius: 0.5rem 3rem 0.5rem 3rem;
+  margin-block-end: clamp(5rem, 9vw, 9rem);
+  border-start-start-radius: var(--are-section-corner-radius-minimal);
+  border-start-end-radius: var(--are-section-corner-radius-large);
+  border-end-start-radius: var(--are-section-corner-radius-large);
+  border-end-end-radius: var(--are-section-corner-radius-minimal);
   padding: clamp(2.5rem, 7vw, 6rem); background: var(--are-espresso); color: var(--are-ivory); gap: 3rem;
 }
 .closing-cta p { margin: 0 0 1rem; color: var(--are-champagne); font-size: 0.72rem; font-weight: 760; letter-spacing: 0.14em; }
@@ -2379,7 +2383,7 @@ html[dir="rtl"] .featured-insight p { letter-spacing: normal; text-transform: no
   .process-list li { grid-template-columns: 2.5rem 1fr; gap: 0.8rem; }
   .related-grid { grid-template-columns: 1fr; }
   .related-grid a { min-height: 12rem; }
-  .closing-cta { margin-block-end: 4rem; border-radius: 0.5rem 2rem; padding: 2rem 1.5rem; }
+  .closing-cta { margin-block-end: 4rem; padding: 2rem 1.5rem; }
   .faq-list summary { min-height: 4.7rem; }
   .careers-hero { min-height: auto; padding-block: calc(var(--are-header-height) + 4rem) 4rem; }
   .careers-hero__copy h1 { font-size: clamp(3.2rem, 15vw, 5rem); }
@@ -2427,6 +2431,8 @@ html[dir="rtl"] .featured-insight p { letter-spacing: normal; text-transform: no
   --are-surface-inset-block: clamp(1.75rem, 4vw, 4rem);
   --are-section-separation: clamp(1rem, 2.6vw, 1.5rem);
   --are-content-stack-gap: clamp(1rem, 2vw, 2rem);
+  --are-section-corner-radius-large: 3rem;
+  --are-section-corner-radius-minimal: 0.5rem;
 }
 
 .discovery-section,
@@ -2447,6 +2453,11 @@ html[dir="rtl"] .featured-insight p { letter-spacing: normal; text-transform: no
 
 .content-section.content-section--faq {
   padding-block: var(--are-surface-inset-block);
+  overflow: clip;
+  border-start-start-radius: var(--are-section-corner-radius-large);
+  border-start-end-radius: var(--are-section-corner-radius-minimal);
+  border-end-start-radius: var(--are-section-corner-radius-minimal);
+  border-end-end-radius: var(--are-section-corner-radius-large);
 }
 
 .property-workbench__search,
@@ -2514,6 +2525,10 @@ main > article + .content-section {
 }
 
 @media (max-width: 680px) {
+  :root {
+    --are-section-corner-radius-large: 2rem;
+  }
+
   .faq-list details > p {
     padding-inline-end: 1.5rem;
   }
