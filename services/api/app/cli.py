@@ -49,7 +49,7 @@ def create_super_admin() -> None:
 
 
 async def _seed_insights(path: Path) -> None:
-    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload = json.loads(await asyncio.to_thread(path.read_text, encoding="utf-8"))
     async with SessionLocal() as db:
         for item in payload:
             record = await db.scalar(
