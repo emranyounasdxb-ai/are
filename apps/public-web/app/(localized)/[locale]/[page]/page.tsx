@@ -3,11 +3,21 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { ContactPreviewForm } from "../../../../components/forms/contact-preview-form";
+import {
+  Breadcrumbs,
+  Checklist,
+  EditorialCards,
+  FaqSection,
+  FinalCta,
+  ProcessList,
+  RelatedPages,
+} from "../../../../components/content/editorial-content";
 import { SiteFooter } from "../../../../components/navigation/site-footer";
 import { SiteHeader } from "../../../../components/navigation/site-header";
 import { DiscoverySearch } from "../../../../components/search/discovery-search";
 import { homeCopy, isLocale, locales, type Locale, type Purpose } from "../../../../lib/home-copy";
 import { isPageSlug, pageSlugs, siteCopy, type PageSlug } from "../../../../lib/site-copy";
+import { richCopy } from "../../../../lib/rich-copy";
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
@@ -34,14 +44,6 @@ export async function generateMetadata({ params }: InnerPageProps): Promise<Meta
   return {
     title: copy.metaTitle,
     description: copy.metaDescription,
-    alternates: {
-      canonical: `/${locale}/${page}`,
-      languages: {
-        en: `/en/${page}`,
-        ar: `/ar/${page}`,
-        "x-default": `/en/${page}`,
-      },
-    },
   };
 }
 
@@ -72,6 +74,13 @@ function LocalizedInnerPage({
           <div className="inner-hero__orbit" aria-hidden="true" />
           <div className="inner-hero__grid">
             <div className="inner-hero__copy">
+              <Breadcrumbs
+                items={[
+                  { href: `/${locale}`, label: richCopy[locale].homeLabel },
+                  { label: copy.title },
+                ]}
+                label={richCopy[locale].breadcrumb}
+              />
               <p>{copy.eyebrow}</p>
               <h1 id="page-title">{copy.title}</h1>
               <span>{copy.description}</span>
@@ -85,9 +94,42 @@ function LocalizedInnerPage({
           </div>
         </section>
         {renderPageContent(locale, page, query)}
+        <PageEditorial locale={locale} page={page} />
       </main>
       <SiteFooter copy={home.header} locale={locale} />
     </div>
+  );
+}
+
+function PageEditorial({ locale, page }: Readonly<{ locale: Locale; page: PageSlug }>) {
+  const copy = richCopy[locale].pages[page];
+
+  return (
+    <>
+      <section aria-labelledby="editorial-intro-title" className="content-section content-section--intro">
+        <div className="content-heading"><p>{copy.intro.eyebrow}</p><h2 id="editorial-intro-title">{copy.intro.title}</h2></div>
+        <p className="content-lead">{copy.intro.text}</p>
+      </section>
+      {copy.sections.map((section, index) => (
+        <section
+          aria-labelledby={`editorial-section-${index}`}
+          className={`content-section ${index % 2 === 0 ? "content-section--dark" : ""}`}
+          key={section.title}
+        >
+          <div className="content-heading"><p>{section.eyebrow}</p><h2 id={`editorial-section-${index}`}>{section.title}</h2><span>{section.text}</span></div>
+          {index === copy.sections.length - 1 && section.items.length >= 4
+            ? <ProcessList items={section.items} />
+            : <EditorialCards items={section.items} />}
+        </section>
+      ))}
+      <section aria-labelledby="page-checklist-title" className="content-section content-section--split">
+        <div className="content-heading"><p>{copy.checklist.eyebrow}</p><h2 id="page-checklist-title">{copy.checklist.title}</h2><span>{copy.checklist.text}</span></div>
+        <Checklist items={copy.checklist.items} />
+      </section>
+      <FaqSection eyebrow={copy.faq.eyebrow} heading={copy.faq.title} items={copy.faq.items} />
+      <RelatedPages heading={copy.related.title} items={copy.related.items} />
+      <FinalCta action={copy.cta.action} heading={copy.cta.title} href={copy.cta.href} locale={locale} text={copy.cta.text} />
+    </>
   );
 }
 

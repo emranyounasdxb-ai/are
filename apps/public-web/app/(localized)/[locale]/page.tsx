@@ -3,10 +3,19 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { Reveal } from "../../../components/motion/reveal";
+import {
+  Breadcrumbs,
+  Checklist,
+  EditorialCards,
+  FaqSection,
+  FinalCta,
+  RelatedPages,
+} from "../../../components/content/editorial-content";
 import { SiteFooter } from "../../../components/navigation/site-footer";
 import { SiteHeader } from "../../../components/navigation/site-header";
 import { DiscoverySearch } from "../../../components/search/discovery-search";
 import { homeCopy, isLocale, isPurpose, type Locale } from "../../../lib/home-copy";
+import { richCopy } from "../../../lib/rich-copy";
 
 type HomePageProps = Readonly<{
   params: Promise<{ locale: string }>;
@@ -25,14 +34,6 @@ export async function generateMetadata({ params }: HomePageProps): Promise<Metad
   return {
     title: copy.meta.title,
     description: copy.meta.description,
-    alternates: {
-      canonical: `/${locale}`,
-      languages: {
-        en: "/en",
-        ar: "/ar",
-        "x-default": "/en",
-      },
-    },
   };
 }
 
@@ -51,6 +52,7 @@ export default async function HomePage({ params, searchParams }: HomePageProps) 
 
 function LocalizedHome({ locale, initialPurpose }: { locale: Locale; initialPurpose: "buy" | "rent" | "off-plan" }) {
   const copy = homeCopy[locale];
+  const editorial = richCopy[locale].home;
 
   return (
     <div id="top">
@@ -62,6 +64,7 @@ function LocalizedHome({ locale, initialPurpose }: { locale: Locale; initialPurp
           <div className="hero-orbit hero-orbit--two" aria-hidden="true" />
 
           <div className="hero-shell">
+            <Breadcrumbs items={[{ label: richCopy[locale].homeLabel }]} label={richCopy[locale].breadcrumb} />
             <div className="hero-grid">
               <div className="hero-copy">
                 <Reveal className="hero-eyebrow" delay={0.04} distance={10}>
@@ -186,6 +189,42 @@ function LocalizedHome({ locale, initialPurpose }: { locale: Locale; initialPurp
             ))}
           </div>
         </section>
+
+        <section aria-labelledby="home-intro-title" className="content-section content-section--intro">
+          <div className="content-heading">
+            <p>{editorial.intro.eyebrow}</p>
+            <h2 id="home-intro-title">{editorial.intro.title}</h2>
+          </div>
+          <p className="content-lead">{editorial.intro.text}</p>
+        </section>
+
+        <section aria-label={locale === "ar" ? "مسارات مميزة" : "Featured pathways"} className="feature-pathways">
+          <Link href={`/${locale}/communities`}>
+            <span>{locale === "ar" ? "دليل المجتمعات" : "COMMUNITY FEATURE"}</span>
+            <h2>{locale === "ar" ? "ابدأ بالمكان الذي يدعم يومك." : "Begin with the place that supports your day."}</h2>
+            <p>{locale === "ar" ? "قارن طابع المكان والروتين وسهولة الوصول قبل اختيار نوع المسكن." : "Compare character, routine and connection before narrowing the home type."}</p>
+          </Link>
+          <Link href={`/${locale}/off-plan`}>
+            <span>{locale === "ar" ? "دليل على المخطط" : "OFF-PLAN GUIDE"}</span>
+            <h2>{locale === "ar" ? "افهم المسار قبل مقارنة الفرص." : "Understand the pathway before comparing opportunities."}</h2>
+            <p>{locale === "ar" ? "تعرّف إلى الأسئلة العامة عن الوثائق والمراحل والعناية الواجبة." : "Learn the general questions behind documents, milestones and due diligence."}</p>
+          </Link>
+        </section>
+
+        {editorial.sections.map((section, index) => (
+          <section aria-labelledby={`home-section-${index}`} className={`content-section ${index % 2 === 0 ? "content-section--dark" : ""}`} key={section.title}>
+            <div className="content-heading"><p>{section.eyebrow}</p><h2 id={`home-section-${index}`}>{section.title}</h2><span>{section.text}</span></div>
+            <EditorialCards items={section.items} />
+          </section>
+        ))}
+
+        <section aria-labelledby="home-checklist-title" className="content-section content-section--split">
+          <div className="content-heading"><p>{editorial.checklist.eyebrow}</p><h2 id="home-checklist-title">{editorial.checklist.title}</h2><span>{editorial.checklist.text}</span></div>
+          <Checklist items={editorial.checklist.items} />
+        </section>
+        <FaqSection eyebrow={editorial.faq.eyebrow} heading={editorial.faq.title} items={editorial.faq.items} />
+        <RelatedPages heading={editorial.related.title} items={editorial.related.items} />
+        <FinalCta action={editorial.cta.action} heading={editorial.cta.title} href={editorial.cta.href} locale={locale} text={editorial.cta.text} />
       </main>
       <SiteFooter copy={copy.header} locale={locale} />
     </div>

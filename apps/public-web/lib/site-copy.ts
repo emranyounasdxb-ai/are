@@ -47,6 +47,8 @@ type SiteCopy = Readonly<{
   contact: Readonly<{
     emailLabel: string;
     emailPlaceholder: string;
+    enquiryTypeLabel: string;
+    enquiryTypes: ReadonlyArray<Readonly<{ label: string; value: string }>>;
     intro: string;
     messageLabel: string;
     messagePlaceholder: string;
@@ -159,6 +161,14 @@ export const siteCopy: Readonly<Record<Locale, SiteCopy>> = {
     contact: {
       emailLabel: "Email",
       emailPlaceholder: "name@example.com",
+      enquiryTypeLabel: "Enquiry type",
+      enquiryTypes: [
+        { label: "Buying a property", value: "buy" },
+        { label: "Renting a property", value: "rent" },
+        { label: "Choosing a community", value: "communities" },
+        { label: "Exploring off-plan", value: "off-plan" },
+        { label: "General property question", value: "general" },
+      ],
       intro: "No contact details are published or invented in this preview. Use the form only to test the intended enquiry experience.",
       messageLabel: "What are you looking for?",
       messagePlaceholder: "Share your purpose, preferred location or the question you want to explore.",
@@ -261,6 +271,14 @@ export const siteCopy: Readonly<Record<Locale, SiteCopy>> = {
     contact: {
       emailLabel: "البريد الإلكتروني",
       emailPlaceholder: "name@example.com",
+      enquiryTypeLabel: "نوع الاستفسار",
+      enquiryTypes: [
+        { label: "شراء عقار", value: "buy" },
+        { label: "استئجار عقار", value: "rent" },
+        { label: "اختيار مجتمع", value: "communities" },
+        { label: "استكشاف عقار على المخطط", value: "off-plan" },
+        { label: "سؤال عقاري عام", value: "general" },
+      ],
       intro: "لا ننشر أو نخترع بيانات اتصال في هذه المعاينة. استخدم النموذج لاختبار تجربة الاستفسار المقصودة فقط.",
       messageLabel: "ما الذي تبحث عنه؟",
       messagePlaceholder: "شارك هدفك أو موقعك المفضل أو السؤال الذي ترغب في استكشافه.",

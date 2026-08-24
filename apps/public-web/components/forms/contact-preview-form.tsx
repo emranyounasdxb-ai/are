@@ -15,10 +15,11 @@ export function ContactPreviewForm({ locale }: Readonly<{ locale: Locale }>) {
     const form = new FormData(event.currentTarget);
     const name = String(form.get("name") ?? "").trim();
     const email = String(form.get("email") ?? "").trim();
+    const enquiryType = String(form.get("enquiryType") ?? "").trim();
     const enquiry = String(form.get("message") ?? "").trim();
     const emailIsValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
-    if (!name || !emailIsValid || enquiry.length < 10) {
+    if (!name || !emailIsValid || !enquiryType || enquiry.length < 10) {
       setMessage(copy.validation);
       setState("error");
       return;
@@ -35,6 +36,13 @@ export function ContactPreviewForm({ locale }: Readonly<{ locale: Locale }>) {
       noValidate
       onSubmit={handleSubmit}
     >
+      <label>
+        <span>{copy.enquiryTypeLabel}</span>
+        <select aria-invalid={state === "error"} defaultValue="" name="enquiryType" required>
+          <option disabled value="">{copy.enquiryTypeLabel}</option>
+          {copy.enquiryTypes.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+        </select>
+      </label>
       <label>
         <span>{copy.nameLabel}</span>
         <input
