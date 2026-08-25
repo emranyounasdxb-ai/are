@@ -29,7 +29,9 @@ from app.models import (
     ProjectMediaCategory,
     ProjectPriority,
     ProjectPropertyType,
+    ProjectSizeUnit,
     ProjectSourceType,
+    ProjectWorkflowStatus,
     PublicationStatus,
     Purpose,
 )
@@ -201,16 +203,45 @@ class ProjectMediaInput(StrictModel):
     verified_at: datetime | None = None
 
 
+class ProjectUnitTypeInput(StrictModel):
+    label_en: str = Field(min_length=1, max_length=160)
+    label_ar: str | None = Field(default=None, max_length=160)
+    display_order: int = Field(default=0, ge=0, le=10000)
+
+
+class ProjectAmenityInput(StrictModel):
+    label_en: str = Field(min_length=1, max_length=160)
+    label_ar: str | None = Field(default=None, max_length=160)
+    display_order: int = Field(default=0, ge=0, le=10000)
+
+
+class ProjectNearbyPlaceInput(StrictModel):
+    name_en: str = Field(min_length=1, max_length=200)
+    name_ar: str | None = Field(default=None, max_length=200)
+    distance_value: Decimal | None = Field(default=None, ge=0)
+    distance_unit: Literal["km", "m"] | None = None
+    travel_time_minutes: int | None = Field(default=None, ge=0, le=1440)
+    display_order: int = Field(default=0, ge=0, le=10000)
+
+
 class ProjectInput(StrictModel):
     slug: str = Field(min_length=2, max_length=180)
     developer_id: uuid.UUID
     area_id: uuid.UUID
     status: PublicationStatus = PublicationStatus.DRAFT
+    workflow_status: ProjectWorkflowStatus = ProjectWorkflowStatus.DRAFT
     availability_status: ProjectAvailabilityStatus
     construction_status: ConstructionStatus = ConstructionStatus.NOT_CONFIRMED
     handover_quarter: Literal["Q1", "Q2", "Q3", "Q4"] | None = None
     handover_year: int | None = Field(default=None, ge=2000, le=2200)
     original_handover_value: str | None = Field(default=None, max_length=240)
+    size_min: Decimal | None = Field(default=None, ge=0)
+    size_max: Decimal | None = Field(default=None, ge=0)
+    size_unit: ProjectSizeUnit | None = None
+    down_payment_percentage: Decimal | None = Field(default=None, ge=0, le=100)
+    down_payment_source_value: str | None = Field(default=None, max_length=500)
+    latitude: Decimal | None = Field(default=None, ge=-90, le=90)
+    longitude: Decimal | None = Field(default=None, ge=-180, le=180)
     last_verified_at: datetime | None = None
     priority: ProjectPriority | None = None
     featured: bool = False
@@ -218,6 +249,9 @@ class ProjectInput(StrictModel):
     internal_notes: str | None = Field(default=None, max_length=10000)
     property_types: list[ProjectPropertyType] = Field(default_factory=list, max_length=8)
     bedroom_options: list[ProjectBedroomOption] = Field(default_factory=list, max_length=7)
+    unit_types: list[ProjectUnitTypeInput] = Field(default_factory=list, max_length=100)
+    amenities: list[ProjectAmenityInput] = Field(default_factory=list, max_length=200)
+    nearby_places: list[ProjectNearbyPlaceInput] = Field(default_factory=list, max_length=100)
     translations: dict[Literal["en", "ar"], ProjectTranslationInput]
     sources: list[ProjectSourceInput] = Field(default_factory=list, max_length=50)
     payment_plan: PaymentPlanInput | None = None
@@ -240,6 +274,16 @@ class ProjectInput(StrictModel):
             raise ValueError("Property types must be unique")
         if len(set(self.bedroom_options)) != len(self.bedroom_options):
             raise ValueError("Bedroom options must be unique")
+        if (
+            self.size_min is not None
+            and self.size_max is not None
+            and self.size_min > self.size_max
+        ):
+            raise ValueError("size_min cannot exceed size_max")
+        if (self.size_min is not None or self.size_max is not None) and self.size_unit is None:
+            raise ValueError("A size unit is required when a size range is supplied")
+        if self.down_payment_percentage is not None and not self.down_payment_source_value:
+            raise ValueError("Down-payment source wording is required for a normalized percentage")
         return self
 
 

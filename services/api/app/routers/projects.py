@@ -35,6 +35,7 @@ from app.models import (
     ImportReviewStatus,
     MediaRightsStatus,
     Project,
+    ProjectAmenity,
     ProjectAvailabilityStatus,
     ProjectBedroomValue,
     ProjectImportBatch,
@@ -42,6 +43,7 @@ from app.models import (
     ProjectImportMedia,
     ProjectMedia,
     ProjectMediaCategory,
+    ProjectNearbyPlace,
     ProjectPaymentMilestone,
     ProjectPaymentPlan,
     ProjectPriority,
@@ -50,6 +52,8 @@ from app.models import (
     ProjectSource,
     ProjectSourceType,
     ProjectTranslation,
+    ProjectUnitType,
+    ProjectWorkflowStatus,
     PublicationStatus,
 )
 from app.schemas import (
@@ -96,6 +100,9 @@ def project_options() -> tuple[Any, ...]:
         selectinload(Project.translations),
         selectinload(Project.property_types),
         selectinload(Project.bedroom_options),
+        selectinload(Project.unit_types),
+        selectinload(Project.amenities),
+        selectinload(Project.nearby_places),
         selectinload(Project.sources),
         selectinload(Project.payment_plan).selectinload(ProjectPaymentPlan.milestones),
         selectinload(Project.media),
@@ -146,6 +153,14 @@ async def validate_relations(
 
 
 def validate_publication(record: Project) -> None:
+    if record.workflow_status != ProjectWorkflowStatus.APPROVED:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={
+                "code": "project_approval_required",
+                "message": "The Project must complete review and approval before publication.",
+            },
+        )
     translations = {
         item.locale
         for item in record.translations
@@ -196,6 +211,33 @@ def validate_publication(record: Project) -> None:
         )
 
 
+def validate_approval(record: Project) -> None:
+    translations = {
+        item.locale
+        for item in record.translations
+        if all((item.official_name, item.short_summary, item.full_description))
+    }
+    authoritative = any(
+        item.is_active and item.source_type in AUTHORITATIVE_SOURCES for item in record.sources
+    )
+    if (
+        translations != {"en", "ar"}
+        or not record.last_verified_at
+        or not authoritative
+        or record.priority is None
+    ):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={
+                "code": "project_approval_incomplete",
+                "message": (
+                    "Approval requires bilingual content, authoritative provenance, Last "
+                    "Verified and a manually selected ARE Priority."
+                ),
+            },
+        )
+
+
 async def replace_project_content(record: Project, payload: ProjectInput, db: AsyncSession) -> None:
     record.slug = payload.slug
     record.developer_id = payload.developer_id
@@ -205,6 +247,13 @@ async def replace_project_content(record: Project, payload: ProjectInput, db: As
     record.handover_quarter = payload.handover_quarter
     record.handover_year = payload.handover_year
     record.original_handover_value = payload.original_handover_value
+    record.size_min = payload.size_min
+    record.size_max = payload.size_max
+    record.size_unit = payload.size_unit
+    record.down_payment_percentage = payload.down_payment_percentage
+    record.down_payment_source_value = payload.down_payment_source_value
+    record.latitude = payload.latitude
+    record.longitude = payload.longitude
     record.last_verified_at = payload.last_verified_at
     record.priority = payload.priority
     record.featured = payload.featured
@@ -214,6 +263,9 @@ async def replace_project_content(record: Project, payload: ProjectInput, db: As
     record.translations = []
     record.property_types = []
     record.bedroom_options = []
+    record.unit_types = []
+    record.amenities = []
+    record.nearby_places = []
     await db.flush()
     record.sources = []
     await db.flush()
@@ -226,6 +278,11 @@ async def replace_project_content(record: Project, payload: ProjectInput, db: As
     ]
     record.bedroom_options = [
         ProjectBedroomValue(bedroom_option=value) for value in payload.bedroom_options
+    ]
+    record.unit_types = [ProjectUnitType(**item.model_dump()) for item in payload.unit_types]
+    record.amenities = [ProjectAmenity(**item.model_dump()) for item in payload.amenities]
+    record.nearby_places = [
+        ProjectNearbyPlace(**item.model_dump()) for item in payload.nearby_places
     ]
     record.sources = [
         ProjectSource(**item.model_dump(exclude={"source_url"}), source_url=str(item.source_url))
@@ -412,6 +469,7 @@ async def create_project(
         developer_id=payload.developer_id,
         area_id=payload.area_id,
         status=PublicationStatus.DRAFT,
+        workflow_status=ProjectWorkflowStatus.DRAFT,
         availability_status=payload.availability_status,
         construction_status=payload.construction_status,
         translations=[],
@@ -470,6 +528,8 @@ async def update_project(
     }
     await replace_project_content(record, payload, db)
     record.status = payload.status
+    if not publishing:
+        record.workflow_status = ProjectWorkflowStatus.DRAFT
     record.updated_by = context.user.id
     if publishing:
         await db.flush()
@@ -536,6 +596,69 @@ async def update_project(
             correlation_id=request_correlation_id(request),
         )
     await commit_or_conflict(db)
+    return project_dict(await project_or_404(record.id, db))
+
+
+@admin_router.post("/projects/{record_id}/submit-review")
+async def submit_project_for_review(
+    record_id: uuid.UUID,
+    request: Request,
+    context: AuthContext = Depends(require_mutation_permission("project.update")),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    record = await project_or_404(record_id, db)
+    if record.status != PublicationStatus.DRAFT:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail={
+                "code": "invalid_project_state",
+                "message": "Only Draft Projects can enter review.",
+            },
+        )
+    record.workflow_status = ProjectWorkflowStatus.IN_REVIEW
+    record.updated_by = context.user.id
+    await write_audit(
+        db,
+        action="project.review.submit",
+        entity_type="project",
+        entity_id=record.id,
+        actor_user_id=context.user.id,
+        correlation_id=request_correlation_id(request),
+        after={"workflow_status": record.workflow_status.value},
+    )
+    await db.commit()
+    return project_dict(await project_or_404(record.id, db))
+
+
+@admin_router.post("/projects/{record_id}/approve")
+async def approve_project(
+    record_id: uuid.UUID,
+    request: Request,
+    context: AuthContext = Depends(require_mutation_permission("project.publish")),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    record = await project_or_404(record_id, db)
+    if record.workflow_status != ProjectWorkflowStatus.IN_REVIEW:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail={
+                "code": "invalid_project_state",
+                "message": "Submit the Project for review first.",
+            },
+        )
+    validate_approval(record)
+    record.workflow_status = ProjectWorkflowStatus.APPROVED
+    record.updated_by = context.user.id
+    await write_audit(
+        db,
+        action="project.approve",
+        entity_type="project",
+        entity_id=record.id,
+        actor_user_id=context.user.id,
+        correlation_id=request_correlation_id(request),
+        after={"workflow_status": record.workflow_status.value},
+    )
+    await db.commit()
     return project_dict(await project_or_404(record.id, db))
 
 

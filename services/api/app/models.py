@@ -80,6 +80,17 @@ class ProjectPriority(StrEnum):
     C = "C"
 
 
+class ProjectWorkflowStatus(StrEnum):
+    DRAFT = "draft"
+    IN_REVIEW = "in-review"
+    APPROVED = "approved"
+
+
+class ProjectSizeUnit(StrEnum):
+    SQFT = "sqft"
+    SQM = "sqm"
+
+
 class ProjectPropertyType(StrEnum):
     APARTMENT = "apartment"
     VILLA = "villa"
@@ -395,6 +406,12 @@ class Project(TimestampMixin, Base):
         nullable=False,
         index=True,
     )
+    workflow_status: Mapped[ProjectWorkflowStatus] = mapped_column(
+        Enum(ProjectWorkflowStatus, name="project_workflow_status"),
+        default=ProjectWorkflowStatus.DRAFT,
+        nullable=False,
+        index=True,
+    )
     availability_status: Mapped[ProjectAvailabilityStatus] = mapped_column(
         Enum(ProjectAvailabilityStatus, name="project_availability_status"), nullable=False
     )
@@ -406,6 +423,15 @@ class Project(TimestampMixin, Base):
     handover_quarter: Mapped[str | None] = mapped_column(String(2))
     handover_year: Mapped[int | None]
     original_handover_value: Mapped[str | None] = mapped_column(String(240))
+    size_min: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    size_max: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    size_unit: Mapped[ProjectSizeUnit | None] = mapped_column(
+        Enum(ProjectSizeUnit, name="project_size_unit")
+    )
+    down_payment_percentage: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
+    down_payment_source_value: Mapped[str | None] = mapped_column(String(500))
+    latitude: Mapped[Decimal | None] = mapped_column(Numeric(9, 6))
+    longitude: Mapped[Decimal | None] = mapped_column(Numeric(9, 6))
     last_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     priority: Mapped[ProjectPriority | None] = mapped_column(
         Enum(ProjectPriority, name="project_priority"), nullable=True
@@ -426,6 +452,15 @@ class Project(TimestampMixin, Base):
         cascade="all, delete-orphan", lazy="selectin"
     )
     bedroom_options: Mapped[list[ProjectBedroomValue]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin"
+    )
+    unit_types: Mapped[list[ProjectUnitType]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin"
+    )
+    amenities: Mapped[list[ProjectAmenity]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin"
+    )
+    nearby_places: Mapped[list[ProjectNearbyPlace]] = relationship(
         cascade="all, delete-orphan", lazy="selectin"
     )
     sources: Mapped[list[ProjectSource]] = relationship(
@@ -477,6 +512,48 @@ class ProjectBedroomValue(Base):
     bedroom_option: Mapped[ProjectBedroomOption] = mapped_column(
         Enum(ProjectBedroomOption, name="project_bedroom_option"), nullable=False
     )
+
+
+class ProjectUnitType(Base):
+    __tablename__ = "project_unit_types"
+    __table_args__ = (UniqueConstraint("project_id", "label_en"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    label_en: Mapped[str] = mapped_column(String(160), nullable=False)
+    label_ar: Mapped[str | None] = mapped_column(String(160))
+    display_order: Mapped[int] = mapped_column(default=0, nullable=False)
+
+
+class ProjectAmenity(Base):
+    __tablename__ = "project_amenities"
+    __table_args__ = (UniqueConstraint("project_id", "label_en"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    label_en: Mapped[str] = mapped_column(String(160), nullable=False)
+    label_ar: Mapped[str | None] = mapped_column(String(160))
+    display_order: Mapped[int] = mapped_column(default=0, nullable=False)
+
+
+class ProjectNearbyPlace(Base):
+    __tablename__ = "project_nearby_places"
+    __table_args__ = (UniqueConstraint("project_id", "name_en"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    name_en: Mapped[str] = mapped_column(String(200), nullable=False)
+    name_ar: Mapped[str | None] = mapped_column(String(200))
+    distance_value: Mapped[Decimal | None] = mapped_column(Numeric(8, 2))
+    distance_unit: Mapped[str | None] = mapped_column(String(20))
+    travel_time_minutes: Mapped[int | None]
+    display_order: Mapped[int] = mapped_column(default=0, nullable=False)
 
 
 class ProjectSource(TimestampMixin, Base):

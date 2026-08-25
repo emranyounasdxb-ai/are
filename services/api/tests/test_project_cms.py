@@ -48,6 +48,13 @@ def project_payload(developer_id: str, area_id: str, status: str = "draft") -> d
         "handover_quarter": None,
         "handover_year": None,
         "original_handover_value": None,
+        "size_min": "800",
+        "size_max": "1600",
+        "size_unit": "sqft",
+        "down_payment_percentage": "20",
+        "down_payment_source_value": "20% down payment",
+        "latitude": "25.204849",
+        "longitude": "55.270783",
         "last_verified_at": checked_at,
         "priority": "A",
         "featured": True,
@@ -55,6 +62,18 @@ def project_payload(developer_id: str, area_id: str, status: str = "draft") -> d
         "internal_notes": "Disposable QA note.",
         "property_types": ["apartment", "penthouse"],
         "bedroom_options": ["1", "2", "3"],
+        "unit_types": [{"label_en": "Type A", "label_ar": "النوع أ", "display_order": 0}],
+        "amenities": [{"label_en": "Pool", "label_ar": "مسبح", "display_order": 0}],
+        "nearby_places": [
+            {
+                "name_en": "QA Landmark",
+                "name_ar": "معلم اختباري",
+                "distance_value": "2.5",
+                "distance_unit": "km",
+                "travel_time_minutes": 8,
+                "display_order": 0,
+            }
+        ],
         "translations": {
             "en": translation("QA Off-Plan Project"),
             "ar": translation("QA Off-Plan Project"),
@@ -174,6 +193,24 @@ async def test_project_rbac_publication_and_public_field_boundaries(
     payload["media"][0]["id"] = media_id  # type: ignore[index]
     payload["media"][0]["rights_status"] = "approved"  # type: ignore[index]
     payload["sources"][0]["content_hash"] = "c" * 64  # type: ignore[index]
+    saved = await client.put(
+        f"/api/v1/admin/projects/{project_id}",
+        json=payload,
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert saved.status_code == 200, saved.text
+    submitted = await client.post(
+        f"/api/v1/admin/projects/{project_id}/submit-review",
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert submitted.status_code == 200, submitted.text
+    assert submitted.json()["workflow_status"] == "in-review"
+    approved = await client.post(
+        f"/api/v1/admin/projects/{project_id}/approve",
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["workflow_status"] == "approved"
     published = await client.put(
         f"/api/v1/admin/projects/{project_id}",
         json={**payload, "status": "published"},
@@ -188,7 +225,11 @@ async def test_project_rbac_publication_and_public_field_boundaries(
     assert "internal_notes" not in public_record
     assert "price" not in public_record
     assert "raw_source_payload" not in public_record
+    assert "sources" not in public_record
+    assert "workflow_status" not in public_record
+    assert "down_payment_source_value" not in public_record
     assert "source_id" not in public_record["payment_plan"]
+    assert "source_value" not in public_record["payment_plan"]["milestones"][0]
     archived = await client.put(
         f"/api/v1/admin/projects/{project_id}",
         json={**payload, "status": "archived"},
@@ -205,6 +246,8 @@ async def test_project_rbac_publication_and_public_field_boundaries(
             )
         )
         assert {
+            "project.review.submit",
+            "project.approve",
             "project.publish",
             "project.source.update",
             "project.media-rights.update",

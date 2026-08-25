@@ -243,16 +243,51 @@ def project_dict(record: Project, locale: str | None = None) -> dict[str, Any]:
             "emirate": record.area.emirate,
         },
         "status": record.status.value,
+        "workflow_status": record.workflow_status.value,
         "availability_status": record.availability_status.value,
         "construction_status": record.construction_status.value,
         "handover_quarter": record.handover_quarter,
         "handover_year": record.handover_year,
         "original_handover_value": record.original_handover_value,
+        "size_min": record.size_min,
+        "size_max": record.size_max,
+        "size_unit": record.size_unit.value if record.size_unit else None,
+        "down_payment_percentage": record.down_payment_percentage,
+        "down_payment_source_value": record.down_payment_source_value,
+        "latitude": record.latitude,
+        "longitude": record.longitude,
         "last_verified_at": record.last_verified_at,
         "featured": record.featured,
         "display_order": record.display_order,
         "property_types": [item.property_type.value for item in record.property_types],
         "bedroom_options": [item.bedroom_option.value for item in record.bedroom_options],
+        "unit_types": [
+            {
+                "label_en": item.label_en,
+                "label_ar": item.label_ar,
+                "display_order": item.display_order,
+            }
+            for item in sorted(record.unit_types, key=lambda value: value.display_order)
+        ],
+        "amenities": [
+            {
+                "label_en": item.label_en,
+                "label_ar": item.label_ar,
+                "display_order": item.display_order,
+            }
+            for item in sorted(record.amenities, key=lambda value: value.display_order)
+        ],
+        "nearby_places": [
+            {
+                "name_en": item.name_en,
+                "name_ar": item.name_ar,
+                "distance_value": item.distance_value,
+                "distance_unit": item.distance_unit,
+                "travel_time_minutes": item.travel_time_minutes,
+                "display_order": item.display_order,
+            }
+            for item in sorted(record.nearby_places, key=lambda value: value.display_order)
+        ],
         "sources": sources,
         "payment_plan": payment_plan,
         "media": media,
@@ -273,19 +308,35 @@ def project_dict(record: Project, locale: str | None = None) -> dict[str, Any]:
             "coming-soon": "register-interest",
             "sold-out": "explore-similar-projects",
         }[record.availability_status.value]
-        data["sources"] = [
+        data.pop("sources", None)
+        data.pop("workflow_status", None)
+        data.pop("down_payment_source_value", None)
+        data["unit_types"] = [
             {
-                "source_url": item["source_url"],
-                "source_type": item["source_type"],
-                "source_title": item["source_title"],
-                "last_checked_at": item["last_checked_at"],
+                "label": item["label_ar"] if locale == "ar" else item["label_en"],
+                "display_order": item["display_order"],
             }
-            for item in sources
-            if item["is_active"] and item["source_type"] != "OWNER_MANIFEST"
+            for item in data["unit_types"]
+        ]
+        data["amenities"] = [
+            {
+                "label": item["label_ar"] if locale == "ar" else item["label_en"],
+                "display_order": item["display_order"],
+            }
+            for item in data["amenities"]
+        ]
+        data["nearby_places"] = [
+            {
+                "name": item["name_ar"] if locale == "ar" else item["name_en"],
+                "distance_value": item["distance_value"],
+                "distance_unit": item["distance_unit"],
+                "travel_time_minutes": item["travel_time_minutes"],
+                "display_order": item["display_order"],
+            }
+            for item in data["nearby_places"]
         ]
         data["payment_plan"] = (
             {
-                "raw_source_text": plan.raw_source_text,
                 "is_complete": plan.is_complete,
                 "verified_at": plan.verified_at,
                 "milestones": [
@@ -295,7 +346,6 @@ def project_dict(record: Project, locale: str | None = None) -> dict[str, Any]:
                         "label": item.label_ar if locale == "ar" else item.label_en,
                         "percentage": item.percentage,
                         "due_trigger": item.due_trigger,
-                        "source_value": item.source_value,
                     }
                     for item in plan.milestones
                 ],
