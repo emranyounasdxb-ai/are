@@ -3,6 +3,20 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import {
+  BriefcaseBusiness,
+  Building2,
+  House,
+  Info,
+  Landmark,
+  LogIn,
+  MapPin,
+  MessageSquareText,
+  Newspaper,
+  PanelsTopLeft,
+  Send,
+  type LucideIcon,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import type { HeaderCopy, Locale } from "../../lib/home-copy";
@@ -13,6 +27,12 @@ type SiteHeaderProps = Readonly<{
   locale: Locale;
 }>;
 
+type NavigationItem = Readonly<{
+  href: string;
+  icon: LucideIcon;
+  label: string;
+}>;
+
 export function SiteHeader({ copy, locale }: SiteHeaderProps) {
   const adminUrl = process.env.NEXT_PUBLIC_ARE_ADMIN_URL ?? "http://127.0.0.1:50002";
   const adminLabel = locale === "ar" ? "دخول الإدارة" : "Admin Login";
@@ -21,20 +41,20 @@ export function SiteHeader({ copy, locale }: SiteHeaderProps) {
   const menuPanelRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
   const router = useRouter();
-  const directNavigation = [
-    { href: `/${locale}`, label: copy.home },
-    { href: `/${locale}/about`, label: copy.about },
-    { href: `/${locale}/properties`, label: copy.properties },
-    { href: `/${locale}/off-plan`, label: copy.offPlan },
-    { href: `/${locale}/communities`, label: copy.communities },
-    { href: `/${locale}/developers`, label: copy.developers },
-    { href: `/${locale}/insights`, label: copy.insights },
-    { href: `/${locale}/careers`, label: copy.careers },
+  const directNavigation: ReadonlyArray<NavigationItem> = [
+    { href: `/${locale}`, icon: House, label: copy.home },
+    { href: `/${locale}/about`, icon: Info, label: copy.about },
+    { href: `/${locale}/properties`, icon: Building2, label: copy.properties },
+    { href: `/${locale}/off-plan`, icon: PanelsTopLeft, label: copy.offPlan },
+    { href: `/${locale}/communities`, icon: MapPin, label: copy.communities },
+    { href: `/${locale}/developers`, icon: Landmark, label: copy.developers },
+    { href: `/${locale}/insights`, icon: Newspaper, label: copy.insights },
+    { href: `/${locale}/careers`, icon: BriefcaseBusiness, label: copy.careers },
   ];
   const contactNavigationLabel = locale === "ar" ? "التواصل" : "Contact";
   const mobileNavigation = [
     ...directNavigation,
-    { href: `/${locale}/contact`, label: contactNavigationLabel },
+    { href: `/${locale}/contact`, icon: MessageSquareText, label: contactNavigationLabel },
   ];
 
   function isActive(href: string) {
@@ -173,21 +193,26 @@ export function SiteHeader({ copy, locale }: SiteHeaderProps) {
           </Link>
 
           <nav aria-label={copy.navigation} className="desktop-navigation">
-            {directNavigation.map((item) => (
-              <Link
-                aria-current={isActive(item.href) ? "page" : undefined}
-                href={item.href}
-                key={item.href}
-                onClick={(event) => resetCurrentRoute(event, item.href)}
-              >
-                {item.label}
-              </Link>
-            ))}
+            {directNavigation.map((item) => {
+              const Icon = item.icon;
+              return (
+                <Link
+                  aria-current={isActive(item.href) ? "page" : undefined}
+                  href={item.href}
+                  key={item.href}
+                  onClick={(event) => resetCurrentRoute(event, item.href)}
+                >
+                  <Icon aria-hidden="true" size={15} strokeWidth={1.75} />
+                  <span>{item.label}</span>
+                </Link>
+              );
+            })}
           </nav>
 
           <div className="site-header__actions">
             <a aria-label={adminLabel} className="admin-login-link" href={adminUrl}>
-              {adminLabel}
+              <LogIn aria-hidden="true" size={15} strokeWidth={1.75} />
+              <span>{adminLabel}</span>
             </a>
             <nav aria-label={copy.language} className="locale-control">
               <Link
@@ -218,6 +243,7 @@ export function SiteHeader({ copy, locale }: SiteHeaderProps) {
               className="header-cta"
               href={`/${locale}/contact`}
             >
+              <Send aria-hidden="true" size={15} strokeWidth={1.75} />
               {copy.contact}
             </Link>
             <button
@@ -254,20 +280,23 @@ export function SiteHeader({ copy, locale }: SiteHeaderProps) {
               </button>
             </div>
             <nav aria-label={copy.navigation}>
-              {mobileNavigation.map((item, index) => (
-                <Link
-                  aria-current={isActive(item.href) ? "page" : undefined}
-                  href={item.href}
-                  key={item.href}
-                  onClick={(event) => {
-                    resetCurrentRoute(event, item.href);
-                    closeMenu();
-                  }}
-                >
-                  <span>{String(index + 1).padStart(2, "0")}</span>
-                  {item.label}
-                </Link>
-              ))}
+              {mobileNavigation.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <Link
+                    aria-current={isActive(item.href) ? "page" : undefined}
+                    href={item.href}
+                    key={item.href}
+                    onClick={(event) => {
+                      resetCurrentRoute(event, item.href);
+                      closeMenu();
+                    }}
+                  >
+                    <Icon aria-hidden="true" size={18} strokeWidth={1.75} />
+                    <span>{item.label}</span>
+                  </Link>
+                );
+              })}
             </nav>
             <div className="mobile-menu__footer">
               <p>{copy.activeLanguage}</p>

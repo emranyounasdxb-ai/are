@@ -337,12 +337,12 @@ select {
   font-weight: 700;
 }
 
-.mobile-menu nav {
+.mobile-menu > nav {
   display: grid;
   margin-block: 2rem;
 }
 
-.mobile-menu nav a {
+.mobile-menu > nav a {
   display: grid;
   grid-template-columns: 2.2rem 1fr;
   align-items: center;
@@ -356,7 +356,7 @@ select {
   letter-spacing: -0.03em;
 }
 
-.mobile-menu nav a span {
+.mobile-menu > nav a span {
   color: var(--are-bronze);
   font-size: 0.68rem;
   font-weight: 700;
@@ -2081,7 +2081,7 @@ html[dir="rtl"] .featured-insight p { letter-spacing: normal; text-transform: no
   .inner-hero__grid { grid-template-columns: minmax(0, 1fr) minmax(20rem, 0.65fr); gap: 3rem; }
 }
 
-@media (min-width: 901px) and (max-width: 1319px) {
+@media (min-width: 901px) and (max-width: 1199px) {
   :root { --are-header-height: 5.75rem; }
   .site-header__inner { grid-template-columns: auto 1fr; min-height: 5.75rem; }
   .desktop-navigation,
@@ -2742,11 +2742,7 @@ html[dir="rtl"] .article-body > section::before {
   height: 2px;
   background: var(--are-gold-light);
   pointer-events: none;
-  transform-origin: inline-start;
-}
-
-html[dir="rtl"] .page-progress {
-  transform-origin: inline-end;
+  transform-origin: center;
 }
 
 .motion-document {
@@ -2895,7 +2891,6 @@ html[dir="rtl"] .mobile-menu { animation-name: drawer-in-rtl; }
 
 @media (max-width: 680px) {
   .motion-section { --motion-y: 24px; }
-  .page-progress { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2922,25 +2917,193 @@ html[dir="rtl"] .mobile-menu { animation-name: drawer-in-rtl; }
   }
 }
 
+/* ARE-WEB-09: compact Admin-inspired Public header navigation. */
+.site-header__inner {
+  width: min(calc(100% - 2rem), var(--are-container));
+  gap: clamp(0.4rem, 1vw, 0.9rem);
+}
+
+.desktop-navigation {
+  min-width: 0;
+  gap: 0.1rem;
+}
+
+.desktop-navigation a {
+  min-height: 2.5rem;
+  gap: 0.35rem;
+  border: 1px solid transparent;
+  border-radius: 0.4rem;
+  padding: 0.4rem 0.48rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.desktop-navigation a svg,
+.mobile-menu > nav a svg,
+.admin-login-link svg,
+.header-cta svg {
+  flex: 0 0 auto;
+}
+
+.desktop-navigation a:hover,
+.desktop-navigation a:focus-visible {
+  border-color: transparent;
+  background: rgba(217, 180, 135, 0.12);
+}
+
+.desktop-navigation a[aria-current="page"] {
+  border-color: rgba(226, 201, 143, 0.68);
+  border-radius: 0.4rem;
+  background: var(--are-espresso);
+  box-shadow: none;
+}
+
+.site-header__actions {
+  gap: 0.35rem;
+}
+
+.admin-login-link,
+.locale-control,
+.header-cta {
+  min-height: 2.5rem;
+  border-radius: 0.4rem;
+}
+
+.admin-login-link {
+  gap: 0.35rem;
+  border-color: rgba(255, 255, 255, 0.18);
+  padding-inline: 0.6rem;
+  color: rgba(248, 246, 242, 0.78);
+  font-size: 0.68rem;
+}
+
+.admin-login-link:hover,
+.admin-login-link:focus-visible {
+  border-color: rgba(226, 201, 143, 0.55);
+  background: rgba(217, 180, 135, 0.1);
+}
+
+.locale-control {
+  gap: 0.1rem;
+  padding: 0.15rem;
+}
+
+.locale-control a {
+  min-width: 2rem;
+  min-height: 2.1rem;
+  border-radius: 0.3rem;
+  font-size: 0.68rem;
+}
+
+.header-cta {
+  gap: 0.35rem;
+  padding-inline: 0.7rem;
+  background: var(--are-gold-light);
+  color: var(--are-ink);
+  font-size: 0.7rem;
+}
+
+.header-cta[aria-current="page"],
+.header-cta:hover,
+.header-cta:focus-visible {
+  border-color: var(--are-gold-light);
+  background: var(--are-champagne);
+  color: var(--are-ink);
+}
+
+.mobile-menu {
+  width: min(26rem, 94vw);
+  padding: clamp(1.25rem, 4vw, 2rem);
+}
+
+.mobile-menu > nav {
+  gap: 0.25rem;
+  margin-block: 1.25rem;
+}
+
+.mobile-menu > nav a {
+  display: flex;
+  min-height: 3rem;
+  align-items: center;
+  gap: 0.65rem;
+  border: 1px solid transparent;
+  border-block-end-color: transparent;
+  border-radius: 0.4rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.mobile-menu > nav a:hover,
+.mobile-menu > nav a:focus-visible {
+  background: rgba(90, 56, 39, 0.08);
+}
+
+.mobile-menu > nav a[aria-current="page"] {
+  border-color: var(--are-gold);
+  border-radius: 0.4rem;
+  background: var(--are-espresso);
+  box-shadow: none;
+}
+
+.mobile-menu > nav a span,
+.mobile-menu > nav a[aria-current="page"] span {
+  color: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  letter-spacing: inherit;
+}
+
+html[dir="rtl"] .mobile-menu > nav a {
+  text-align: start;
+}
+
+@media (min-width: 1200px) and (max-width: 1350px) {
+  .site-header__inner {
+    gap: 0.35rem;
+  }
+
+  .desktop-navigation a {
+    gap: 0.25rem;
+    padding-inline: 0.34rem;
+    font-size: 0.65rem;
+  }
+
+  .desktop-navigation a svg,
+  .admin-login-link svg,
+  .header-cta svg {
+    width: 0.8rem;
+    height: 0.8rem;
+  }
+
+  .admin-login-link {
+    padding-inline: 0.45rem;
+    font-size: 0.62rem;
+  }
+
+  .locale-control a {
+    min-width: 1.8rem;
+    font-size: 0.62rem;
+  }
+
+  .header-cta {
+    padding-inline: 0.55rem;
+    font-size: 0.65rem;
+  }
+}
+
 /* ARE-WEB-07: shared, semantic star-action family. */
 .star-action,
 :where(
   .button,
-  .header-cta,
-  .admin-login-link,
-  .locale-control a,
-  .menu-button,
-  .mobile-menu__topline button,
-  .mobile-admin-login,
-  .mobile-menu__locales a,
   .search-submit,
   .purpose-field__options button,
   .filter-tabs button,
   .reset-button,
   .career-form__file button,
-  .career-form__reset,
-  .desktop-navigation a[aria-current="page"],
-  .mobile-menu > nav a[aria-current="page"]
+  .career-form__reset
 ) {
   --star-action-surface: var(--are-white);
   --star-action-text: var(--are-ink);
@@ -2956,39 +3119,21 @@ html[dir="rtl"] .mobile-menu { animation-name: drawer-in-rtl; }
 .star-action::after,
 :where(
   .button,
-  .header-cta,
-  .admin-login-link,
-  .locale-control a,
-  .menu-button,
-  .mobile-menu__topline button,
-  .mobile-admin-login,
-  .mobile-menu__locales a,
   .search-submit,
   .purpose-field__options button,
   .filter-tabs button,
   .reset-button,
   .career-form__file button,
-  .career-form__reset,
-  .desktop-navigation a[aria-current="page"],
-  .mobile-menu > nav a[aria-current="page"]
+  .career-form__reset
 )::before,
 :where(
   .button,
-  .header-cta,
-  .admin-login-link,
-  .locale-control a,
-  .menu-button,
-  .mobile-menu__topline button,
-  .mobile-admin-login,
-  .mobile-menu__locales a,
   .search-submit,
   .purpose-field__options button,
   .filter-tabs button,
   .reset-button,
   .career-form__file button,
-  .career-form__reset,
-  .desktop-navigation a[aria-current="page"],
-  .mobile-menu > nav a[aria-current="page"]
+  .career-form__reset
 )::after {
   position: absolute;
   border-radius: inherit;
@@ -2999,21 +3144,12 @@ html[dir="rtl"] .mobile-menu { animation-name: drawer-in-rtl; }
 .star-action::before,
 :where(
   .button,
-  .header-cta,
-  .admin-login-link,
-  .locale-control a,
-  .menu-button,
-  .mobile-menu__topline button,
-  .mobile-admin-login,
-  .mobile-menu__locales a,
   .search-submit,
   .purpose-field__options button,
   .filter-tabs button,
   .reset-button,
   .career-form__file button,
-  .career-form__reset,
-  .desktop-navigation a[aria-current="page"],
-  .mobile-menu > nav a[aria-current="page"]
+  .career-form__reset
 )::before {
   z-index: -2;
   inset: 0;
@@ -3035,21 +3171,12 @@ html[dir="rtl"] .mobile-menu { animation-name: drawer-in-rtl; }
 .star-action::after,
 :where(
   .button,
-  .header-cta,
-  .admin-login-link,
-  .locale-control a,
-  .menu-button,
-  .mobile-menu__topline button,
-  .mobile-admin-login,
-  .mobile-menu__locales a,
   .search-submit,
   .purpose-field__options button,
   .filter-tabs button,
   .reset-button,
   .career-form__file button,
-  .career-form__reset,
-  .desktop-navigation a[aria-current="page"],
-  .mobile-menu > nav a[aria-current="page"]
+  .career-form__reset
 )::after {
   z-index: -1;
   inset: 1px;
@@ -3065,13 +3192,8 @@ html[dir="rtl"] .mobile-menu { animation-name: drawer-in-rtl; }
 .star-action--navigation-active,
 .button--primary,
 .search-submit,
-.header-cta,
-.menu-button,
-.desktop-navigation a[aria-current="page"],
-.mobile-menu > nav a[aria-current="page"],
 .purpose-field__options button[aria-pressed="true"],
-.filter-tabs button[aria-pressed="true"],
-.mobile-menu__locales a[aria-current="page"] {
+.filter-tabs button[aria-pressed="true"] {
   --star-action-surface: var(--are-espresso);
   --star-action-text: var(--are-ivory);
   --star-action-speck: rgba(226, 201, 143, 0.18);
@@ -3082,9 +3204,6 @@ html[dir="rtl"] .mobile-menu { animation-name: drawer-in-rtl; }
 
 .star-action--secondary,
 .button--secondary,
-.mobile-menu__topline button,
-.mobile-admin-login,
-.mobile-menu__locales a,
 .purpose-field__options button,
 .filter-tabs button,
 .reset-button,
@@ -3098,9 +3217,7 @@ html[dir="rtl"] .mobile-menu { animation-name: drawer-in-rtl; }
   color: var(--are-espresso);
 }
 
-.star-action--outline,
-.admin-login-link,
-.locale-control a {
+.star-action--outline {
   --star-action-surface: rgba(23, 17, 14, 0.94);
   --star-action-text: var(--are-ivory);
   --star-action-speck: rgba(226, 201, 143, 0.15);
@@ -3122,10 +3239,7 @@ html[dir="rtl"] .mobile-menu { animation-name: drawer-in-rtl; }
   .star-action--primary,
   .star-action--navigation-active,
   .button--primary,
-  .search-submit,
-  .header-cta,
-  .desktop-navigation a[aria-current="page"],
-  .mobile-menu > nav a[aria-current="page"]
+  .search-submit
 )::before {
   animation-play-state: running;
 }
@@ -3133,21 +3247,12 @@ html[dir="rtl"] .mobile-menu { animation-name: drawer-in-rtl; }
 :where(
   .star-action,
   .button,
-  .header-cta,
-  .admin-login-link,
-  .locale-control a,
-  .menu-button,
-  .mobile-menu__topline button,
-  .mobile-admin-login,
-  .mobile-menu__locales a,
   .search-submit,
   .purpose-field__options button,
   .filter-tabs button,
   .reset-button,
   .career-form__file button,
-  .career-form__reset,
-  .desktop-navigation a[aria-current="page"],
-  .mobile-menu > nav a[aria-current="page"]
+  .career-form__reset
 ):is(:hover, :focus-visible)::before {
   animation-play-state: running;
   opacity: 1;
@@ -3156,21 +3261,12 @@ html[dir="rtl"] .mobile-menu { animation-name: drawer-in-rtl; }
 :where(
   .star-action,
   .button,
-  .header-cta,
-  .admin-login-link,
-  .locale-control a,
-  .menu-button,
-  .mobile-menu__topline button,
-  .mobile-admin-login,
-  .mobile-menu__locales a,
   .search-submit,
   .purpose-field__options button,
   .filter-tabs button,
   .reset-button,
   .career-form__file button,
-  .career-form__reset,
-  .desktop-navigation a[aria-current="page"],
-  .mobile-menu > nav a[aria-current="page"]
+  .career-form__reset
 ):focus-visible {
   outline: 3px solid var(--are-gold-light);
   outline-offset: 3px;
@@ -3190,21 +3286,12 @@ html[dir="rtl"] .mobile-menu { animation-name: drawer-in-rtl; }
   :where(
     .star-action,
     .button,
-    .header-cta,
-    .admin-login-link,
-    .locale-control a,
-    .menu-button,
-    .mobile-menu__topline button,
-    .mobile-admin-login,
-    .mobile-menu__locales a,
     .search-submit,
     .purpose-field__options button,
     .filter-tabs button,
     .reset-button,
     .career-form__file button,
-    .career-form__reset,
-    .desktop-navigation a[aria-current="page"],
-    .mobile-menu > nav a[aria-current="page"]
+    .career-form__reset
   )::before {
     animation: none;
     opacity: 0.62;
