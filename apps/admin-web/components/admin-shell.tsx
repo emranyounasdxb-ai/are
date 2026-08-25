@@ -1,6 +1,6 @@
 "use client";
 
-import { BriefcaseBusiness, Building2, Factory, FileText, Gauge, Inbox, LogOut, Menu, ScrollText, ShieldCheck, Users, X } from "lucide-react";
+import { BriefcaseBusiness, Building2, Factory, FileSearch, FileText, FolderKanban, Gauge, Inbox, LogOut, Menu, ScrollText, ShieldCheck, Users, X } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
@@ -10,6 +10,7 @@ import { GuardedLink, NavigationGuardProvider, useNavigationGuard } from "./navi
 
 const links = [
   ["/dashboard", "Dashboard", Gauge], ["/properties", "Properties", Building2],
+  ["/projects", "Projects", FolderKanban], ["/project-imports", "Project imports", FileSearch],
   ["/developers", "Developers", Factory],
   ["/insights", "Insights", FileText], ["/careers/jobs", "Career jobs", BriefcaseBusiness],
   ["/enquiries", "Enquiries", Inbox], ["/careers/applications", "Applications", Users],

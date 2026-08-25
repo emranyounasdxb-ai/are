@@ -14,12 +14,15 @@ from app.config import Settings, get_settings
 from app.db import SessionLocal
 from app.main import app
 from app.models import (
+    AreaCommunity,
     AuditLog,
     CareerApplication,
     ContactEnquiry,
     Developer,
     InsightPost,
     JobOpening,
+    Project,
+    ProjectImportBatch,
     Property,
     Role,
     Session,
@@ -57,6 +60,25 @@ async def clean_disposable_records(test_settings: Settings) -> AsyncIterator[Non
             if application.file:
                 storage.delete(application.file.storage_key)
             await db.delete(application)
+        projects = (
+            await db.scalars(
+                select(Project)
+                .where(Project.slug.like("qa-%"))
+                .options(selectinload(Project.media), selectinload(Project.payment_plan))
+            )
+        ).all()
+        for project in projects:
+            for media in project.media:
+                if media.storage_key:
+                    storage.delete(media.storage_key)
+            if project.payment_plan:
+                plan = project.payment_plan
+                project.payment_plan = None
+                await db.delete(plan)
+                await db.flush()
+            await db.delete(project)
+        await db.execute(delete(ProjectImportBatch).where(ProjectImportBatch.name.like("QA %")))
+        await db.execute(delete(AreaCommunity).where(AreaCommunity.slug.like("qa-%")))
         await db.execute(
             delete(ContactEnquiry).where(
                 ContactEnquiry.email.like("%@qa.are-cms.invalid-example-domain.com")

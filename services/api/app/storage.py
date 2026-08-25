@@ -91,6 +91,12 @@ class PrivateStorage:
         )
 
     async def save_property_image(self, upload: UploadFile) -> StoredImage:
+        return await self._save_image(upload, "property")
+
+    async def save_project_image(self, upload: UploadFile) -> StoredImage:
+        return await self._save_image(upload, "project")
+
+    async def _save_image(self, upload: UploadFile, prefix: str) -> StoredImage:
         filename = upload.filename or ""
         if (
             not filename
@@ -129,7 +135,7 @@ class PrivateStorage:
             raise _invalid_image(
                 "The uploaded file is not a decodable JPEG, PNG or WebP image."
             ) from exc
-        storage_key = f"property-{uuid.uuid4().hex}.{stored_extension}"
+        storage_key = f"{prefix}-{uuid.uuid4().hex}.{stored_extension}"
         await asyncio.to_thread(self._path(storage_key).write_bytes, sanitized)
         return StoredImage(
             storage_key,

@@ -19,9 +19,18 @@ from pydantic import (
 from app.models import (
     ApplicationStatus,
     AvailabilityStatus,
+    ConstructionStatus,
     EnquiryStatus,
+    ImportReviewStatus,
     JobStatus,
     MediaRightsStatus,
+    PaymentStage,
+    ProjectAvailabilityStatus,
+    ProjectBedroomOption,
+    ProjectMediaCategory,
+    ProjectPriority,
+    ProjectPropertyType,
+    ProjectSourceType,
     PublicationStatus,
     Purpose,
 )
@@ -113,6 +122,143 @@ class TrustProfileInput(StrictModel):
     snapshot_verified_at: date
     office_address: str = Field(min_length=5, max_length=320)
     status: PublicationStatus = PublicationStatus.DRAFT
+
+
+class AreaAliasInput(StrictModel):
+    alias: str = Field(min_length=1, max_length=240)
+    locale: Literal["en", "ar"] | None = None
+
+
+class AreaInput(StrictModel):
+    slug: str = Field(min_length=2, max_length=180)
+    name_en: str = Field(min_length=2, max_length=240)
+    name_ar: str = Field(min_length=2, max_length=240)
+    emirate: str = Field(min_length=2, max_length=120)
+    status: PublicationStatus = PublicationStatus.DRAFT
+    aliases: list[AreaAliasInput] = Field(default_factory=list, max_length=100)
+
+    @field_validator("slug")
+    @classmethod
+    def valid_slug(cls, value: str) -> str:
+        if not SLUG_PATTERN.fullmatch(value):
+            raise ValueError("Use a lowercase hyphenated slug")
+        return value
+
+
+class ProjectTranslationInput(StrictModel):
+    official_name: str = Field(min_length=2, max_length=240)
+    short_summary: str = Field(min_length=10, max_length=2000)
+    full_description: str = Field(min_length=10, max_length=30000)
+    seo_title: str = Field(min_length=2, max_length=240)
+    seo_description: str = Field(min_length=10, max_length=320)
+
+
+class ProjectSourceInput(StrictModel):
+    source_url: HttpUrl
+    source_type: ProjectSourceType
+    is_official: bool = False
+    retrieved_at: datetime
+    last_checked_at: datetime
+    content_hash: str = Field(pattern=r"^[a-fA-F0-9]{64}$")
+    source_title: str | None = Field(default=None, max_length=320)
+    source_developer_domain: str | None = Field(default=None, max_length=320)
+    is_active: bool = True
+
+
+class PaymentMilestoneInput(StrictModel):
+    sequence: int = Field(ge=0, le=1000)
+    stage: PaymentStage
+    label_en: str = Field(min_length=1, max_length=240)
+    label_ar: str | None = Field(default=None, max_length=240)
+    percentage: Decimal | None = Field(default=None, ge=0, le=100)
+    due_trigger: str | None = Field(default=None, max_length=320)
+    source_value: str = Field(min_length=1, max_length=2000)
+
+
+class PaymentPlanInput(StrictModel):
+    raw_source_text: str = Field(min_length=1, max_length=10000)
+    source_index: int = Field(ge=0, le=100)
+    is_complete: bool = False
+    verified_at: datetime | None = None
+    milestones: list[PaymentMilestoneInput] = Field(default_factory=list, max_length=100)
+
+    @model_validator(mode="after")
+    def validate_complete_total(self) -> PaymentPlanInput:
+        percentages = [item.percentage for item in self.milestones]
+        if self.is_complete and percentages and all(value is not None for value in percentages):
+            if sum(value for value in percentages if value is not None) != Decimal("100"):
+                raise ValueError("A complete payment plan with all percentages must total 100%")
+        return self
+
+
+class ProjectMediaInput(StrictModel):
+    id: uuid.UUID | None = None
+    category: ProjectMediaCategory
+    source_url: HttpUrl
+    rights_status: MediaRightsStatus = MediaRightsStatus.PENDING
+    alt_en: str | None = Field(default=None, max_length=320)
+    alt_ar: str | None = Field(default=None, max_length=320)
+    display_order: int = Field(default=0, ge=0, le=10000)
+    verified_at: datetime | None = None
+
+
+class ProjectInput(StrictModel):
+    slug: str = Field(min_length=2, max_length=180)
+    developer_id: uuid.UUID
+    area_id: uuid.UUID
+    status: PublicationStatus = PublicationStatus.DRAFT
+    availability_status: ProjectAvailabilityStatus
+    construction_status: ConstructionStatus = ConstructionStatus.NOT_CONFIRMED
+    handover_quarter: Literal["Q1", "Q2", "Q3", "Q4"] | None = None
+    handover_year: int | None = Field(default=None, ge=2000, le=2200)
+    original_handover_value: str | None = Field(default=None, max_length=240)
+    last_verified_at: datetime | None = None
+    priority: ProjectPriority = ProjectPriority.B
+    featured: bool = False
+    display_order: int = Field(default=0, ge=0, le=10000)
+    internal_notes: str | None = Field(default=None, max_length=10000)
+    property_types: list[ProjectPropertyType] = Field(default_factory=list, max_length=8)
+    bedroom_options: list[ProjectBedroomOption] = Field(default_factory=list, max_length=7)
+    translations: dict[Literal["en", "ar"], ProjectTranslationInput]
+    sources: list[ProjectSourceInput] = Field(default_factory=list, max_length=50)
+    payment_plan: PaymentPlanInput | None = None
+    media: list[ProjectMediaInput] = Field(default_factory=list, max_length=100)
+
+    @field_validator("slug")
+    @classmethod
+    def valid_slug(cls, value: str) -> str:
+        if not SLUG_PATTERN.fullmatch(value):
+            raise ValueError("Use a lowercase hyphenated slug")
+        return value
+
+    @model_validator(mode="after")
+    def validate_project(self) -> ProjectInput:
+        if self.status == PublicationStatus.PUBLISHED and set(self.translations) != {"en", "ar"}:
+            raise ValueError("Published projects require complete English and Arabic records")
+        if self.payment_plan and self.payment_plan.source_index >= len(self.sources):
+            raise ValueError("Payment-plan source_index must reference a supplied source")
+        if len(set(self.property_types)) != len(self.property_types):
+            raise ValueError("Property types must be unique")
+        if len(set(self.bedroom_options)) != len(self.bedroom_options):
+            raise ValueError("Bedroom options must be unique")
+        return self
+
+
+class ImportCandidateReviewInput(StrictModel):
+    review_status: Literal[
+        ImportReviewStatus.NEEDS_REVIEW,
+        ImportReviewStatus.READY_FOR_APPROVAL,
+        ImportReviewStatus.APPROVED,
+        ImportReviewStatus.REJECTED,
+        ImportReviewStatus.MERGED,
+    ]
+    linked_project_id: uuid.UUID | None = None
+
+    @model_validator(mode="after")
+    def require_project_for_merge(self) -> ImportCandidateReviewInput:
+        if self.review_status == ImportReviewStatus.MERGED and not self.linked_project_id:
+            raise ValueError("Merged candidates require a linked canonical Project")
+        return self
 
 
 class PropertyResponse(PropertyInput):
