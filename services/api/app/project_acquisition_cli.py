@@ -8,6 +8,7 @@ from pathlib import Path
 from app.acquisition.service import acquire_batch, load_manifest, status_summary
 from app.config import get_settings
 from app.db import SessionLocal
+from app.project_processing import run_worker_once
 
 DEFAULT_MANIFEST = Path("/app/data-intake/offplan-projects-owner-manifest.csv")
 
@@ -20,11 +21,22 @@ def parser() -> argparse.ArgumentParser:
     for command in ("acquire", "refresh", "retry-failed", "media-intake", "status"):
         item = subcommands.add_parser(command)
         item.add_argument("--batch-id")
+    worker = subcommands.add_parser("process-worker", help="Run the bounded preparation worker")
+    worker.add_argument("--max-items", type=int, default=25)
+    worker.add_argument("--worker-id", default="local-project-worker")
     return value
 
 
 async def run(args: argparse.Namespace) -> None:
     async with SessionLocal() as db:
+        if args.command == "process-worker":
+            processed = 0
+            while processed < max(1, min(args.max_items, 100)):
+                if not await run_worker_once(db, worker_id=args.worker_id):
+                    break
+                processed += 1
+            print(json.dumps({"processed": processed}, indent=2))
+            return
         if args.command == "load":
             batch = await load_manifest(db, args.manifest)
         elif args.command == "acquire":

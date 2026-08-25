@@ -247,6 +247,67 @@ async def test_project_rbac_publication_and_public_field_boundaries(
     assert (await client.get("/api/v1/admin/projects?emirate=Dubai")).json()["meta"]["total"] == 1
     fujairah = await client.get("/api/v1/admin/projects?emirate=Fujairah")
     assert fujairah.json()["meta"]["total"] == 0
+    in_place = await client.put(
+        f"/api/v1/admin/projects/{project_id}",
+        json={**payload, "status": "published", "display_order": 99},
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert in_place.status_code == 409
+    revision_payload = {**payload, "status": "published", "display_order": 2}
+    revision = await client.post(
+        f"/api/v1/admin/projects/{project_id}/revisions",
+        json={
+            "project": revision_payload,
+            "media_snapshot": [],
+            "field_diff": {"display_order": {"before": 1, "after": 2}},
+            "change_summary": "Disposable display-order revision",
+        },
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert revision.status_code == 201, revision.text
+    revision_id = revision.json()["id"]
+    live_before_activation = await client.get(
+        "/api/v1/public/projects/qa-offplan-project?locale=en"
+    )
+    assert live_before_activation.json()["display_order"] == 1
+    for action in ("submit", "approve", "activate"):
+        result = await client.post(
+            f"/api/v1/admin/projects/{project_id}/revisions/{revision_id}/{action}",
+            json={"note": f"Disposable {action} verification"},
+            headers={"X-CSRF-Token": csrf},
+        )
+        assert result.status_code == 200, result.text
+    assert (await client.get("/api/v1/public/projects/qa-offplan-project?locale=en")).json()[
+        "display_order"
+    ] == 2
+    replacement_payload = {**payload, "status": "published", "display_order": 3}
+    replacement = await client.post(
+        f"/api/v1/admin/projects/{project_id}/revisions",
+        json={
+            "project": replacement_payload,
+            "media_snapshot": [],
+            "field_diff": {"display_order": {"before": 2, "after": 3}},
+            "change_summary": "Disposable replacement revision",
+        },
+        headers={"X-CSRF-Token": csrf},
+    )
+    replacement_id = replacement.json()["id"]
+    for action in ("submit", "approve", "activate"):
+        result = await client.post(
+            f"/api/v1/admin/projects/{project_id}/revisions/{replacement_id}/{action}",
+            json={"note": f"Disposable replacement {action}"},
+            headers={"X-CSRF-Token": csrf},
+        )
+        assert result.status_code == 200, result.text
+    rollback = await client.post(
+        f"/api/v1/admin/projects/{project_id}/revisions/{revision_id}/rollback",
+        json={"note": "Disposable rollback verification"},
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert rollback.status_code == 200, rollback.text
+    assert (await client.get("/api/v1/public/projects/qa-offplan-project?locale=en")).json()[
+        "display_order"
+    ] == 2
     archived = await client.put(
         f"/api/v1/admin/projects/{project_id}",
         json={**payload, "status": "archived"},

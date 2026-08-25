@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import uuid
 from datetime import UTC, datetime
 
@@ -18,6 +19,7 @@ from app.acquisition.media import (
 )
 from app.config import Settings
 from app.models import ProjectImportBatch, ProjectImportCandidate, ProjectImportMedia
+from app.project_processing import descriptive_media_filename, public_media_metadata
 from app.storage import PrivateStorage
 
 REJECTED_URL_TOKENS = (
@@ -118,12 +120,36 @@ async def intake_private_media(
                 .split("-")
                 if part.isalnum()
             )
-            normalized_filename = normalized_media_filename(
+            private_master_filename = normalized_media_filename(
                 project_slug, media.category.value, order, raster.sha256, raster.extension
             )
-            media.normalized_filename = normalized_filename
+            public_filename = descriptive_media_filename(
+                project_slug,
+                media.category.value,
+                order + 1,
+            )
+            media.normalized_filename = public_filename
             media.display_order = order
             media.last_seen_at = media.retrieved_at
+            media.original_sha256 = hashlib.sha256(result.body).hexdigest()
+            media.processed_sha256 = raster.sha256
+            media.processing_version = "project-media-v1"
+            project_name = (
+                candidate.normalized_project_name or f"Project {candidate.manifest_row_id}"
+            )
+            category_title = media.category.value.replace("-", " ").title()
+            media.title_en = f"{project_name} {category_title}"
+            media.title_ar = None
+            media.description_en = f"{category_title} view for {project_name}."
+            media.description_ar = None
+            media.tags = [project_slug, media.category.value]
+            media.public_metadata = public_media_metadata(
+                project_name=project_name,
+                category=category_title,
+                title=media.title_en,
+                description=media.description_en,
+                website="https://aliyasrealestate.ae",
+            )
             duplicate = await db.scalar(
                 select(ProjectImportMedia).where(
                     ProjectImportMedia.sha256 == raster.sha256,
@@ -148,25 +174,25 @@ async def intake_private_media(
                 raw_key = await storage.save_acquisition_media(
                     result.body,
                     raster.extension,
-                    normalized_filename=normalized_filename.replace(
+                    normalized_filename=private_master_filename.replace(
                         f".{raster.extension}", f"-raw.{raster.extension}"
                     ),
                 )
                 storage_key = await storage.save_acquisition_media(
                     raster.content,
                     raster.extension,
-                    normalized_filename=normalized_filename,
+                    normalized_filename=private_master_filename,
                 )
                 thumbnail_content = await asyncio.to_thread(thumbnail, raster)
                 thumbnail_key = await storage.save_acquisition_media(
                     thumbnail_content,
                     "webp",
-                    normalized_filename=normalized_filename.rsplit(".", 1)[0] + "-thumb.webp",
+                    normalized_filename=public_filename.rsplit(".", 1)[0] + "-thumb.webp",
                     thumbnail=True,
                 )
                 derivative_manifest: list[dict[str, object]] = []
                 for derivative in await asyncio.to_thread(responsive_derivatives, raster):
-                    filename = normalized_filename.rsplit(".", 1)[0]
+                    filename = public_filename.rsplit(".", 1)[0]
                     filename = f"{filename}-{derivative.width}w.{derivative.format}"
                     key = await storage.save_acquisition_media(
                         derivative.content,

@@ -32,8 +32,12 @@ from app.models import (
     AreaCommunity,
     ConstructionStatus,
     Developer,
+    DiagnosticResolutionStatus,
+    EditorialApprovalStatus,
     ImportReviewStatus,
     MediaRightsStatus,
+    ProcessingItemStatus,
+    ProcessingJobStatus,
     Project,
     ProjectAmenity,
     ProjectAvailabilityStatus,
@@ -44,11 +48,17 @@ from app.models import (
     ProjectMedia,
     ProjectMediaCategory,
     ProjectNearbyPlace,
+    ProjectOverviewGeneration,
     ProjectPaymentMilestone,
     ProjectPaymentPlan,
     ProjectPriority,
+    ProjectProcessingDiagnostic,
+    ProjectProcessingItem,
+    ProjectProcessingJob,
     ProjectPropertyType,
     ProjectPropertyTypeValue,
+    ProjectRevision,
+    ProjectRevisionStatus,
     ProjectSource,
     ProjectSourceType,
     ProjectTranslation,
@@ -57,11 +67,29 @@ from app.models import (
     PublicationStatus,
     UAEEmirate,
 )
+from app.project_processing import (
+    cancel_processing_job,
+    create_processing_job,
+    diagnostic_dict,
+    job_detail,
+    job_dict,
+    public_media_metadata,
+    resolve_diagnostic,
+    retry_failed_items,
+)
 from app.schemas import (
     AreaInput,
+    DiagnosticResolutionInput,
+    EditorialApprovalInput,
     ImportBulkActionInput,
     ImportCandidateReviewInput,
+    MediaApprovalInput,
+    MediaPreparationInput,
+    ProcessingJobCreateInput,
+    ProcessingRetryInput,
     ProjectInput,
+    ProjectRevisionActionInput,
+    ProjectRevisionInput,
 )
 from app.serializers import (
     area_dict,
@@ -518,11 +546,32 @@ async def update_project(
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     record = await project_or_404(record_id, db)
+    if record.status == PublicationStatus.PUBLISHED:
+        if payload.status == PublicationStatus.ARCHIVED:
+            record.status = PublicationStatus.ARCHIVED
+            record.archived_at = datetime.now(UTC)
+            record.updated_by = context.user.id
+            await write_audit(
+                db,
+                action="project.archive",
+                entity_type="project",
+                entity_id=record.id,
+                actor_user_id=context.user.id,
+                correlation_id=request_correlation_id(request),
+                before={"status": PublicationStatus.PUBLISHED.value},
+                after={"status": PublicationStatus.ARCHIVED.value},
+            )
+            await db.commit()
+            return project_dict(await project_or_404(record.id, db))
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail={
+                "code": "published_project_requires_revision",
+                "message": "Create a private revision instead of editing the live Project.",
+            },
+        )
     await validate_relations(payload, db)
-    publishing = (
-        payload.status == PublicationStatus.PUBLISHED
-        and record.status != PublicationStatus.PUBLISHED
-    )
+    publishing = payload.status == PublicationStatus.PUBLISHED
     if publishing and "project.publish" not in context.permissions:
         raise HTTPException(
             status.HTTP_403_FORBIDDEN,
@@ -551,6 +600,35 @@ async def update_project(
         validate_publication(refreshed)
         record.published_at = datetime.now(UTC)
         record.archived_at = None
+        baseline_number = (
+            int(
+                await db.scalar(
+                    select(func.max(ProjectRevision.revision_number)).where(
+                        ProjectRevision.project_id == record.id
+                    )
+                )
+                or 0
+            )
+            + 1
+        )
+        baseline = ProjectRevision(
+            project_id=record.id,
+            revision_number=baseline_number,
+            status=ProjectRevisionStatus.ACTIVE,
+            record_snapshot=payload.model_dump(mode="json"),
+            media_snapshot=[],
+            field_diff={},
+            change_summary="Initial approved Published version.",
+            created_by=context.user.id,
+            submitted_by=context.user.id,
+            submitted_at=datetime.now(UTC),
+            approved_by=context.user.id,
+            approved_at=datetime.now(UTC),
+            activated_at=datetime.now(UTC),
+        )
+        db.add(baseline)
+        await db.flush()
+        record.active_revision_id = baseline.id
     elif payload.status == PublicationStatus.ARCHIVED:
         record.archived_at = datetime.now(UTC)
     action = (
@@ -611,6 +689,271 @@ async def update_project(
         )
     await commit_or_conflict(db)
     return project_dict(await project_or_404(record.id, db))
+
+
+def revision_dict(record: ProjectRevision) -> dict[str, object]:
+    return {
+        "id": record.id,
+        "project_id": record.project_id,
+        "revision_number": record.revision_number,
+        "status": record.status.value,
+        "base_revision_id": record.base_revision_id,
+        "record_snapshot": record.record_snapshot,
+        "media_snapshot": record.media_snapshot,
+        "field_diff": record.field_diff,
+        "change_summary": record.change_summary,
+        "created_by": record.created_by,
+        "submitted_by": record.submitted_by,
+        "submitted_at": record.submitted_at,
+        "approved_by": record.approved_by,
+        "approved_at": record.approved_at,
+        "activated_at": record.activated_at,
+        "created_at": record.created_at,
+    }
+
+
+async def revision_or_404(
+    project_id: uuid.UUID,
+    revision_id: uuid.UUID,
+    db: AsyncSession,
+) -> ProjectRevision:
+    revision = await db.scalar(
+        select(ProjectRevision)
+        .where(
+            ProjectRevision.id == revision_id,
+            ProjectRevision.project_id == project_id,
+        )
+        .with_for_update()
+    )
+    if not revision:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            detail={"code": "not_found", "message": "Project revision not found."},
+        )
+    return revision
+
+
+@admin_router.get("/projects/{project_id}/revisions")
+async def list_project_revisions(
+    project_id: uuid.UUID,
+    _: AuthContext = Depends(require_permission("project.read")),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, object]:
+    await project_or_404(project_id, db)
+    revisions = (
+        await db.scalars(
+            select(ProjectRevision)
+            .where(ProjectRevision.project_id == project_id)
+            .order_by(ProjectRevision.revision_number.desc())
+        )
+    ).all()
+    return {
+        "items": [revision_dict(value) for value in revisions],
+        "meta": meta(1, max(1, len(revisions)), len(revisions)),
+    }
+
+
+@admin_router.post(
+    "/projects/{project_id}/revisions",
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_project_revision(
+    project_id: uuid.UUID,
+    payload: ProjectRevisionInput,
+    request: Request,
+    context: AuthContext = Depends(require_mutation_permission("project.update")),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, object]:
+    project = await project_or_404(project_id, db)
+    if project.status != PublicationStatus.PUBLISHED:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={
+                "code": "revision_not_required",
+                "message": "Only a live Published Project is edited through revisions.",
+            },
+        )
+    if payload.project.status != PublicationStatus.PUBLISHED:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={
+                "code": "revision_publication_state_invalid",
+                "message": "A live revision snapshot must retain Published status.",
+            },
+        )
+    await validate_relations(payload.project, db)
+    latest_number = int(
+        await db.scalar(
+            select(func.max(ProjectRevision.revision_number)).where(
+                ProjectRevision.project_id == project_id
+            )
+        )
+        or 0
+    )
+    revision = ProjectRevision(
+        project_id=project.id,
+        revision_number=latest_number + 1,
+        status=ProjectRevisionStatus.DRAFT,
+        base_revision_id=project.active_revision_id,
+        record_snapshot=payload.project.model_dump(mode="json"),
+        media_snapshot=payload.media_snapshot,
+        field_diff=payload.field_diff,
+        change_summary=payload.change_summary,
+        created_by=context.user.id,
+    )
+    db.add(revision)
+    await write_audit(
+        db,
+        action="project-revision.create",
+        entity_type="project-revision",
+        entity_id=revision.id,
+        actor_user_id=context.user.id,
+        correlation_id=request_correlation_id(request),
+        after={"project_id": str(project.id), "revision_number": latest_number + 1},
+    )
+    await commit_or_conflict(db)
+    await db.refresh(revision)
+    return revision_dict(revision)
+
+
+@admin_router.post("/projects/{project_id}/revisions/{revision_id}/submit")
+async def submit_project_revision(
+    project_id: uuid.UUID,
+    revision_id: uuid.UUID,
+    payload: ProjectRevisionActionInput,
+    request: Request,
+    context: AuthContext = Depends(require_mutation_permission("project.update")),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, object]:
+    revision = await revision_or_404(project_id, revision_id, db)
+    if revision.status != ProjectRevisionStatus.DRAFT:
+        raise HTTPException(status.HTTP_409_CONFLICT, detail="Only a Draft can be submitted.")
+    revision.status = ProjectRevisionStatus.IN_REVIEW
+    revision.submitted_by = context.user.id
+    revision.submitted_at = datetime.now(UTC)
+    await write_audit(
+        db,
+        action="project-revision.submit",
+        entity_type="project-revision",
+        entity_id=revision.id,
+        actor_user_id=context.user.id,
+        correlation_id=request_correlation_id(request),
+        after={"note_supplied": bool(payload.note), "status": revision.status.value},
+    )
+    await db.commit()
+    return revision_dict(revision)
+
+
+@admin_router.post("/projects/{project_id}/revisions/{revision_id}/approve")
+async def approve_project_revision(
+    project_id: uuid.UUID,
+    revision_id: uuid.UUID,
+    payload: ProjectRevisionActionInput,
+    request: Request,
+    context: AuthContext = Depends(require_mutation_permission("project-revision.approve")),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, object]:
+    revision = await revision_or_404(project_id, revision_id, db)
+    if revision.status != ProjectRevisionStatus.IN_REVIEW:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, detail="Only an In Review revision can be approved."
+        )
+    revision.status = ProjectRevisionStatus.APPROVED
+    revision.approved_by = context.user.id
+    revision.approved_at = datetime.now(UTC)
+    await write_audit(
+        db,
+        action="project-revision.approve",
+        entity_type="project-revision",
+        entity_id=revision.id,
+        actor_user_id=context.user.id,
+        correlation_id=request_correlation_id(request),
+        after={"note_supplied": bool(payload.note), "status": revision.status.value},
+    )
+    await db.commit()
+    return revision_dict(revision)
+
+
+async def activate_revision(
+    project: Project,
+    revision: ProjectRevision,
+    actor_id: uuid.UUID,
+    db: AsyncSession,
+) -> None:
+    payload = ProjectInput.model_validate(revision.record_snapshot)
+    await validate_relations(payload, db)
+    await replace_project_content(project, payload, db)
+    project.updated_by = actor_id
+    await db.flush()
+    refreshed = await project_or_404(project.id, db)
+    validate_publication(refreshed)
+    if project.active_revision_id and project.active_revision_id != revision.id:
+        active = await db.get(ProjectRevision, project.active_revision_id)
+        if active:
+            active.status = ProjectRevisionStatus.SUPERSEDED
+    revision.status = ProjectRevisionStatus.ACTIVE
+    revision.activated_at = datetime.now(UTC)
+    project.active_revision_id = revision.id
+
+
+@admin_router.post("/projects/{project_id}/revisions/{revision_id}/activate")
+async def activate_project_revision(
+    project_id: uuid.UUID,
+    revision_id: uuid.UUID,
+    payload: ProjectRevisionActionInput,
+    request: Request,
+    context: AuthContext = Depends(require_mutation_permission("project-revision.approve")),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, object]:
+    project = await project_or_404(project_id, db)
+    revision = await revision_or_404(project_id, revision_id, db)
+    if revision.status != ProjectRevisionStatus.APPROVED:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, detail="Only an Approved revision can activate."
+        )
+    await activate_revision(project, revision, context.user.id, db)
+    await write_audit(
+        db,
+        action="project-revision.activate",
+        entity_type="project-revision",
+        entity_id=revision.id,
+        actor_user_id=context.user.id,
+        correlation_id=request_correlation_id(request),
+        after={"note_supplied": bool(payload.note), "revision_number": revision.revision_number},
+    )
+    await commit_or_conflict(db)
+    return revision_dict(revision)
+
+
+@admin_router.post("/projects/{project_id}/revisions/{revision_id}/rollback")
+async def rollback_project_revision(
+    project_id: uuid.UUID,
+    revision_id: uuid.UUID,
+    payload: ProjectRevisionActionInput,
+    request: Request,
+    context: AuthContext = Depends(require_mutation_permission("project-revision.rollback")),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, object]:
+    project = await project_or_404(project_id, db)
+    revision = await revision_or_404(project_id, revision_id, db)
+    if revision.status != ProjectRevisionStatus.SUPERSEDED or not revision.approved_at:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail="Rollback requires a previously approved superseded revision.",
+        )
+    revision.status = ProjectRevisionStatus.APPROVED
+    await activate_revision(project, revision, context.user.id, db)
+    await write_audit(
+        db,
+        action="project-revision.rollback",
+        entity_type="project-revision",
+        entity_id=revision.id,
+        actor_user_id=context.user.id,
+        correlation_id=request_correlation_id(request),
+        after={"note_supplied": bool(payload.note), "revision_number": revision.revision_number},
+    )
+    await commit_or_conflict(db)
+    return revision_dict(revision)
 
 
 @admin_router.post("/projects/{record_id}/submit-review")
@@ -840,6 +1183,8 @@ async def import_batch_detail(
         "candidates": [summaries[str(item.id)] for item in records[start : start + page_size]],
         "candidate_meta": meta(page, page_size, total),
         "filtered_candidate_ids": [item.id for item in records],
+        "all_candidate_ids": [item.id for item in all_candidates],
+        "all_candidate_versions": {str(item.id): item.review_version for item in all_candidates},
         "filtered_candidate_versions": {str(item.id): item.review_version for item in records},
         "filtered_candidate_info": {
             str(item.id): {
@@ -848,10 +1193,225 @@ async def import_batch_detail(
                 "owner_area": summaries[str(item.id)]["owner_area"],
                 "review_status": summaries[str(item.id)]["review_status"],
                 "eligibility": summaries[str(item.id)]["eligibility"],
+                "processing_eligibility_errors": summaries[str(item.id)][
+                    "processing_eligibility_errors"
+                ],
             }
             for item in records
         },
+        "all_candidate_info": {
+            str(item.id): {
+                "project_name": import_candidate_summary_dict(item)["project_name"],
+                "owner_developer": import_candidate_summary_dict(item)["owner_developer"],
+                "owner_area": import_candidate_summary_dict(item)["owner_area"],
+                "review_status": import_candidate_summary_dict(item)["review_status"],
+                "eligibility": import_candidate_summary_dict(item)["eligibility"],
+                "processing_eligibility_errors": import_candidate_summary_dict(item)[
+                    "processing_eligibility_errors"
+                ],
+            }
+            for item in all_candidates
+        },
     }
+
+
+@admin_router.post(
+    "/project-imports/{batch_id}/processing-jobs",
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def start_processing_job(
+    batch_id: uuid.UUID,
+    payload: ProcessingJobCreateInput,
+    request: Request,
+    context: AuthContext = Depends(require_mutation_permission("project-processing.run")),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, object]:
+    try:
+        job = await create_processing_job(
+            db,
+            batch_id=batch_id,
+            candidate_ids=payload.candidate_ids,
+            selection_mode=payload.selection_mode,
+            requested_action=payload.requested_action,
+            actor_id=context.user.id,
+            correlation_id=request_correlation_id(request),
+            idempotency_key=payload.idempotency_key,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={"code": "invalid_processing_selection", "message": str(exc)},
+        ) from exc
+    await write_audit(
+        db,
+        action="project-processing.start",
+        entity_type="project-processing-job",
+        entity_id=job.id,
+        actor_user_id=context.user.id,
+        correlation_id=request_correlation_id(request),
+        after={
+            "selection_mode": payload.selection_mode,
+            "selected_count": len(payload.candidate_ids),
+            "requested_action": payload.requested_action,
+        },
+    )
+    await db.commit()
+    return job_dict(await job_detail(db, job.id))
+
+
+@admin_router.get("/project-processing-jobs")
+async def list_processing_jobs(
+    _: AuthContext = Depends(require_permission("project-processing.run")),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, object]:
+    jobs = (
+        await db.scalars(
+            select(ProjectProcessingJob).order_by(ProjectProcessingJob.created_at.desc())
+        )
+    ).all()
+    return {
+        "items": [job_dict(value, include_items=False) for value in jobs],
+        "meta": meta(1, max(1, len(jobs)), len(jobs)),
+    }
+
+
+@admin_router.get("/project-processing-jobs/{job_id}")
+async def get_processing_job(
+    job_id: uuid.UUID,
+    _: AuthContext = Depends(require_permission("project-processing.run")),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, object]:
+    try:
+        return job_dict(await job_detail(db, job_id))
+    except ValueError as exc:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            detail={"code": "not_found", "message": str(exc)},
+        ) from exc
+
+
+@admin_router.post("/project-processing-jobs/{job_id}/cancel")
+async def cancel_job(
+    job_id: uuid.UUID,
+    request: Request,
+    context: AuthContext = Depends(require_mutation_permission("project-processing.run")),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, object]:
+    try:
+        job = await cancel_processing_job(db, job_id)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    await write_audit(
+        db,
+        action="project-processing.cancel",
+        entity_type="project-processing-job",
+        entity_id=job.id,
+        actor_user_id=context.user.id,
+        correlation_id=request_correlation_id(request),
+        after={"cancellation_requested": True},
+    )
+    await db.commit()
+    return job_dict(await job_detail(db, job.id))
+
+
+@admin_router.post("/project-processing-jobs/{job_id}/retry")
+async def retry_job_items(
+    job_id: uuid.UUID,
+    payload: ProcessingRetryInput,
+    request: Request,
+    context: AuthContext = Depends(require_mutation_permission("project-processing.recover")),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, object]:
+    try:
+        job = await retry_failed_items(db, job_id, payload.item_ids)
+    except ValueError as exc:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={"code": "retry_not_eligible", "message": str(exc)},
+        ) from exc
+    await write_audit(
+        db,
+        action="project-processing.retry",
+        entity_type="project-processing-job",
+        entity_id=job.id,
+        actor_user_id=context.user.id,
+        correlation_id=request_correlation_id(request),
+        after={"item_count": len(payload.item_ids or []) or job.failed_count},
+    )
+    await db.commit()
+    return job_dict(await job_detail(db, job.id))
+
+
+@admin_router.get("/project-recovery")
+async def list_project_recovery(
+    stage: str | None = Query(default=None, max_length=80),
+    error_code: str | None = Query(default=None, max_length=100),
+    retryable: bool | None = Query(default=None),
+    resolution_status: DiagnosticResolutionStatus | None = Query(default=None),
+    job_id: uuid.UUID | None = Query(default=None),
+    attempt_count: int | None = Query(default=None, ge=1),
+    _: AuthContext = Depends(require_permission("project-processing.recover")),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, object]:
+    filters: list[Any] = []
+    if stage:
+        filters.append(ProjectProcessingDiagnostic.stage == stage)
+    if error_code:
+        filters.append(ProjectProcessingDiagnostic.error_code == error_code)
+    if retryable is not None:
+        filters.append(ProjectProcessingDiagnostic.retryable == retryable)
+    if resolution_status:
+        filters.append(ProjectProcessingDiagnostic.resolution_status == resolution_status)
+    if attempt_count:
+        filters.append(ProjectProcessingDiagnostic.attempt_count == attempt_count)
+    statement = select(ProjectProcessingDiagnostic).join(ProjectProcessingItem)
+    if job_id:
+        filters.append(ProjectProcessingItem.job_id == job_id)
+    diagnostics = (
+        await db.scalars(
+            statement.where(*filters).order_by(
+                ProjectProcessingDiagnostic.latest_occurred_at.desc()
+            )
+        )
+    ).all()
+    return {
+        "items": [diagnostic_dict(value) for value in diagnostics],
+        "meta": meta(1, max(1, len(diagnostics)), len(diagnostics)),
+    }
+
+
+@admin_router.post("/project-recovery/{diagnostic_id}/actions")
+async def apply_recovery_action(
+    diagnostic_id: uuid.UUID,
+    payload: DiagnosticResolutionInput,
+    request: Request,
+    context: AuthContext = Depends(require_mutation_permission("project-processing.recover")),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, object]:
+    try:
+        diagnostic = await resolve_diagnostic(
+            db,
+            diagnostic_id,
+            action=payload.action,
+            note=payload.note,
+            actor_id=context.user.id,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={"code": "unsafe_recovery_action", "message": str(exc)},
+        ) from exc
+    await write_audit(
+        db,
+        action=f"project-processing.recovery.{payload.action}",
+        entity_type="project-processing-diagnostic",
+        entity_id=diagnostic.id,
+        actor_user_id=context.user.id,
+        correlation_id=request_correlation_id(request),
+        after={"action": payload.action, "note_supplied": True},
+    )
+    await db.commit()
+    return diagnostic_dict(diagnostic)
 
 
 @admin_router.get("/project-imports/{batch_id}/candidates/{candidate_id}")
@@ -920,6 +1480,179 @@ async def import_media_thumbnail(
             "X-Content-Type-Options": "nosniff",
         },
     )
+
+
+@admin_router.post("/project-imports/candidates/{candidate_id}/overview-approval")
+async def approve_candidate_overview(
+    candidate_id: uuid.UUID,
+    payload: EditorialApprovalInput,
+    request: Request,
+    context: AuthContext = Depends(require_mutation_permission("project-editorial.approve")),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    candidate = await db.scalar(
+        select(ProjectImportCandidate)
+        .where(ProjectImportCandidate.id == candidate_id)
+        .options(selectinload(ProjectImportCandidate.editorial_draft))
+        .with_for_update()
+    )
+    if not candidate or not candidate.editorial_draft:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            detail={"code": "not_found", "message": "Overview draft not found."},
+        )
+    draft = candidate.editorial_draft
+    if draft.source_version != payload.expected_source_version:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail={"code": "stale_overview", "message": "The source evidence changed."},
+        )
+    draft.approval_status = (
+        EditorialApprovalStatus.APPROVED if payload.approved else EditorialApprovalStatus.REJECTED
+    )
+    draft.approved_by = context.user.id
+    draft.approved_at = datetime.now(UTC)
+    generations = (
+        await db.scalars(
+            select(ProjectOverviewGeneration).where(
+                ProjectOverviewGeneration.candidate_id == candidate.id,
+                ProjectOverviewGeneration.source_version == draft.source_version,
+            )
+        )
+    ).all()
+    for generation in generations:
+        generation.approval_status = draft.approval_status
+        generation.approved_by = context.user.id
+        generation.approved_at = draft.approved_at
+    if payload.approved:
+        items = (
+            await db.scalars(
+                select(ProjectProcessingItem).where(
+                    ProjectProcessingItem.candidate_id == candidate.id,
+                    ProjectProcessingItem.status == ProcessingItemStatus.FAILED,
+                    ProjectProcessingItem.current_stage == "prepare-overview",
+                )
+            )
+        ).all()
+        job_ids: set[uuid.UUID] = set()
+        for item in items:
+            item.status = ProcessingItemStatus.QUEUED
+            item.next_retry_at = None
+            job_ids.add(item.job_id)
+        for job_id in job_ids:
+            job = await db.get(ProjectProcessingJob, job_id)
+            if job:
+                job.status = ProcessingJobStatus.QUEUED
+                job.completed_at = None
+    await write_audit(
+        db,
+        action="project-processing.overview.approve"
+        if payload.approved
+        else "project-processing.overview.reject",
+        entity_type="project-import-candidate",
+        entity_id=candidate.id,
+        actor_user_id=context.user.id,
+        correlation_id=request_correlation_id(request),
+        after={"source_version": draft.source_version, "approved": payload.approved},
+    )
+    await db.commit()
+    return import_candidate_dict(candidate)
+
+
+@admin_router.post("/project-import-media/{media_id}/rights-approval")
+async def approve_import_media_rights(
+    media_id: uuid.UUID,
+    payload: MediaApprovalInput,
+    request: Request,
+    context: AuthContext = Depends(require_mutation_permission("project-media.approve")),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, object]:
+    media = await db.scalar(
+        select(ProjectImportMedia).where(ProjectImportMedia.id == media_id).with_for_update()
+    )
+    if not media:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Project media not found.")
+    media.rights_status = (
+        MediaRightsStatus.APPROVED if payload.approved else MediaRightsStatus.REJECTED
+    )
+    media.rights_basis = payload.rights_basis
+    media.rights_confirmed_by = context.user.id
+    media.rights_confirmed_at = datetime.now(UTC)
+    await write_audit(
+        db,
+        action="project-processing.media-rights.approve"
+        if payload.approved
+        else "project-processing.media-rights.reject",
+        entity_type="project-import-media",
+        entity_id=media.id,
+        actor_user_id=context.user.id,
+        correlation_id=request_correlation_id(request),
+        after={"approved": payload.approved, "rights_basis_supplied": True},
+    )
+    await db.commit()
+    return {
+        "id": media.id,
+        "rights_status": media.rights_status.value,
+        "rights_basis": media.rights_basis,
+        "rights_confirmed_at": media.rights_confirmed_at,
+    }
+
+
+@admin_router.put("/project-import-media/{media_id}/preparation")
+async def update_import_media_preparation(
+    media_id: uuid.UUID,
+    payload: MediaPreparationInput,
+    request: Request,
+    context: AuthContext = Depends(require_mutation_permission("project-import.manage")),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, object]:
+    media = await db.scalar(
+        select(ProjectImportMedia).where(ProjectImportMedia.id == media_id).with_for_update()
+    )
+    if not media:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Project media not found.")
+    candidate = await db.get(ProjectImportCandidate, media.candidate_id)
+    if not candidate:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Import candidate not found.")
+    media.category = payload.category
+    media.display_order = payload.display_order
+    media.normalized_filename = payload.normalized_filename
+    media.alt_en_draft = payload.alt_en
+    media.alt_ar_draft = payload.alt_ar
+    media.title_en = payload.title_en
+    media.title_ar = payload.title_ar
+    media.description_en = payload.description_en
+    media.description_ar = payload.description_ar
+    media.tags = payload.tags
+    project_name = candidate.normalized_project_name or "Project"
+    media.public_metadata = public_media_metadata(
+        project_name=project_name,
+        category=payload.category.value.replace("-", " ").title(),
+        title=payload.title_en,
+        description=payload.description_en,
+        website="https://aliyasrealestate.ae",
+    )
+    await write_audit(
+        db,
+        action="project-processing.media-metadata.update",
+        entity_type="project-import-media",
+        entity_id=media.id,
+        actor_user_id=context.user.id,
+        correlation_id=request_correlation_id(request),
+        after={
+            "category": media.category.value,
+            "display_order": media.display_order,
+            "bilingual_metadata_complete": True,
+        },
+    )
+    await db.commit()
+    return {
+        "id": media.id,
+        "category": media.category.value,
+        "display_order": media.display_order,
+        "normalized_filename": media.normalized_filename,
+        "metadata_complete": True,
+    }
 
 
 @admin_router.put("/project-imports/candidates/{candidate_id}")

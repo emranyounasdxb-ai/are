@@ -15,6 +15,7 @@ from app.models import (
     TrustProfile,
     UAEEmirate,
 )
+from app.project_processing import processing_eligibility_errors
 
 EMIRATE_LABELS = {
     "en": {item: item.value for item in UAEEmirate},
@@ -439,6 +440,8 @@ def import_candidate_dict(record: ProjectImportCandidate) -> dict[str, Any]:
         "validation_errors": record.validation_errors,
         "conflict_reasons": record.conflict_reasons,
         "review_status": record.review_status.value,
+        "processing_status": record.processing_status.value,
+        "last_successful_stage": record.last_successful_stage,
         "review_version": record.review_version,
         "human_review_completed": record.human_review_completed,
         "human_edited_fields": record.human_edited_fields,
@@ -483,6 +486,17 @@ def import_candidate_dict(record: ProjectImportCandidate) -> dict[str, Any]:
                 "alt_ar_draft": item.alt_ar_draft,
                 "derivatives": item.derivative_manifest,
                 "change_status": item.change_status,
+                "rights_basis": item.rights_basis,
+                "rights_confirmed_at": item.rights_confirmed_at,
+                "original_sha256": item.original_sha256,
+                "processed_sha256": item.processed_sha256,
+                "processing_version": item.processing_version,
+                "public_metadata": item.public_metadata,
+                "title_en": item.title_en,
+                "title_ar": item.title_ar,
+                "description_en": item.description_en,
+                "description_ar": item.description_ar,
+                "tags": item.tags,
             }
             for item in record.staged_media
         ],
@@ -567,6 +581,8 @@ def import_candidate_summary_dict(record: ProjectImportCandidate) -> dict[str, A
         "proposed_area_id": record.proposed_area_id,
         "official_source_url": record.official_source_url,
         "review_status": record.review_status.value,
+        "processing_status": record.processing_status.value,
+        "last_successful_stage": record.last_successful_stage,
         "missing_fields": missing,
         "blockers": blockers,
         "warnings": [
@@ -588,6 +604,7 @@ def import_candidate_summary_dict(record: ProjectImportCandidate) -> dict[str, A
             else "none"
         ),
         "eligibility": eligibility,
+        "processing_eligibility_errors": processing_eligibility_errors(record),
         "updated_at": record.updated_at,
     }
 

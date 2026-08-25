@@ -32,6 +32,7 @@
     "projects:retry-failed": "docker compose run --rm api python -m app.project_acquisition_cli retry-failed",
     "projects:media-intake": "docker compose run --rm api python -m app.project_acquisition_cli media-intake",
     "projects:import:status": "docker compose run --rm api python -m app.project_acquisition_cli status",
+    "projects:process-worker": "docker compose run --rm api python -m app.project_acquisition_cli process-worker",
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "build": "npm run build --workspaces --if-present"
