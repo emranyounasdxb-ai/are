@@ -12,6 +12,7 @@ from sqlalchemy.orm import selectinload
 from app.acquisition.adapters import adapter_for
 from app.acquisition.media import (
     SecureRasterFetcher,
+    classify_media_quality,
     normalized_media_filename,
     responsive_derivatives,
     thumbnail,
@@ -20,7 +21,13 @@ from app.acquisition.media import (
 from app.acquisition.sobha_siniya_pilot import media_domains_for_candidate
 from app.acquisition.tanami import TANAMI_ADAPTER_KEY, TANAMI_MEDIA_DOMAINS
 from app.config import Settings
-from app.models import ProjectImportBatch, ProjectImportCandidate, ProjectImportMedia
+from app.models import (
+    ImportReviewStatus,
+    ProjectImportBatch,
+    ProjectImportCandidate,
+    ProjectImportMedia,
+    ProjectProcessingStatus,
+)
 from app.project_processing import descriptive_media_filename, public_media_metadata
 from app.storage import PrivateStorage
 
@@ -34,6 +41,7 @@ REJECTED_URL_TOKENS = (
     "app-store",
     "google-play",
 )
+MEDIA_PROCESSING_VERSION = "project-media-v2"
 
 
 async def intake_private_media(
@@ -64,19 +72,23 @@ async def intake_private_media(
         raise ValueError("Every media candidate must belong to the selected batch.")
     storage = PrivateStorage(settings)
     source_fetcher = fetcher or SecureRasterFetcher()
-    existing_hashes = set(
-        await db.scalars(
-            select(ProjectImportMedia.sha256).where(ProjectImportMedia.sha256.is_not(None))
-        )
-    )
-    stats = {
+    stats: dict[str, int] = {
         "references": 0,
+        "attempted": 0,
         "downloaded": 0,
+        "accepted": 0,
         "deduplicated": 0,
         "failed": 0,
+        "low_resolution_rejected": 0,
+        "unrelated_rejected": 0,
+        "accepted_cover_candidates": 0,
+        "accepted_gallery_candidates": 0,
+        "floor_plan_candidates": 0,
+        "master_plan_candidates": 0,
         "skipped_video": 0,
     }
     for candidate in sorted(selected, key=lambda value: value.manifest_row_id):
+        candidate_stats = {key: 0 for key in stats}
         adapter = adapter_for(str(candidate.owner_manifest_values.get("owner_developer", "")))
         allowed_domains = media_domains_for_candidate(candidate)
         if candidate.adapter_key == TANAMI_ADAPTER_KEY:
@@ -84,21 +96,32 @@ async def intake_private_media(
         if allowed_domains is None and adapter is not None:
             allowed_domains = adapter.allowed_domains
         for order, media in enumerate(
-            sorted(candidate.staged_media, key=lambda value: value.source_url)[:12]
+            sorted(candidate.staged_media, key=lambda value: value.source_url)[:50]
         ):
-            stats["references"] += 1
+            candidate_stats["references"] += 1
+            if media.category.value == "floor-plan":
+                candidate_stats["floor_plan_candidates"] += 1
+            if media.category.value == "master-plan":
+                candidate_stats["master_plan_candidates"] += 1
             if media.category.value == "video-reference":
-                stats["skipped_video"] += 1
+                candidate_stats["skipped_video"] += 1
                 continue
-            if media.storage_key or media.duplicate_of_id:
+            if media.processing_version == MEDIA_PROCESSING_VERSION and media.stage_status in {
+                "downloaded",
+                "duplicate",
+                "rejected-low-resolution",
+            }:
+                _count_terminal_media(candidate_stats, media)
                 continue
             if allowed_domains is None or any(
                 token in media.source_url.casefold() for token in REJECTED_URL_TOKENS
             ):
                 media.stage_status = "failed"
                 media.failure_reason = "Media URL is outside the bounded official raster policy."
-                stats["failed"] += 1
+                candidate_stats["failed"] += 1
+                candidate_stats["unrelated_rejected"] += 1
                 continue
+            candidate_stats["attempted"] += 1
             result = await asyncio.to_thread(
                 source_fetcher.fetch, media.source_url, allowed_domains
             )
@@ -108,15 +131,16 @@ async def intake_private_media(
                 media.failure_reason = (
                     result.error_message or result.error_code or "Fetch failed."
                 )[:500]
-                stats["failed"] += 1
+                candidate_stats["failed"] += 1
                 continue
             try:
                 raster = await asyncio.to_thread(validate_raster, result.body, result.content_type)
             except ValueError as exc:
                 media.stage_status = "failed"
                 media.failure_reason = str(exc)[:500]
-                stats["failed"] += 1
+                candidate_stats["failed"] += 1
                 continue
+            quality = classify_media_quality(raster, media.category.value)
             project_slug = (
                 candidate.normalized_project_name or f"project-{candidate.manifest_row_id}"
             )
@@ -133,7 +157,7 @@ async def intake_private_media(
             media.last_seen_at = media.retrieved_at
             media.original_sha256 = hashlib.sha256(result.body).hexdigest()
             media.processed_sha256 = raster.sha256
-            media.processing_version = "project-media-v1"
+            media.processing_version = MEDIA_PROCESSING_VERSION
             project_name = (
                 candidate.normalized_project_name or f"Project {candidate.manifest_row_id}"
             )
@@ -161,7 +185,8 @@ async def intake_private_media(
                     ProjectImportMedia.id != media.id,
                 )
             )
-            if duplicate or raster.sha256 in existing_hashes:
+            if duplicate:
+                _delete_existing_media_files(storage, media)
                 media.sha256 = raster.sha256
                 media.mime_type = raster.mime_type
                 media.size_bytes = len(raster.content)
@@ -169,8 +194,11 @@ async def intake_private_media(
                 media.height = raster.height
                 media.duplicate_of_id = duplicate.id if duplicate else None
                 media.stage_status = "duplicate"
-                stats["deduplicated"] += 1
+                media.failure_reason = "Duplicate of another exact-project media master."
+                media.derivative_manifest = []
+                candidate_stats["deduplicated"] += 1
                 continue
+            previous_keys = _media_storage_keys(media)
             raw_key: str | None = None
             storage_key: str | None = None
             thumbnail_key: str | None = None
@@ -196,7 +224,12 @@ async def intake_private_media(
                     thumbnail=True,
                 )
                 derivative_manifest: list[dict[str, object]] = []
-                for derivative in await asyncio.to_thread(responsive_derivatives, raster):
+                derivatives = (
+                    await asyncio.to_thread(responsive_derivatives, raster)
+                    if quality.public_eligible
+                    else ()
+                )
+                for derivative in derivatives:
                     filename = public_filename.rsplit(".", 1)[0]
                     filename = f"{filename}-{derivative.width}w.{derivative.format}"
                     key = await storage.save_acquisition_media(
@@ -234,11 +267,101 @@ async def intake_private_media(
             media.sha256 = raster.sha256
             media.width = raster.width
             media.height = raster.height
-            media.failure_reason = None
-            media.stage_status = "downloaded"
+            media.failure_reason = quality.rejection_reason
+            media.stage_status = (
+                "downloaded" if quality.public_eligible else "rejected-low-resolution"
+            )
             media.derivative_manifest = derivative_manifest
             media.change_status = "newly-added"
-            existing_hashes.add(raster.sha256)
-            stats["downloaded"] += 1
+            for key in previous_keys - {raw_key, storage_key, thumbnail_key, *derivative_keys}:
+                storage.delete(key)
+            if quality.public_eligible:
+                candidate_stats["downloaded"] += 1
+                candidate_stats["accepted"] += 1
+                if quality.cover_eligible:
+                    candidate_stats["accepted_cover_candidates"] += 1
+                if media.category.value == "gallery":
+                    candidate_stats["accepted_gallery_candidates"] += 1
+            else:
+                candidate_stats["low_resolution_rejected"] += 1
+        _apply_media_diagnostics(candidate, candidate_stats)
+        for key, value in candidate_stats.items():
+            stats[key] += value
         await db.commit()
     return stats
+
+
+def _count_terminal_media(stats: dict[str, int], media: ProjectImportMedia) -> None:
+    if media.stage_status == "downloaded":
+        stats["downloaded"] += 1
+        stats["accepted"] += 1
+        if media.category.value == "cover":
+            stats["accepted_cover_candidates"] += 1
+        if media.category.value == "gallery":
+            stats["accepted_gallery_candidates"] += 1
+    elif media.stage_status == "duplicate":
+        stats["deduplicated"] += 1
+    elif media.stage_status == "rejected-low-resolution":
+        stats["low_resolution_rejected"] += 1
+
+
+def _media_storage_keys(media: ProjectImportMedia) -> set[str]:
+    keys = {
+        value
+        for value in (media.raw_storage_key, media.storage_key, media.thumbnail_storage_key)
+        if value
+    }
+    keys.update(
+        str(value["storage_key"]) for value in media.derivative_manifest if value.get("storage_key")
+    )
+    return keys
+
+
+def _delete_existing_media_files(storage: PrivateStorage, media: ProjectImportMedia) -> None:
+    for key in _media_storage_keys(media):
+        storage.delete(key)
+    media.raw_storage_key = None
+    media.storage_key = None
+    media.thumbnail_storage_key = None
+
+
+def _apply_media_diagnostics(candidate: ProjectImportCandidate, stats: dict[str, int]) -> None:
+    summary = dict(candidate.acquisition_summary)
+    visible_gallery_count = int(summary.get("visible_gallery_count") or 0)
+    coverage_incomplete = (
+        visible_gallery_count > 1 and stats["accepted_gallery_candidates"] < visible_gallery_count
+    )
+    summary.update(
+        {
+            "media_attempted": stats["attempted"],
+            "media_accepted": stats["accepted"],
+            "media_low_resolution_rejected": stats["low_resolution_rejected"],
+            "media_unrelated_rejected": int(summary.get("media_excluded") or 0)
+            + stats["unrelated_rejected"],
+            "media_duplicate_rejected": stats["deduplicated"],
+            "media_failed_downloads": stats["failed"],
+            "accepted_cover_candidates": stats["accepted_cover_candidates"],
+            "accepted_gallery_candidates": stats["accepted_gallery_candidates"],
+            "floor_plan_candidates": stats["floor_plan_candidates"],
+            "master_plan_candidates": stats["master_plan_candidates"],
+            "media_coverage_incomplete": coverage_incomplete,
+            "cover_quality_warning": (
+                None
+                if stats["accepted_cover_candidates"]
+                else "High-resolution Cover image required"
+            ),
+        }
+    )
+    candidate.acquisition_summary = summary
+    retained = [
+        value
+        for value in candidate.conflict_reasons
+        if value not in {"Media coverage incomplete", "High-resolution Cover image required"}
+    ]
+    if coverage_incomplete:
+        retained.append("Media coverage incomplete")
+    if not stats["accepted_cover_candidates"]:
+        retained.append("High-resolution Cover image required")
+    candidate.conflict_reasons = list(dict.fromkeys(retained))
+    candidate.review_status = ImportReviewStatus.NEEDS_REVIEW
+    candidate.processing_status = ProjectProcessingStatus.NEEDS_REVIEW

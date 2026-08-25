@@ -73,7 +73,7 @@ export function LoadingState({ label = "Loading…" }: Readonly<{ label?: string
   return <div className="loading-state" aria-live="polite"><LoaderCircle aria-hidden className="spin" size={20}/>{label}</div>;
 }
 
-export function InlineFeedback({ tone, children }: Readonly<{ tone: "success" | "error" | "info"; children: ReactNode }>) {
-  const Icon = tone === "success" ? CheckCircle2 : tone === "error" ? AlertCircle : CircleDot;
+export function InlineFeedback({ tone, children }: Readonly<{ tone: "success" | "error" | "info" | "warning"; children: ReactNode }>) {
+  const Icon = tone === "success" ? CheckCircle2 : tone === "error" || tone === "warning" ? AlertCircle : CircleDot;
   return <div className={`inline-feedback inline-feedback--${tone}`} role={tone === "error" ? "alert" : "status"}><Icon aria-hidden size={18}/>{children}</div>;
 }

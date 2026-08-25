@@ -47,7 +47,7 @@ from app.models import (
 from app.storage import PrivateStorage
 
 TANAMI_ADAPTER_KEY = "tanami-explicit-project-list"
-TANAMI_ADAPTER_VERSION = "2.0"
+TANAMI_ADAPTER_VERSION = "2.1"
 TANAMI_DOCUMENT_DOMAINS = ("tanamiproperties.com",)
 TANAMI_MEDIA_DOMAINS = ("tanamiproperties.com", "manage.tanamiproperties.com")
 PROJECT_PATH = re.compile(r"^/Projects/([A-Za-z0-9][A-Za-z0-9-]*)$")
@@ -67,9 +67,12 @@ SAME_PROJECT_SECTIONS = frozenset(
 REJECTED_CONTENT_TOKENS = frozenset(
     {
         "agent",
+        "amenitiesicon",
         "avatar",
         "contact",
+        "connectivity/",
         "currency",
+        "bitcoin",
         "favicon",
         "facebook",
         "icon",
@@ -77,19 +80,26 @@ REJECTED_CONTENT_TOKENS = frozenset(
         "linkedin",
         "logo",
         "placeholder",
+        "projects/images/fpimage/",
+        "projects/img/",
         "qr",
         "related",
         "snapchat",
         "social",
         "spinner",
+        "slider1",
         "tiktok",
         "tracking",
         "twitter",
         "whatsapp",
         "/x.",
         "youtube",
+        "content/images/slider",
     }
 )
+
+IMAGE_SUFFIXES = (".jpg", ".jpeg", ".png", ".webp", ".avif")
+SAME_PROJECT_SECTION_KEYS = frozenset(value.replace("-", "") for value in SAME_PROJECT_SECTIONS)
 
 
 @dataclass(frozen=True)
@@ -106,6 +116,14 @@ class TanamiDocumentSet:
     normalized: NormalizedEvidence
     identity: TanamiIdentity
     media: tuple[tuple[str, ProjectMediaCategory], ...]
+
+
+@dataclass(frozen=True)
+class MediaDiscovery:
+    media: tuple[tuple[str, ProjectMediaCategory], ...]
+    excluded_count: int
+    duplicate_count: int
+    visible_gallery_count: int
 
 
 def normalize_project_urls(urls: list[str] | tuple[str, ...]) -> tuple[str, ...]:
@@ -151,11 +169,12 @@ def same_project_urls(primary_url: str, body: bytes) -> tuple[str, ...]:
             or not host_is_allowed(split.hostname, TANAMI_DOCUMENT_DOMAINS)
             or split.query
             or path == primary_path
-            or not path.startswith(f"{primary_path}/")
+            or not (path.startswith(f"{primary_path}/") or path.startswith(f"{primary_path}-"))
         ):
             continue
-        remainder = path[len(primary_path) + 1 :].casefold()
-        if remainder in SAME_PROJECT_SECTIONS:
+        remainder = path[len(primary_path) :].lstrip("/-").casefold()
+        section_key = remainder.replace("-", "")
+        if section_key in SAME_PROJECT_SECTION_KEYS:
             accepted.add(urlunsplit(("https", "www.tanamiproperties.com", path, "", "")))
     return tuple(sorted(accepted))
 
@@ -263,56 +282,176 @@ class _ContextualMediaParser(HTMLParser):
         self.base_url = base_url
         self.primary_path = primary_path
         self.anchor_stack: list[str | None] = []
-        self.media: set[str] = set()
+        self.media: dict[str, int] = {}
+        self.duplicate_count = 0
+        self.script_type: str | None = None
+        self.script_parts: list[str] = []
+
+    def _add(self, value: str | None, score: int = 0) -> None:
+        if not value:
+            return
+        absolute = urljoin(self.base_url, value.strip())
+        if absolute in self.media:
+            self.duplicate_count += 1
+        self.media[absolute] = max(score, self.media.get(absolute, score))
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         values = dict(attrs)
         if tag == "a":
             href = values.get("href")
-            self.anchor_stack.append(urljoin(self.base_url, href) if href else None)
+            linked = urljoin(self.base_url, href) if href else None
+            self.anchor_stack.append(linked)
+            if linked and urlsplit(linked).path.casefold().endswith(IMAGE_SUFFIXES):
+                self._add(linked, 60)
+        if tag == "script":
+            self.script_type = values.get("type")
+            self.script_parts = []
+        style = values.get("style") or ""
+        for match in re.finditer(r"url\((?:['\"])?([^)'\"]+)", style, re.IGNORECASE):
+            self._add(match.group(1), 10)
         if tag not in {"img", "source"}:
-            return
-        source = values.get("src") or values.get("data-src") or values.get("data-lazy-src")
-        if not source:
             return
         linked = next((item for item in reversed(self.anchor_stack) if item), None)
         if linked:
             linked_path = urlsplit(linked).path.rstrip("/")
             if linked_path.startswith("/Projects/") and linked_path != self.primary_path:
                 return
-        self.media.add(urljoin(self.base_url, source))
+        for attribute, score in (
+            ("src", 0),
+            ("data-src", 25),
+            ("data-lazy-src", 25),
+            ("data-lazy", 25),
+            ("data-original", 40),
+            ("data-echo", 35),
+        ):
+            self._add(values.get(attribute), score)
+        for attribute in ("srcset", "data-srcset"):
+            for url, width in _srcset_candidates(values.get(attribute)):
+                self._add(url, 20 + width)
+
+    def handle_data(self, data: str) -> None:
+        if self.script_type != "application/ld+json":
+            return
+        self.script_parts.append(data)
 
     def handle_endtag(self, tag: str) -> None:
         if tag == "a" and self.anchor_stack:
             self.anchor_stack.pop()
+        if tag == "script" and self.script_type == "application/ld+json":
+            text = "".join(self.script_parts).replace("\\/", "/")
+            if self.primary_path in text:
+                for match in re.finditer(
+                    r"https://[^\s\"']+?(?:\.jpg|\.jpeg|\.png|\.webp|\.avif)(?:\?[^\s\"']*)?",
+                    text,
+                    re.IGNORECASE,
+                ):
+                    self._add(match.group(0), 5)
+            self.script_type = None
+            self.script_parts = []
+
+
+def _srcset_candidates(value: str | None) -> tuple[tuple[str, int], ...]:
+    if not value:
+        return ()
+    candidates: list[tuple[str, int]] = []
+    for item in value.split(","):
+        parts = item.strip().split()
+        if not parts:
+            continue
+        descriptor = parts[-1]
+        width = (
+            int(descriptor[:-1]) if descriptor.endswith("w") and descriptor[:-1].isdigit() else 0
+        )
+        candidates.append((parts[0], width))
+    return tuple(candidates)
 
 
 def exact_project_media(
     primary_url: str, results: tuple[FetchResult, ...]
 ) -> tuple[tuple[str, ProjectMediaCategory], ...]:
     """Collect media embedded in exact-project documents, excluding related-card assets."""
+    return discover_exact_project_media(primary_url, results).media
+
+
+def discover_exact_project_media(
+    primary_url: str, results: tuple[FetchResult, ...]
+) -> MediaDiscovery:
+    """Collect the best exact-project variants and bounded discovery diagnostics."""
     primary_path = urlsplit(primary_url).path.rstrip("/")
-    selected: dict[str, ProjectMediaCategory] = {}
+    selected: dict[str, tuple[str, ProjectMediaCategory, int]] = {}
+    excluded: set[str] = set()
+    duplicate_count = 0
+    visible_gallery: set[str] = set()
     for result in results:
         parser = _ContextualMediaParser(result.url, primary_path)
         parser.feed(result.body.decode("utf-8", errors="replace"))
+        duplicate_count += parser.duplicate_count
         section = urlsplit(result.url).path.rstrip("/").rsplit("/", 1)[-1].casefold()
-        for url in parser.media:
+        for url, parser_score in parser.media.items():
             split = urlsplit(url)
             path = split.path.casefold()
             if (
                 split.scheme != "https"
                 or not split.hostname
                 or not host_is_allowed(split.hostname, TANAMI_MEDIA_DOMAINS)
-                or not path.endswith((".jpg", ".jpeg", ".png", ".webp", ".avif"))
+                or not path.endswith(IMAGE_SUFFIXES)
                 or any(token in path for token in REJECTED_CONTENT_TOKENS)
             ):
+                excluded.add(url)
                 continue
-            selected[url] = _media_category(path, section)
-    return tuple(sorted(selected.items()))
+            category = _media_category(path, section)
+            if "/gallery/" in path and "/floor_image/" not in path:
+                visible_gallery.add(_media_identity(url))
+            identity = _media_identity(url)
+            score = parser_score + _variant_score(path)
+            previous = selected.get(identity)
+            if (
+                previous is None
+                or score > previous[2]
+                or (
+                    previous[1] == ProjectMediaCategory.GALLERY
+                    and category != ProjectMediaCategory.GALLERY
+                    and url == previous[0]
+                )
+            ):
+                if previous is not None:
+                    duplicate_count += 1
+                selected[identity] = (url, category, score)
+            else:
+                duplicate_count += 1
+    media = tuple(sorted((url, category) for url, category, _ in selected.values()))
+    return MediaDiscovery(media, len(excluded), duplicate_count, len(visible_gallery))
+
+
+def _media_identity(url: str) -> str:
+    split = urlsplit(url)
+    path = re.sub(r"/(?:thumb|large|original)/", "/{variant}/", split.path, flags=re.I)
+    return urlunsplit(
+        (split.scheme.casefold(), split.netloc.casefold(), path.casefold(), split.query, "")
+    )
+
+
+def _variant_score(path: str) -> int:
+    if "/original/" in path:
+        return 3000
+    if "/large/" in path:
+        return 2000
+    if "/thumb/" in path:
+        return -1000
+    return 1000
 
 
 def _media_category(path: str, section: str) -> ProjectMediaCategory:
+    if "/banner/" in path or any(token in path for token in ("cover", "hero")):
+        return ProjectMediaCategory.COVER
+    if "floor_image" in path:
+        return ProjectMediaCategory.FLOOR_PLAN
+    if "layoutplan" in path or "master-plan" in path:
+        return ProjectMediaCategory.MASTER_PLAN
+    if "location_map" in path:
+        return ProjectMediaCategory.LOCATION_MAP
+    if "project_index" in path:
+        return ProjectMediaCategory.GALLERY
     value = f"{path} {section}"
     if "floor" in value:
         return ProjectMediaCategory.FLOOR_PLAN
@@ -326,8 +465,6 @@ def _media_category(path: str, section: str) -> ProjectMediaCategory:
         return ProjectMediaCategory.INTERIOR
     if "exterior" in value or "facade" in value:
         return ProjectMediaCategory.EXTERIOR
-    if "cover" in value or "hero" in value or "banner" in value:
-        return ProjectMediaCategory.COVER
     return ProjectMediaCategory.GALLERY
 
 

@@ -22,7 +22,7 @@ from sqlalchemy.orm import selectinload
 from app.acquisition.contracts import FetchResult, SourceFetcher
 from app.acquisition.parser import parse_html
 from app.acquisition.security import BatchCachingFetcher, SecureFetcher
-from app.acquisition.tanami import exact_project_media
+from app.acquisition.tanami import MediaDiscovery, discover_exact_project_media
 from app.config import Settings
 from app.models import (
     AreaAlias,
@@ -46,7 +46,7 @@ from app.models import (
 from app.storage import PrivateStorage
 
 PILOT_ADAPTER_KEY: Final = "tanami-sobha-siniya-pilot"
-PILOT_ADAPTER_VERSION: Final = "1.0"
+PILOT_ADAPTER_VERSION: Final = "1.1"
 PRIMARY_URL: Final = "https://www.tanamiproperties.com/Projects/Sobha-Siniya-Island"
 OFFICIAL_PRESS_FILM_URL: Final = (
     "https://sobharealty.com/media-center/press-releases/"
@@ -73,6 +73,9 @@ AUTHORIZED_DOCUMENTS: Final = (
     OFFICIAL_PARTNERSHIP_URL,
     OFFICIAL_EN_URL,
     OFFICIAL_AR_URL,
+    f"{PRIMARY_URL}-FloorPlans",
+    f"{PRIMARY_URL}-MasterPlan",
+    f"{PRIMARY_URL}-Amenities",
 )
 DOCUMENT_DOMAINS: Final = ("tanamiproperties.com", "sobharealty.com")
 MEDIA_DOMAINS: Final = ("manage.tanamiproperties.com",)
@@ -246,7 +249,7 @@ async def run_sobha_siniya_pilot(
         detail = "; ".join(f"{item.url}: {item.error_code or item.status}" for item in failures)
         raise RuntimeError(f"The controlled source set was incomplete: {detail}")
 
-    tanami, _press_redirect, _press_film, partnership, official_en, official_ar = results
+    tanami, _press_redirect, _press_film, partnership, official_en, official_ar = results[:6]
     facts, source_extracted, diagnostics = _normalize_sources(
         tanami, partnership, official_en, official_ar
     )
@@ -286,7 +289,7 @@ async def run_sobha_siniya_pilot(
         "Construction status is not confirmed by the retained source set.",
     ]
     candidate.arabic_review_required = True
-    media_discovered = await _stage_exact_project_media(db, candidate, tuple(results))
+    media_discovery = await _stage_exact_project_media(db, candidate, tuple(results))
     candidate.acquisition_summary = {
         "scope": "one-project-controlled-pilot",
         "document_requests": len(AUTHORIZED_DOCUMENTS),
@@ -298,7 +301,10 @@ async def run_sobha_siniya_pilot(
         },
         "overview_generation": "pending-approved-provider",
         "fact_guard": "pending-overview-generation",
-        "media_discovered": media_discovered,
+        "media_discovered": len(media_discovery.media),
+        "media_excluded": media_discovery.excluded_count,
+        "media_duplicate_variants": media_discovery.duplicate_count,
+        "visible_gallery_count": media_discovery.visible_gallery_count,
         "publication": "not-permitted",
     }
     candidate.review_status = ImportReviewStatus.NEEDS_REVIEW
@@ -615,11 +621,31 @@ async def _stage_exact_project_media(
     db: AsyncSession,
     candidate: ProjectImportCandidate,
     results: tuple[FetchResult, ...],
-) -> int:
-    accepted = exact_project_media(PRIMARY_URL, results)
-    existing = {item.source_url for item in candidate.staged_media}
-    for url, category in accepted:
+) -> MediaDiscovery:
+    discovery = discover_exact_project_media(PRIMARY_URL, results)
+    accepted_urls = {url for url, _ in discovery.media}
+    for item in list(candidate.staged_media):
+        if item.source_url in accepted_urls:
+            continue
+        if (
+            not any((item.raw_storage_key, item.storage_key, item.thumbnail_storage_key))
+            and not item.derivative_manifest
+        ):
+            await db.delete(item)
+        else:
+            item.stage_status = "obsolete"
+            item.failure_reason = "No longer present in the bounded exact-project media set."
+    existing = {item.source_url: item for item in candidate.staged_media}
+    for url, category in discovery.media:
         if url in existing:
+            item = existing[url]
+            category_changed = item.category != category
+            filename_outdated = bool(
+                item.normalized_filename and category.value not in item.normalized_filename
+            )
+            if category_changed or filename_outdated:
+                item.category = category
+                existing[url].processing_version = None
             continue
         db.add(
             ProjectImportMedia(
@@ -630,4 +656,4 @@ async def _stage_exact_project_media(
                 stage_status="reference-only",
             )
         )
-    return len(accepted)
+    return discovery

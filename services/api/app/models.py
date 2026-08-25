@@ -972,6 +972,77 @@ class ProjectImportEditorialDraft(TimestampMixin, Base):
         UUID(as_uuid=True), ForeignKey("users.id")
     )
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    origin: Mapped[str | None] = mapped_column(String(40))
+    overview_pack_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("project_overview_packs.id", ondelete="SET NULL")
+    )
+    overview_pack_hash: Mapped[str | None] = mapped_column(String(64))
+    fact_input_version: Mapped[str | None] = mapped_column(String(40))
+    fact_input_hash: Mapped[str | None] = mapped_column(String(64))
+    candidate_version: Mapped[int | None]
+    import_correlation_id: Mapped[str | None] = mapped_column(String(120))
+
+
+class ProjectOverviewPack(TimestampMixin, Base):
+    __tablename__ = "project_overview_packs"
+    __table_args__ = (UniqueConstraint("created_by", "idempotency_key"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    batch_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("project_import_batches.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    pack_version: Mapped[str] = mapped_column(String(40), nullable=False)
+    selection_mode: Mapped[str] = mapped_column(String(40), nullable=False)
+    status: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    storage_key: Mapped[str] = mapped_column(String(180), nullable=False, unique=True)
+    pack_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    selected_count: Mapped[int] = mapped_column(nullable=False)
+    eligible_count: Mapped[int] = mapped_column(nullable=False)
+    ineligible_count: Mapped[int] = mapped_column(nullable=False)
+    imported_count: Mapped[int] = mapped_column(default=0, nullable=False)
+    failed_count: Mapped[int] = mapped_column(default=0, nullable=False)
+    created_by: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
+    )
+    idempotency_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    import_correlation_id: Mapped[str | None] = mapped_column(String(120))
+    imported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    items: Mapped[list[ProjectOverviewPackItem]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin", order_by="ProjectOverviewPackItem.ordinal"
+    )
+
+
+class ProjectOverviewPackItem(TimestampMixin, Base):
+    __tablename__ = "project_overview_pack_items"
+    __table_args__ = (UniqueConstraint("pack_id", "candidate_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    pack_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("project_overview_packs.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    candidate_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("project_import_candidates.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    ordinal: Mapped[int] = mapped_column(nullable=False)
+    candidate_version: Mapped[int] = mapped_column(nullable=False)
+    fact_input_version: Mapped[str] = mapped_column(String(40), nullable=False)
+    fact_input_hash: Mapped[str | None] = mapped_column(String(64))
+    eligible: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    status: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    exclusion_reasons: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    failure_code: Mapped[str | None] = mapped_column(String(100))
+    failure_message: Mapped[str | None] = mapped_column(String(1000))
+    referenced_fact_fields: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    editorial_notes: Mapped[str | None] = mapped_column(String(1000))
+    imported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class ProjectOverviewGeneration(TimestampMixin, Base):

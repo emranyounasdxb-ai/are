@@ -15,6 +15,7 @@ from app.acquisition.contracts import FetchResult, ManifestCandidate
 from app.acquisition.mapping_registry import TANAMI_V1, mapping_contract
 from app.acquisition.media import (
     RasterFetchResult,
+    classify_media_quality,
     duplicate_hash,
     normalized_media_filename,
     responsive_derivatives,
@@ -276,6 +277,7 @@ def test_media_derivatives_are_normalized_sanitized_and_responsive() -> None:
         ("webp", 960),
         ("avif", 960),
     }
+    assert all(item.width <= raster.width for item in derivatives)
     for derivative in derivatives:
         assert derivative.size_bytes == len(derivative.content)
         with Image.open(io.BytesIO(derivative.content)) as image:
@@ -407,7 +409,7 @@ async def test_private_media_intake_is_sanitized_pending_and_authenticated(
     client, create_user, test_settings
 ) -> None:
     image = io.BytesIO()
-    Image.new("RGB", (640, 360), "#745238").save(image, "JPEG", exif=b"private-metadata")
+    Image.new("RGB", (1600, 1000), "#745238").save(image, "JPEG", exif=b"private-metadata")
     batch_id = uuid.uuid4()
     media_id = uuid.uuid4()
     async with SessionLocal() as db:
@@ -472,6 +474,96 @@ async def test_private_media_intake_is_sanitized_pending_and_authenticated(
     assert preview.status_code == 200
     assert preview.headers["cache-control"] == "private, no-store, max-age=0"
     assert preview.headers["content-type"].startswith("image/webp")
+    full = await client.get(f"/api/v1/admin/project-import-media/{media_id}/preview")
+    assert full.status_code == 200
+    assert full.headers["cache-control"] == "private, no-store, max-age=0"
+    assert full.headers["content-type"].startswith("image/jpeg")
+
+
+@pytest.mark.asyncio
+async def test_low_resolution_media_is_private_review_only_and_rerun_is_idempotent(
+    test_settings,
+) -> None:
+    image = io.BytesIO()
+    Image.new("RGB", (800, 450), "#745238").save(image, "JPEG")
+    batch_id = uuid.uuid4()
+    async with SessionLocal() as db:
+        batch = ProjectImportBatch(
+            id=batch_id,
+            name="QA Low Resolution Media",
+            source_reference="qa-low-resolution",
+            manifest_hash=uuid.uuid4().hex + uuid.uuid4().hex,
+            adapter_version="test",
+            total_count=1,
+        )
+        candidate = ProjectImportCandidate(
+            manifest_row_id=1,
+            raw_source_payload={},
+            owner_manifest_values={
+                "owner_project_name": "QA Low Resolution Project",
+                "owner_developer": "Emaar",
+                "owner_area": "Dubai",
+            },
+            normalized_project_name="QA Low Resolution Project",
+            acquisition_summary={"visible_gallery_count": 2, "media_excluded": 3},
+            source_urls=[],
+            content_hash="e" * 64,
+            validation_errors=[],
+            conflict_reasons=[],
+            review_status=ImportReviewStatus.NEEDS_REVIEW,
+        )
+        media = ProjectImportMedia(
+            category=ProjectMediaCategory.GALLERY,
+            source_url="https://properties.emaar.com/media/qa-low.jpg",
+            rights_status=MediaRightsStatus.PENDING,
+            stage_status="reference-only",
+        )
+        candidate.staged_media = [media]
+        batch.candidates = [candidate]
+        db.add(batch)
+        await db.commit()
+        first = await intake_private_media(
+            db,
+            test_settings,
+            batch_id,
+            fetcher=RasterFixtureFetcher(image.getvalue()),
+        )
+        await db.refresh(media)
+        first_keys = (media.raw_storage_key, media.storage_key, media.thumbnail_storage_key)
+        assert first["low_resolution_rejected"] == 1
+        assert media.stage_status == "rejected-low-resolution"
+        assert (
+            media.failure_reason == "Image does not meet the minimum public-readiness dimensions."
+        )
+        assert media.derivative_manifest == []
+        assert all(first_keys)
+        assert "Media coverage incomplete" in candidate.conflict_reasons
+        assert "High-resolution Cover image required" in candidate.conflict_reasons
+
+        second = await intake_private_media(
+            db,
+            test_settings,
+            batch_id,
+            fetcher=RasterFixtureFetcher(image.getvalue()),
+        )
+        await db.refresh(media)
+        assert second["attempted"] == 0
+        assert second["low_resolution_rejected"] == 1
+        assert (media.raw_storage_key, media.storage_key, media.thumbnail_storage_key) == first_keys
+
+
+def test_cover_quality_gate_requires_real_1600_by_900_landscape_master() -> None:
+    low = io.BytesIO()
+    Image.new("RGB", (1400, 600), "#745238").save(low, "JPEG")
+    low_quality = classify_media_quality(validate_raster(low.getvalue(), "image/jpeg"), "cover")
+    assert not low_quality.public_eligible
+    assert low_quality.rejection_reason == "High-resolution Cover image required"
+
+    valid = io.BytesIO()
+    Image.new("RGB", (1600, 900), "#745238").save(valid, "JPEG")
+    valid_quality = classify_media_quality(validate_raster(valid.getvalue(), "image/jpeg"), "cover")
+    assert valid_quality.public_eligible
+    assert valid_quality.cover_eligible
 
 
 @pytest.mark.asyncio

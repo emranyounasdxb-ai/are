@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.acquisition.media import classify_media_dimensions
 from app.models import (
     AreaCommunity,
     Developer,
@@ -11,6 +12,7 @@ from app.models import (
     Project,
     ProjectImportBatch,
     ProjectImportCandidate,
+    ProjectImportMedia,
     Property,
     TrustProfile,
     UAEEmirate,
@@ -416,6 +418,23 @@ def import_batch_dict(record: ProjectImportBatch) -> dict[str, Any]:
     }
 
 
+def _import_media_quality(item: ProjectImportMedia) -> dict[str, object]:
+    if not item.width or not item.height:
+        return {
+            "quality_status": "not-assessed",
+            "public_eligible": False,
+            "cover_eligible": False,
+            "has_full_preview": False,
+        }
+    quality = classify_media_dimensions(item.width, item.height, item.category.value)
+    return {
+        "quality_status": quality.status,
+        "public_eligible": quality.public_eligible and item.stage_status == "downloaded",
+        "cover_eligible": quality.cover_eligible and item.stage_status == "downloaded",
+        "has_full_preview": bool(item.storage_key),
+    }
+
+
 def import_candidate_dict(record: ProjectImportCandidate) -> dict[str, Any]:
     return {
         "id": record.id,
@@ -497,6 +516,7 @@ def import_candidate_dict(record: ProjectImportCandidate) -> dict[str, Any]:
                 "description_en": item.description_en,
                 "description_ar": item.description_ar,
                 "tags": item.tags,
+                **_import_media_quality(item),
             }
             for item in record.staged_media
         ],
@@ -519,6 +539,12 @@ def import_candidate_dict(record: ProjectImportCandidate) -> dict[str, Any]:
                 "source_version": record.editorial_draft.source_version,
                 "model_name": record.editorial_draft.model_name,
                 "model_version": record.editorial_draft.model_version,
+                "origin": record.editorial_draft.origin,
+                "overview_pack_id": record.editorial_draft.overview_pack_id,
+                "overview_pack_hash": record.editorial_draft.overview_pack_hash,
+                "fact_input_version": record.editorial_draft.fact_input_version,
+                "fact_input_hash": record.editorial_draft.fact_input_hash,
+                "candidate_version": record.editorial_draft.candidate_version,
                 "generated_at": record.editorial_draft.generated_at,
                 "approval_status": record.editorial_draft.approval_status.value,
                 "approved_at": record.editorial_draft.approved_at,

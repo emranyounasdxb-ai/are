@@ -382,6 +382,55 @@ class EditorialApprovalInput(StrictModel):
     expected_source_version: str = Field(pattern=r"^[a-fA-F0-9]{64}$")
 
 
+class OverviewPackCreateInput(StrictModel):
+    selection_mode: Literal[
+        "single",
+        "manual",
+        "current-page",
+        "first-25",
+        "first-50",
+        "all-filtered",
+        "cross-page",
+    ]
+    candidate_ids: list[uuid.UUID] = Field(min_length=1, max_length=50)
+    expected_versions: dict[uuid.UUID, int]
+    idempotency_key: str = Field(min_length=16, max_length=100, pattern=r"^[A-Za-z0-9._:-]+$")
+
+    @model_validator(mode="after")
+    def validate_selection(self) -> OverviewPackCreateInput:
+        if len(set(self.candidate_ids)) != len(self.candidate_ids):
+            raise ValueError("Candidate selection must not contain duplicates")
+        if set(self.expected_versions) != set(self.candidate_ids):
+            raise ValueError("Every selected candidate requires an expected version")
+        return self
+
+
+class ManualOverviewResponseItem(StrictModel):
+    pack_id: uuid.UUID
+    pack_version: Literal["manual-overview-pack-v1"]
+    candidate_id: uuid.UUID
+    candidate_version: int = Field(ge=1)
+    fact_input_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
+    overview_en: str = Field(min_length=80, max_length=4000)
+    overview_ar: str = Field(min_length=80, max_length=4000)
+    editorial_notes: str | None = Field(default=None, max_length=1000)
+    referenced_fact_fields: list[str] = Field(min_length=1, max_length=80)
+    origin: Literal["CODEX_ASSISTED_MANUAL"]
+
+    @field_validator("referenced_fact_fields")
+    @classmethod
+    def unique_fact_fields(cls, value: list[str]) -> list[str]:
+        if len(set(value)) != len(value):
+            raise ValueError("Referenced fact fields must not contain duplicates")
+        return value
+
+
+class ManualOverviewResponse(StrictModel):
+    pack_id: uuid.UUID
+    pack_version: Literal["manual-overview-pack-v1"]
+    items: list[ManualOverviewResponseItem] = Field(min_length=1, max_length=50)
+
+
 class MediaApprovalInput(StrictModel):
     approved: bool
     rights_basis: str = Field(min_length=3, max_length=500)

@@ -27,6 +27,12 @@ from app.config import Settings, get_settings
 from app.db import get_db
 from app.dependencies import AuthContext, require_mutation_permission, require_permission
 from app.import_review import apply_bulk_action, eligibility_errors
+from app.manual_overviews import (
+    create_overview_pack,
+    import_overview_response,
+    pack_dict,
+    read_pack_content,
+)
 from app.models import (
     AreaAlias,
     AreaCommunity,
@@ -49,6 +55,7 @@ from app.models import (
     ProjectMediaCategory,
     ProjectNearbyPlace,
     ProjectOverviewGeneration,
+    ProjectOverviewPack,
     ProjectPaymentMilestone,
     ProjectPaymentPlan,
     ProjectPriority,
@@ -83,8 +90,10 @@ from app.schemas import (
     EditorialApprovalInput,
     ImportBulkActionInput,
     ImportCandidateReviewInput,
+    ManualOverviewResponse,
     MediaApprovalInput,
     MediaPreparationInput,
+    OverviewPackCreateInput,
     ProcessingJobCreateInput,
     ProcessingRetryInput,
     ProjectInput,
@@ -1535,6 +1544,183 @@ async def bulk_import_candidates(
     return await apply_bulk_action(db, batch_id, payload, request, context, settings)
 
 
+@admin_router.get("/project-imports/{batch_id}/overview-packs")
+async def list_overview_packs(
+    batch_id: uuid.UUID,
+    _: AuthContext = Depends(require_permission("project-overview-pack.manage")),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, object]:
+    packs = (
+        await db.scalars(
+            select(ProjectOverviewPack)
+            .where(ProjectOverviewPack.batch_id == batch_id)
+            .options(selectinload(ProjectOverviewPack.items))
+            .order_by(ProjectOverviewPack.created_at.desc())
+        )
+    ).all()
+    return {
+        "items": [pack_dict(pack) for pack in packs],
+        "meta": meta(1, max(1, len(packs)), len(packs)),
+    }
+
+
+@admin_router.post("/project-imports/{batch_id}/overview-packs")
+async def prepare_overview_pack(
+    batch_id: uuid.UUID,
+    payload: OverviewPackCreateInput,
+    request: Request,
+    context: AuthContext = Depends(require_mutation_permission("project-overview-pack.manage")),
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, object]:
+    try:
+        pack = await create_overview_pack(
+            db,
+            settings,
+            batch_id=batch_id,
+            candidate_ids=payload.candidate_ids,
+            expected_versions=payload.expected_versions,
+            selection_mode=payload.selection_mode,
+            actor_id=context.user.id,
+            idempotency_key=payload.idempotency_key,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={"code": "invalid_overview_pack", "message": str(exc)},
+        ) from exc
+    await write_audit(
+        db,
+        action="project-overview-pack.prepare",
+        entity_type="project-overview-pack",
+        entity_id=pack.id,
+        actor_user_id=context.user.id,
+        correlation_id=request_correlation_id(request),
+        after={
+            "pack_version": pack.pack_version,
+            "selected_count": pack.selected_count,
+            "eligible_count": pack.eligible_count,
+            "ineligible_count": pack.ineligible_count,
+        },
+    )
+    await db.commit()
+    return pack_dict(pack)
+
+
+async def _overview_pack_or_404(db: AsyncSession, pack_id: uuid.UUID) -> ProjectOverviewPack:
+    pack = await db.scalar(
+        select(ProjectOverviewPack)
+        .where(ProjectOverviewPack.id == pack_id)
+        .options(selectinload(ProjectOverviewPack.items))
+    )
+    if not pack:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            detail={"code": "not_found", "message": "Overview pack not found."},
+        )
+    return pack
+
+
+@admin_router.get("/project-overview-packs/{pack_id}")
+async def get_overview_pack(
+    pack_id: uuid.UUID,
+    _: AuthContext = Depends(require_permission("project-overview-pack.manage")),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, object]:
+    return pack_dict(await _overview_pack_or_404(db, pack_id))
+
+
+@admin_router.post("/project-overview-packs/{pack_id}/download")
+async def download_overview_pack(
+    pack_id: uuid.UUID,
+    request: Request,
+    context: AuthContext = Depends(require_mutation_permission("project-overview-pack.manage")),
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    pack = await _overview_pack_or_404(db, pack_id)
+    try:
+        content = await asyncio.to_thread(read_pack_content, pack, settings)
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail={"code": "private_pack_unavailable", "message": str(exc)},
+        ) from exc
+    await write_audit(
+        db,
+        action="project-overview-pack.download",
+        entity_type="project-overview-pack",
+        entity_id=pack.id,
+        actor_user_id=context.user.id,
+        correlation_id=request_correlation_id(request),
+        after={"pack_hash": pack.pack_hash},
+    )
+    await db.commit()
+    return Response(
+        content=content,
+        media_type="application/json",
+        headers={
+            "Cache-Control": "private, no-store, max-age=0",
+            "Content-Disposition": f'attachment; filename="overview-pack-{pack.id}.json"',
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+@admin_router.post("/project-overview-packs/{pack_id}/import")
+async def import_manual_overview_pack(
+    pack_id: uuid.UUID,
+    request: Request,
+    response_file: UploadFile = File(),
+    context: AuthContext = Depends(require_mutation_permission("project-overview-pack.manage")),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, object]:
+    if response_file.content_type not in {"application/json", "application/x-ndjson"}:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={"code": "invalid_overview_response", "message": "Upload a JSON response file."},
+        )
+    content = await response_file.read(5 * 1024 * 1024 + 1)
+    await response_file.close()
+    if not content or len(content) > 5 * 1024 * 1024:
+        raise HTTPException(
+            status.HTTP_413_CONTENT_TOO_LARGE,
+            detail={
+                "code": "invalid_overview_response",
+                "message": "Response file is empty or too large.",
+            },
+        )
+    try:
+        response = ManualOverviewResponse.model_validate_json(content)
+    except ValueError as exc:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={"code": "invalid_overview_response", "message": str(exc)},
+        ) from exc
+    pack = await _overview_pack_or_404(db, pack_id)
+    correlation_id = request_correlation_id(request)
+    try:
+        result = await import_overview_response(
+            db, pack=pack, response=response, correlation_id=correlation_id
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail={"code": "overview_response_mismatch", "message": str(exc)},
+        ) from exc
+    await write_audit(
+        db,
+        action="project-overview-pack.import",
+        entity_type="project-overview-pack",
+        entity_id=pack.id,
+        actor_user_id=context.user.id,
+        correlation_id=correlation_id,
+        after={"imported": result["imported"], "failed": result["failed"]},
+    )
+    await db.commit()
+    return result
+
+
 @admin_router.get("/project-import-media/{media_id}/thumbnail")
 async def import_media_thumbnail(
     media_id: uuid.UUID,
@@ -1555,6 +1741,31 @@ async def import_media_thumbnail(
         headers={
             "Cache-Control": "private, no-store, max-age=0",
             "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+@admin_router.get("/project-import-media/{media_id}/preview")
+async def import_media_full_preview(
+    media_id: uuid.UUID,
+    _: AuthContext = Depends(require_permission("project-import.manage")),
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    media = await db.get(ProjectImportMedia, media_id)
+    if not media or not media.storage_key or not media.mime_type:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            detail={"code": "not_found", "message": "Private full-size preview not found."},
+        )
+    content = await asyncio.to_thread(PrivateStorage(settings).read, media.storage_key)
+    return Response(
+        content=content,
+        media_type=media.mime_type,
+        headers={
+            "Cache-Control": "private, no-store, max-age=0",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "default-src 'none'; img-src 'self'; sandbox",
         },
     )
 

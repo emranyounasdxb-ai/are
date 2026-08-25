@@ -10,11 +10,18 @@ from app.acquisition.contracts import FetchResult
 from app.acquisition.tanami import (
     acquire_explicit_batch,
     acquire_project_documents,
+    discover_exact_project_media,
+    exact_project_media,
     normalize_project_urls,
     same_project_urls,
 )
 from app.db import SessionLocal
-from app.models import ProjectImportBatch, ProjectImportCandidate, ProjectImportMedia
+from app.models import (
+    ProjectImportBatch,
+    ProjectImportCandidate,
+    ProjectImportMedia,
+    ProjectMediaCategory,
+)
 
 ALPHA = "https://www.tanamiproperties.com/Projects/Alpha-Residences"
 BETA = "https://www.tanamiproperties.com/Projects/Beta-Residences"
@@ -94,8 +101,81 @@ def test_explicit_url_contract_supports_one_multiple_and_large_approved_lists() 
 
 
 def test_same_project_discovery_excludes_related_project_links() -> None:
-    body = f'<a href="{ALPHA_GALLERY}">Gallery</a><a href="{BETA}">Related</a>'.encode()
-    assert same_project_urls(ALPHA, body) == (ALPHA_GALLERY,)
+    floor_plans = f"{ALPHA}-FloorPlans"
+    body = (
+        f'<a href="{ALPHA_GALLERY}">Gallery</a>'
+        f'<a href="{floor_plans}">Floor Plans</a>'
+        f'<a href="{BETA}">Related</a>'
+    ).encode()
+    assert set(same_project_urls(ALPHA, body)) == {ALPHA_GALLERY, floor_plans}
+
+
+def _html_result(body: str, url: str = ALPHA) -> FetchResult:
+    return FetchResult(
+        url=url,
+        status=200,
+        retrieved_at=datetime.now(UTC),
+        content_type="text/html",
+        body=body.encode(),
+    )
+
+
+def test_srcset_prefers_largest_original_and_deduplicates_thumbnail_variant() -> None:
+    result = _html_result(
+        """
+        <picture><source srcset="
+          https://manage.tanamiproperties.com/Gallery/1/Thumb/10.webp 480w,
+          https://manage.tanamiproperties.com/Gallery/1/Large/10.webp 1600w">
+        <img src="https://manage.tanamiproperties.com/Gallery/1/Thumb/10.webp"></picture>
+        """
+    )
+    media = exact_project_media(ALPHA, (result,))
+    assert media == (
+        (
+            "https://manage.tanamiproperties.com/Gallery/1/Large/10.webp",
+            ProjectMediaCategory.GALLERY,
+        ),
+    )
+
+
+def test_lazy_carousel_discovers_every_exact_project_image() -> None:
+    result = _html_result(
+        """
+        <div class="carousel">
+          <a href="https://manage.tanamiproperties.com/Gallery/1/Thumb/11.webp">
+            <img src="/Projects/images/Loading.svg"
+                 data-echo="https://manage.tanamiproperties.com/Gallery/1/Thumb/11.webp">
+          </a>
+          <img data-src="https://manage.tanamiproperties.com/Gallery/1/Thumb/12.webp">
+          <img data-original="https://manage.tanamiproperties.com/Gallery/1/Thumb/13.webp">
+        </div>
+        """
+    )
+    discovery = discover_exact_project_media(ALPHA, (result,))
+    assert {url for url, _ in discovery.media} == {
+        "https://manage.tanamiproperties.com/Gallery/1/Thumb/11.webp",
+        "https://manage.tanamiproperties.com/Gallery/1/Thumb/12.webp",
+        "https://manage.tanamiproperties.com/Gallery/1/Thumb/13.webp",
+    }
+    assert discovery.visible_gallery_count == 3
+
+
+def test_json_css_and_exact_project_boundary_exclude_branding_and_related_media() -> None:
+    result = _html_result(
+        f"""
+        <script type="application/ld+json">{{"url":"{ALPHA}",
+          "image":"https://manage.tanamiproperties.com/Gallery/1/Thumb/14.webp"}}</script>
+        <div style="background-image:url('https://manage.tanamiproperties.com/Gallery/1/Thumb/15.webp')"></div>
+        <a href="{BETA}"><img src="https://manage.tanamiproperties.com/Gallery/2/Thumb/99.webp"></a>
+        <img src="https://manage.tanamiproperties.com/Assets/logo.webp">
+        <img src="https://manage.tanamiproperties.com/Assets/social-icon.webp">
+        """
+    )
+    urls = {url for url, _ in exact_project_media(ALPHA, (result,))}
+    assert urls == {
+        "https://manage.tanamiproperties.com/Gallery/1/Thumb/14.webp",
+        "https://manage.tanamiproperties.com/Gallery/1/Thumb/15.webp",
+    }
 
 
 @pytest.mark.asyncio
