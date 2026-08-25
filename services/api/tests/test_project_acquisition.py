@@ -12,19 +12,36 @@ from sqlalchemy import select
 
 from app.acquisition.adapters import ADAPTERS, adapter_for
 from app.acquisition.contracts import FetchResult, ManifestCandidate
-from app.acquisition.media import RasterFetchResult, duplicate_hash, validate_raster
+from app.acquisition.mapping_registry import TANAMI_V1, mapping_contract
+from app.acquisition.media import (
+    RasterFetchResult,
+    duplicate_hash,
+    normalized_media_filename,
+    responsive_derivatives,
+    validate_raster,
+)
 from app.acquisition.media_intake import intake_private_media
 from app.acquisition.parser import normalize_evidence, parse_html
 from app.acquisition.security import AcquisitionSecurityError, validate_public_url
-from app.acquisition.service import classify_change, load_manifest, read_manifest, retry_candidates
+from app.acquisition.service import (
+    classify_change,
+    compare_fields,
+    load_manifest,
+    match_developer_identity,
+    read_manifest,
+    retry_candidates,
+)
 from app.db import SessionLocal
 from app.models import (
     AreaCommunity,
     Developer,
+    EditorialApprovalStatus,
     ImportReviewStatus,
     MediaRightsStatus,
     ProjectImportBatch,
     ProjectImportCandidate,
+    ProjectImportChange,
+    ProjectImportEditorialDraft,
     ProjectImportMedia,
     ProjectMediaCategory,
     PublicationStatus,
@@ -185,6 +202,159 @@ def test_raster_validation_sanitizes_and_detects_duplicates() -> None:
         validate_raster(source.getvalue(), "image/png")
 
 
+def test_inactive_mapping_registry_covers_project_contract_and_limits_ai() -> None:
+    contract = mapping_contract("tanami", "1.0.0")
+    assert contract is TANAMI_V1
+    assert contract.enabled is False
+    assert {field.are_key for field in contract.fields} >= {
+        "project_name",
+        "developer",
+        "emirate",
+        "area",
+        "property_types",
+        "unit_types",
+        "bedroom_options",
+        "size_min",
+        "size_max",
+        "size_unit",
+        "down_payment_percentage",
+        "payment_plan.raw_source_text",
+        "payment_plan.milestones",
+        "handover_quarter",
+        "handover_year",
+        "availability_status",
+        "construction_status",
+        "editorial.overview",
+        "amenities",
+        "media.floor_plans",
+        "media.gallery",
+        "latitude",
+        "longitude",
+        "nearby_places",
+        "last_verified_at",
+        "sources",
+    }
+    assert [field.are_key for field in contract.fields if field.ai_editable] == [
+        "editorial.overview"
+    ]
+    assert {field.source_key for field in contract.fields if field.are_key == "amenities"} == {
+        "features",
+        "amenities",
+    }
+
+
+def test_field_change_review_preserves_human_edits() -> None:
+    changes = compare_fields(
+        {"overview": "Human wording", "handover": "Q1 2030", "removed": "value"},
+        {"overview": "Source wording", "handover": "Q2 2030", "new": "value"},
+        human_edited_fields={"overview"},
+    )
+    states = {change["field"]: change["classification"] for change in changes}
+    assert states == {
+        "handover": "changed",
+        "new": "newly-added",
+        "overview": "human-edited-conflict",
+        "removed": "removed-from-source",
+    }
+    assert not any(change["may_apply_automatically"] for change in changes)
+
+
+def test_media_derivatives_are_normalized_sanitized_and_responsive() -> None:
+    source = io.BytesIO()
+    Image.new("RGB", (1200, 800), "#745238").save(source, "JPEG", exif=b"private-metadata")
+    raster = validate_raster(source.getvalue(), "image/jpeg")
+    filename = normalized_media_filename(
+        "Fixture Residence / Phase 1", "gallery", 2, raster.sha256, raster.extension
+    )
+    assert filename.startswith("fixture-residence-phase-1-gallery-02-")
+    derivatives = responsive_derivatives(raster)
+    assert {(item.format, item.width) for item in derivatives} == {
+        ("webp", 480),
+        ("avif", 480),
+        ("webp", 960),
+        ("avif", 960),
+    }
+    for derivative in derivatives:
+        assert derivative.size_bytes == len(derivative.content)
+        with Image.open(io.BytesIO(derivative.content)) as image:
+            assert image.width == derivative.width
+            assert not image.getexif()
+
+
+@pytest.mark.asyncio
+async def test_developer_identity_matches_internal_source_name_and_alias() -> None:
+    async with SessionLocal() as db:
+        developer = Developer(
+            slug="qa-fixture-source-developer",
+            legal_name="Fixture Source Developer LLC",
+            source_name="Fixture Source Developer LLC",
+            internal_aliases=["Fixture Source Dev"],
+            primary_emirate="Dubai",
+            other_presence=[],
+            selected_projects=[],
+            official_website="https://example.com",
+            source_url="https://example.com/source",
+            additional_source_urls=[],
+            verification_date=datetime(2026, 8, 25, tzinfo=UTC).date(),
+            enquiry_types=[],
+            featured=False,
+            display_order=0,
+            status=PublicationStatus.DRAFT,
+        )
+        db.add(developer)
+        await db.flush()
+        assert await match_developer_identity(db, "Fixture Source Developer LLC") == developer.id
+        assert await match_developer_identity(db, "Fixture Source Dev") == developer.id
+        await db.rollback()
+
+
+@pytest.mark.asyncio
+async def test_raw_normalized_and_editorial_layers_stay_separate_and_private() -> None:
+    async with SessionLocal() as db:
+        batch = ProjectImportBatch(
+            name="QA Layer Separation",
+            source_reference="synthetic-fixture",
+            manifest_hash=uuid.uuid4().hex + uuid.uuid4().hex,
+            adapter_version="synthetic-v1",
+            total_count=1,
+        )
+        candidate = ProjectImportCandidate(
+            manifest_row_id=1,
+            raw_source_payload={"overview": "Untrusted synthetic source wording"},
+            owner_manifest_values={"owner_project_name": "QA Layer Fixture"},
+            normalized_payload={"project_name": "QA Layer Fixture", "handover_year": 2030},
+            source_urls=["https://example.com/synthetic-source"],
+            content_hash="f" * 64,
+            validation_errors=[],
+            conflict_reasons=[],
+            review_status=ImportReviewStatus.NEEDS_REVIEW,
+            editorial_draft=ProjectImportEditorialDraft(
+                overview_en="Human review required for this synthetic overview.",
+                overview_ar="هذه نظرة عامة تجريبية تتطلب مراجعة بشرية.",
+                source_version="synthetic-source-v1",
+                model_name="synthetic-model",
+                model_version="test-only",
+                generated_at=datetime.now(UTC),
+                approval_status=EditorialApprovalStatus.NEEDS_REVIEW,
+            ),
+        )
+        batch.candidates = [candidate]
+        db.add(batch)
+        await db.commit()
+        loaded = await db.scalar(
+            select(ProjectImportCandidate).where(ProjectImportCandidate.id == candidate.id)
+        )
+        assert loaded is not None and loaded.editorial_draft is not None
+        assert loaded.raw_source_payload["overview"] == "Untrusted synthetic source wording"
+        assert loaded.normalized_payload == {
+            "project_name": "QA Layer Fixture",
+            "handover_year": 2030,
+        }
+        assert loaded.editorial_draft.source_version == "synthetic-source-v1"
+        assert loaded.editorial_draft.approval_status == EditorialApprovalStatus.NEEDS_REVIEW
+        assert loaded.review_status == ImportReviewStatus.NEEDS_REVIEW
+
+
 @pytest.mark.asyncio
 async def test_manifest_is_exact_and_loading_is_idempotent(tmp_path: Path) -> None:
     source = owner_manifest_path()
@@ -284,7 +454,11 @@ async def test_private_media_intake_is_sanitized_pending_and_authenticated(
         assert media is not None
         assert media.rights_status == MediaRightsStatus.PENDING
         assert media.thumbnail_storage_key
+        assert media.raw_storage_key
         assert media.storage_key
+        assert media.normalized_filename
+        assert {item["format"] for item in media.derivative_manifest} == {"webp", "avif"}
+        assert media.change_status == "newly-added"
         sanitized = PrivateStorage(test_settings).read(media.storage_key)
         assert b"private-metadata" not in sanitized
 
@@ -326,6 +500,8 @@ async def test_retry_preserves_human_mapping_and_never_auto_marks_ready(test_set
                 "owner_area": "QA Retry Area",
             },
             normalized_project_name="Fixture Residence",
+            normalized_payload={"project_name": "Human-approved Fixture Residence"},
+            human_edited_fields=["project_name"],
             proposed_developer_id=developer.id,
             proposed_area_id=area.id,
             human_review_completed=True,
@@ -350,3 +526,13 @@ async def test_retry_preserves_human_mapping_and_never_auto_marks_ready(test_set
         assert candidate.human_review_completed is False
         assert candidate.review_status == ImportReviewStatus.NEEDS_REVIEW
         assert candidate.review_version == 2
+        assert candidate.normalized_payload is not None
+        assert candidate.normalized_payload["project_name"] == "Human-approved Fixture Residence"
+        conflict = await db.scalar(
+            select(ProjectImportChange).where(
+                ProjectImportChange.candidate_id == candidate.id,
+                ProjectImportChange.field_name == "project_name",
+            )
+        )
+        assert conflict is not None
+        assert conflict.classification == "human-edited-conflict"

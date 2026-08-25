@@ -165,6 +165,64 @@ class ImportReviewStatus(StrEnum):
     MERGED = "merged"
 
 
+class DeveloperVerificationStatus(StrEnum):
+    PENDING = "pending"
+    VERIFIED = "verified"
+    REJECTED = "rejected"
+
+
+class EditorialApprovalStatus(StrEnum):
+    NOT_GENERATED = "not-generated"
+    NEEDS_REVIEW = "needs-review"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
+class ProjectProcessingStatus(StrEnum):
+    RAW = "raw"
+    SELECTED = "selected"
+    QUEUED = "queued"
+    PROCESSING = "processing"
+    NEEDS_REVIEW = "needs-review"
+    CLEANED = "cleaned"
+    READY_TO_POST = "ready-to-post"
+    FAILED_RETRYABLE = "failed-retryable"
+    FAILED_HUMAN_INPUT = "failed-human-input-required"
+    REJECTED = "rejected"
+
+
+class ProcessingJobStatus(StrEnum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    COMPLETED_WITH_ERRORS = "completed-with-errors"
+    CANCELLED = "cancelled"
+
+
+class ProcessingItemStatus(StrEnum):
+    QUEUED = "queued"
+    PROCESSING = "processing"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+    CANCELLED = "cancelled"
+
+
+class DiagnosticResolutionStatus(StrEnum):
+    OPEN = "open"
+    HUMAN_INPUT_REQUIRED = "human-input-required"
+    RESOLVED = "resolved"
+    REJECTED = "rejected"
+
+
+class ProjectRevisionStatus(StrEnum):
+    DRAFT = "draft"
+    IN_REVIEW = "in-review"
+    APPROVED = "approved"
+    ACTIVE = "active"
+    SUPERSEDED = "superseded"
+
+
 class EnquiryStatus(StrEnum):
     NEW = "new"
     IN_REVIEW = "in-review"
@@ -456,6 +514,15 @@ class Project(TimestampMixin, Base):
     internal_notes: Mapped[str | None] = mapped_column(Text)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    active_revision_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(
+            "project_revisions.id",
+            name="fk_projects_active_revision_id",
+            use_alter=True,
+            ondelete="SET NULL",
+        ),
+    )
     created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     updated_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     developer: Mapped[Developer] = relationship(lazy="joined")
@@ -485,6 +552,9 @@ class Project(TimestampMixin, Base):
         cascade="all, delete-orphan", lazy="selectin", uselist=False
     )
     media: Mapped[list[ProjectMedia]] = relationship(cascade="all, delete-orphan", lazy="selectin")
+    revisions: Mapped[list[ProjectRevision]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin", foreign_keys="ProjectRevision.project_id"
+    )
 
 
 class ProjectTranslation(Base):
@@ -728,7 +798,15 @@ class ProjectImportCandidate(TimestampMixin, Base):
     )
     review_version: Mapped[int] = mapped_column(default=1, nullable=False)
     human_review_completed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    human_edited_fields: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     rejection_reason: Mapped[str | None] = mapped_column(String(1000))
+    processing_status: Mapped[ProjectProcessingStatus] = mapped_column(
+        Enum(ProjectProcessingStatus, name="project_processing_status"),
+        default=ProjectProcessingStatus.RAW,
+        nullable=False,
+        index=True,
+    )
+    last_successful_stage: Mapped[str | None] = mapped_column(String(80))
     evidence: Mapped[list[ProjectSourceSnapshot]] = relationship(
         cascade="all, delete-orphan", lazy="selectin"
     )
@@ -737,6 +815,9 @@ class ProjectImportCandidate(TimestampMixin, Base):
     )
     changes: Mapped[list[ProjectImportChange]] = relationship(
         cascade="all, delete-orphan", lazy="selectin"
+    )
+    editorial_draft: Mapped[ProjectImportEditorialDraft | None] = relationship(
+        cascade="all, delete-orphan", lazy="selectin", uselist=False
     )
 
 
@@ -759,6 +840,7 @@ class ProjectSourceSnapshot(TimestampMixin, Base):
     adapter_key: Mapped[str] = mapped_column(String(80), nullable=False)
     adapter_version: Mapped[str] = mapped_column(String(32), nullable=False)
     content_type: Mapped[str | None] = mapped_column(String(160))
+    size_bytes: Mapped[int | None]
     etag: Mapped[str | None] = mapped_column(String(320))
     last_modified: Mapped[str | None] = mapped_column(String(320))
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -791,6 +873,7 @@ class ProjectImportMedia(TimestampMixin, Base):
     )
     stage_status: Mapped[str] = mapped_column(String(40), nullable=False)
     storage_key: Mapped[str | None] = mapped_column(String(180), unique=True)
+    raw_storage_key: Mapped[str | None] = mapped_column(String(180), unique=True)
     thumbnail_storage_key: Mapped[str | None] = mapped_column(String(180), unique=True)
     mime_type: Mapped[str | None] = mapped_column(String(80))
     size_bytes: Mapped[int | None]
@@ -802,6 +885,29 @@ class ProjectImportMedia(TimestampMixin, Base):
     )
     retrieved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     failure_reason: Mapped[str | None] = mapped_column(String(500))
+    normalized_filename: Mapped[str | None] = mapped_column(String(255))
+    display_order: Mapped[int] = mapped_column(default=0, nullable=False)
+    alt_en_draft: Mapped[str | None] = mapped_column(String(320))
+    alt_ar_draft: Mapped[str | None] = mapped_column(String(320))
+    derivative_manifest: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSON, default=list, nullable=False
+    )
+    change_status: Mapped[str] = mapped_column(String(40), default="newly-added", nullable=False)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    rights_basis: Mapped[str | None] = mapped_column(String(500))
+    rights_confirmed_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id")
+    )
+    rights_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    original_sha256: Mapped[str | None] = mapped_column(String(64))
+    processed_sha256: Mapped[str | None] = mapped_column(String(64))
+    processing_version: Mapped[str | None] = mapped_column(String(40))
+    public_metadata: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    title_en: Mapped[str | None] = mapped_column(String(240))
+    title_ar: Mapped[str | None] = mapped_column(String(240))
+    description_en: Mapped[str | None] = mapped_column(String(500))
+    description_ar: Mapped[str | None] = mapped_column(String(500))
+    tags: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
 
 
 class ProjectImportBulkOperation(TimestampMixin, Base):
@@ -833,11 +939,210 @@ class ProjectImportChange(TimestampMixin, Base):
         nullable=False,
     )
     classification: Mapped[str] = mapped_column(String(40), nullable=False)
+    field_name: Mapped[str | None] = mapped_column(String(120))
     existing_value: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     new_value: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     source_url: Mapped[str | None] = mapped_column(Text)
     detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     content_hash: Mapped[str | None] = mapped_column(String(64))
+
+
+class ProjectImportEditorialDraft(TimestampMixin, Base):
+    __tablename__ = "project_import_editorial_drafts"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    candidate_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("project_import_candidates.id", ondelete="CASCADE"),
+        unique=True,
+        nullable=False,
+    )
+    overview_en: Mapped[str | None] = mapped_column(Text)
+    overview_ar: Mapped[str | None] = mapped_column(Text)
+    source_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    model_name: Mapped[str | None] = mapped_column(String(160))
+    model_version: Mapped[str | None] = mapped_column(String(160))
+    generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    approval_status: Mapped[EditorialApprovalStatus] = mapped_column(
+        Enum(EditorialApprovalStatus, name="editorial_approval_status"),
+        default=EditorialApprovalStatus.NOT_GENERATED,
+        nullable=False,
+    )
+    approved_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id")
+    )
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ProjectOverviewGeneration(TimestampMixin, Base):
+    __tablename__ = "project_overview_generations"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    candidate_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("project_import_candidates.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    provider_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    model_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    model_version: Mapped[str] = mapped_column(String(160), nullable=False)
+    prompt_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    source_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    overview_en: Mapped[str | None] = mapped_column(Text)
+    overview_ar: Mapped[str | None] = mapped_column(Text)
+    confidence: Mapped[Decimal | None] = mapped_column(Numeric(5, 4))
+    result_status: Mapped[str] = mapped_column(String(40), nullable=False)
+    fact_guard_result: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    approval_status: Mapped[EditorialApprovalStatus] = mapped_column(
+        Enum(EditorialApprovalStatus, name="editorial_approval_status", create_type=False),
+        nullable=False,
+    )
+    approved_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id")
+    )
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ProjectProcessingJob(TimestampMixin, Base):
+    __tablename__ = "project_processing_jobs"
+    __table_args__ = (UniqueConstraint("created_by", "idempotency_key"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    batch_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("project_import_batches.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    requested_action: Mapped[str] = mapped_column(String(60), nullable=False)
+    selection_mode: Mapped[str] = mapped_column(String(40), nullable=False)
+    selected_record_ids: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    status: Mapped[ProcessingJobStatus] = mapped_column(
+        Enum(ProcessingJobStatus, name="project_processing_job_status"), nullable=False, index=True
+    )
+    created_by: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
+    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    total_count: Mapped[int] = mapped_column(nullable=False)
+    queued_count: Mapped[int] = mapped_column(nullable=False)
+    processing_count: Mapped[int] = mapped_column(default=0, nullable=False)
+    succeeded_count: Mapped[int] = mapped_column(default=0, nullable=False)
+    failed_count: Mapped[int] = mapped_column(default=0, nullable=False)
+    skipped_count: Mapped[int] = mapped_column(default=0, nullable=False)
+    cancellation_requested: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    correlation_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    items: Mapped[list[ProjectProcessingItem]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin", order_by="ProjectProcessingItem.ordinal"
+    )
+
+
+class ProjectProcessingItem(TimestampMixin, Base):
+    __tablename__ = "project_processing_items"
+    __table_args__ = (UniqueConstraint("job_id", "candidate_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    job_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("project_processing_jobs.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    candidate_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("project_import_candidates.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    ordinal: Mapped[int] = mapped_column(nullable=False)
+    status: Mapped[ProcessingItemStatus] = mapped_column(
+        Enum(ProcessingItemStatus, name="project_processing_item_status"),
+        nullable=False,
+        index=True,
+    )
+    current_stage: Mapped[str | None] = mapped_column(String(80))
+    completed_stages: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    attempt_count: Mapped[int] = mapped_column(default=0, nullable=False)
+    max_attempts: Mapped[int] = mapped_column(default=3, nullable=False)
+    next_retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lease_owner: Mapped[str | None] = mapped_column(String(120))
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    result_summary: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    diagnostics: Mapped[list[ProjectProcessingDiagnostic]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin"
+    )
+
+
+class ProjectProcessingDiagnostic(TimestampMixin, Base):
+    __tablename__ = "project_processing_diagnostics"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    item_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("project_processing_items.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    stage: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    error_code: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    explanation: Mapped[str] = mapped_column(String(1000), nullable=False)
+    technical_detail: Mapped[str | None] = mapped_column(String(1000))
+    affected_reference: Mapped[str | None] = mapped_column(String(240))
+    retryable: Mapped[bool] = mapped_column(Boolean, nullable=False, index=True)
+    first_occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    latest_occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    attempt_count: Mapped[int] = mapped_column(nullable=False)
+    next_retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_successful_stage: Mapped[str | None] = mapped_column(String(80))
+    suggested_resolution: Mapped[str] = mapped_column(String(1000), nullable=False)
+    resolution_status: Mapped[DiagnosticResolutionStatus] = mapped_column(
+        Enum(DiagnosticResolutionStatus, name="project_diagnostic_resolution_status"),
+        nullable=False,
+        index=True,
+    )
+    resolution_note: Mapped[str | None] = mapped_column(String(1000))
+    resolved_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id")
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    correlation_id: Mapped[str] = mapped_column(String(120), nullable=False)
+
+
+class ProjectRevision(TimestampMixin, Base):
+    __tablename__ = "project_revisions"
+    __table_args__ = (UniqueConstraint("project_id", "revision_number"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    revision_number: Mapped[int] = mapped_column(nullable=False)
+    status: Mapped[ProjectRevisionStatus] = mapped_column(
+        Enum(ProjectRevisionStatus, name="project_revision_status"), nullable=False, index=True
+    )
+    base_revision_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("project_revisions.id", ondelete="SET NULL")
+    )
+    record_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    media_snapshot: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list, nullable=False)
+    field_diff: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    change_summary: Mapped[str | None] = mapped_column(String(1000))
+    created_by: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
+    )
+    submitted_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id")
+    )
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    approved_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id")
+    )
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class InsightPost(TimestampMixin, Base):
@@ -883,6 +1188,9 @@ class Developer(TimestampMixin, Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     slug: Mapped[str] = mapped_column(String(180), unique=True, nullable=False)
+    legal_name: Mapped[str | None] = mapped_column(String(320))
+    source_name: Mapped[str | None] = mapped_column(String(320))
+    internal_aliases: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     primary_emirate: Mapped[str] = mapped_column(String(120), nullable=False)
     other_presence: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     selected_projects: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
@@ -890,6 +1198,11 @@ class Developer(TimestampMixin, Base):
     source_url: Mapped[str] = mapped_column(Text, nullable=False)
     additional_source_urls: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     verification_date: Mapped[date] = mapped_column(Date, nullable=False)
+    verification_status: Mapped[DeveloperVerificationStatus] = mapped_column(
+        Enum(DeveloperVerificationStatus, name="developer_verification_status"),
+        default=DeveloperVerificationStatus.PENDING,
+        nullable=False,
+    )
     enquiry_types: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     featured: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     display_order: Mapped[int] = mapped_column(default=0, nullable=False)

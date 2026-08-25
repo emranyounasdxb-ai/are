@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import io
+import re
 import uuid
 import zipfile
 from dataclasses import dataclass
@@ -126,12 +127,22 @@ class PrivateStorage:
         )
 
     async def save_acquisition_media(
-        self, content: bytes, extension: str, *, thumbnail: bool = False
+        self,
+        content: bytes,
+        extension: str,
+        *,
+        normalized_filename: str | None = None,
+        thumbnail: bool = False,
     ) -> str:
-        if extension not in {"jpg", "png", "webp"} or not content:
+        if extension not in {"jpg", "png", "webp", "avif"} or not content:
             raise ValueError("Unsupported acquisition media output.")
         prefix = "acquisition-thumb" if thumbnail else "acquisition-media"
-        storage_key = f"{prefix}-{uuid.uuid4().hex}.{extension}"
+        if normalized_filename and not re.fullmatch(
+            rf"[a-z0-9]+(?:-[a-z0-9]+)*\.{extension}", normalized_filename
+        ):
+            raise ValueError("Unsafe normalized acquisition media filename.")
+        filename = normalized_filename or f"media.{extension}"
+        storage_key = f"{prefix}-{uuid.uuid4().hex[:12]}-{filename}"
         await asyncio.to_thread(self._path(storage_key).write_bytes, content)
         return storage_key
 

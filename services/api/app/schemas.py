@@ -20,6 +20,7 @@ from app.models import (
     ApplicationStatus,
     AvailabilityStatus,
     ConstructionStatus,
+    DeveloperVerificationStatus,
     EnquiryStatus,
     JobStatus,
     MediaRightsStatus,
@@ -328,6 +329,86 @@ class ImportBulkActionInput(StrictModel):
         return self
 
 
+class ProcessingJobCreateInput(StrictModel):
+    requested_action: Literal["clean-and-prepare"] = "clean-and-prepare"
+    selection_mode: Literal[
+        "single",
+        "manual",
+        "current-page",
+        "first-25",
+        "first-50",
+        "all-filtered",
+        "complete-batch",
+        "cross-page",
+    ]
+    candidate_ids: list[uuid.UUID] = Field(min_length=1, max_length=5000)
+    idempotency_key: str = Field(
+        min_length=16,
+        max_length=100,
+        pattern=r"^[A-Za-z0-9._:-]+$",
+    )
+
+    @field_validator("candidate_ids")
+    @classmethod
+    def unique_candidates(cls, value: list[uuid.UUID]) -> list[uuid.UUID]:
+        if len(set(value)) != len(value):
+            raise ValueError("Candidate selection must not contain duplicates")
+        return value
+
+
+class ProcessingRetryInput(StrictModel):
+    item_ids: list[uuid.UUID] | None = Field(default=None, max_length=5000)
+
+
+class DiagnosticResolutionInput(StrictModel):
+    action: Literal[
+        "diagnose-ai",
+        "apply-safe-correction",
+        "mark-human-input-required",
+        "resolve",
+        "reject",
+    ]
+    note: str = Field(min_length=3, max_length=1000)
+
+
+class EditorialApprovalInput(StrictModel):
+    approved: bool
+    expected_source_version: str = Field(pattern=r"^[a-fA-F0-9]{64}$")
+
+
+class MediaApprovalInput(StrictModel):
+    approved: bool
+    rights_basis: str = Field(min_length=3, max_length=500)
+
+
+class MediaPreparationInput(StrictModel):
+    category: ProjectMediaCategory
+    display_order: int = Field(ge=0, le=10000)
+    normalized_filename: str = Field(
+        min_length=8,
+        max_length=255,
+        pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*\.webp$",
+    )
+    alt_en: str = Field(min_length=3, max_length=320)
+    alt_ar: str = Field(min_length=3, max_length=320)
+    title_en: str = Field(min_length=3, max_length=240)
+    title_ar: str = Field(min_length=3, max_length=240)
+    description_en: str = Field(min_length=3, max_length=500)
+    description_ar: str = Field(min_length=3, max_length=500)
+    tags: list[str] = Field(min_length=1, max_length=20)
+
+
+class ProjectRevisionInput(StrictModel):
+    project: ProjectInput
+    media_snapshot: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
+    field_diff: dict[str, Any] = Field(default_factory=dict)
+    change_summary: str = Field(min_length=3, max_length=1000)
+
+
+class ProjectRevisionActionInput(StrictModel):
+    note: str = Field(min_length=3, max_length=1000)
+
+
 class PropertyResponse(PropertyInput):
     id: uuid.UUID
     created_at: datetime
@@ -386,6 +467,9 @@ class DeveloperTranslationInput(StrictModel):
 
 class DeveloperInput(StrictModel):
     slug: str = Field(min_length=2, max_length=180)
+    legal_name: str | None = Field(default=None, max_length=320)
+    source_name: str | None = Field(default=None, max_length=320)
+    internal_aliases: list[str] = Field(default_factory=list, max_length=100)
     primary_emirate: str = Field(min_length=2, max_length=120)
     other_presence: list[str] = Field(default_factory=list, max_length=20)
     selected_projects: list[str] = Field(default_factory=list, max_length=100)
@@ -393,6 +477,7 @@ class DeveloperInput(StrictModel):
     source_url: HttpUrl
     additional_source_urls: list[HttpUrl] = Field(default_factory=list, max_length=20)
     verification_date: date
+    verification_status: DeveloperVerificationStatus = DeveloperVerificationStatus.PENDING
     enquiry_types: list[Literal["new-booking", "primary-sale", "resale"]] = Field(
         default_factory=list, max_length=3
     )
@@ -415,6 +500,11 @@ class DeveloperInput(StrictModel):
                 raise ValueError("Published developers require English and Arabic content")
             if not self.source_url or not self.verification_date:
                 raise ValueError("Published developers require provenance and a verification date")
+            if self.verification_status != DeveloperVerificationStatus.VERIFIED:
+                raise ValueError("Published developers require verified identity status")
+        normalized_aliases = [" ".join(value.casefold().split()) for value in self.internal_aliases]
+        if len(set(normalized_aliases)) != len(normalized_aliases):
+            raise ValueError("Developer aliases must be unique")
         return self
 
 
