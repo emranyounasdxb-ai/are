@@ -1,16 +1,22 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
+import { footerStackCopy } from "../../lib/footer-copy";
 import type { HeaderCopy, Locale } from "../../lib/home-copy";
 import { isNavigationHrefActive } from "../../lib/navigation";
 import { siteCopy } from "../../lib/site-copy";
+import { MobileAppPanel } from "./mobile-app-panel";
+import { NewsletterPanel } from "./newsletter-panel";
 
 export function SiteFooter({ copy, locale }: Readonly<{ copy: HeaderCopy; locale: Locale }>) {
   const pathname = usePathname();
   const router = useRouter();
   const common = siteCopy[locale].common;
+  const footerCopy = footerStackCopy[locale].footer;
+  const currentYear = new Date().getFullYear();
   const contactNavigationLabel = locale === "ar" ? "التواصل" : "Contact";
   const groups = [
     { heading: locale === "ar" ? "اكتشف" : "Discover", links: [
@@ -70,42 +76,53 @@ export function SiteFooter({ copy, locale }: Readonly<{ copy: HeaderCopy; locale
 
   return (
     <footer className="site-footer">
-      <div className="site-footer__inner">
-        <div className="site-footer__identity">
-          <span>ALIYAS</span>
-          <p>{common.footerLabel}</p>
-          <small>{common.footerDescription}</small>
+      <NewsletterPanel locale={locale} />
+      <div className="site-footer__dark">
+        <MobileAppPanel locale={locale} />
+        <div className="site-footer__inner">
+          <div className="site-footer__identity">
+            <Link aria-label="ALIYAS Real Estate" className="site-footer__brand" href={`/${locale}`} onClick={(event) => resetCurrentRoute(event, `/${locale}`)}>
+              <span><Image alt="ALIYAS Real Estate" height={2885} sizes="68px" src="/brand/aliyas-real-estate-logo.png" width={2885} /></span>
+              <strong>ALIYAS Real Estate</strong>
+            </Link>
+            <p>{common.footerLabel}</p>
+            <small>{footerCopy.brandStatement}</small>
+            <a className="site-footer__whatsapp" href="https://wa.me/971569157576" rel="noreferrer" target="_blank">{footerCopy.whatsapp}</a>
+          </div>
+          <div aria-label={common.footerNavigation} className="site-footer__groups" role="group">
+            {groups.map((group) => <nav aria-label={group.heading} className="site-footer__navigation" key={group.heading}>
+              <strong>{group.heading}</strong>
+              {group.links.map((item) => <Link aria-current={isActive(item.href) ? "page" : undefined} href={item.href} key={item.href} onClick={(event) => resetCurrentRoute(event, item.href)}>{item.label}</Link>)}
+            </nav>)}
+          </div>
         </div>
-        <div aria-label={common.footerNavigation} className="site-footer__groups" role="group">
-          {groups.map((group) => <nav aria-label={group.heading} className="site-footer__navigation" key={group.heading}>
-            <strong>{group.heading}</strong>
-            {group.links.map((item) => <Link aria-current={isActive(item.href) ? "page" : undefined} href={item.href} key={item.href} onClick={(event) => resetCurrentRoute(event, item.href)}>{item.label}</Link>)}
-          </nav>)}
+        <div className="site-footer__bottom">
+          <p>© {currentYear} ALIYAS Real Estate · {footerCopy.rights}</p>
+          <nav aria-label={common.language} className="site-footer__languages">
+            <Link
+              aria-current={locale === "en" ? "page" : undefined}
+              href={pathname.replace(/^\/(en|ar)/, "/en")}
+              hrefLang="en"
+              onClick={(event) => {
+                event.preventDefault();
+                switchLocale("en");
+              }}
+            >
+              EN
+            </Link>
+            <Link
+              aria-current={locale === "ar" ? "page" : undefined}
+              href={pathname.replace(/^\/(en|ar)/, "/ar")}
+              hrefLang="ar"
+              onClick={(event) => {
+                event.preventDefault();
+                switchLocale("ar");
+              }}
+            >
+              العربية
+            </Link>
+          </nav>
         </div>
-        <nav aria-label={common.language} className="site-footer__languages">
-          <Link
-            aria-current={locale === "en" ? "page" : undefined}
-            href={pathname.replace(/^\/(en|ar)/, "/en")}
-            hrefLang="en"
-            onClick={(event) => {
-              event.preventDefault();
-              switchLocale("en");
-            }}
-          >
-            EN
-          </Link>
-          <Link
-            aria-current={locale === "ar" ? "page" : undefined}
-            href={pathname.replace(/^\/(en|ar)/, "/ar")}
-            hrefLang="ar"
-            onClick={(event) => {
-              event.preventDefault();
-              switchLocale("ar");
-            }}
-          >
-            العربية
-          </Link>
-        </nav>
       </div>
     </footer>
   );

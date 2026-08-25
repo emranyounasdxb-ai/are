@@ -49,16 +49,18 @@ async function LocalizedHome({ locale, initialPurpose }: Readonly<{ locale: Loca
     <div className="premium-home" id="top">
       <main id="main-content">
         <section aria-labelledby="hero-title" className="premium-home__hero">
-          <Image
-            alt={copy.hero.visualNote}
-            className="premium-home__hero-image"
-            height={941}
-            priority
-            sizes="100vw"
-            src="/images/home-premium/hero-residence.webp"
-            width={1672}
-          />
-          <div aria-hidden="true" className="premium-home__hero-shade" />
+          <div className="premium-home__hero-media">
+            <Image
+              alt={copy.hero.visualNote}
+              className="premium-home__hero-image"
+              height={941}
+              priority
+              sizes="100vw"
+              src="/images/home-premium/hero-residence.webp"
+              width={1672}
+            />
+            <div aria-hidden="true" className="premium-home__hero-shade" />
+          </div>
           <div className="premium-home__hero-inner">
             <Reveal className="premium-home__hero-copy" distance={18}>
               <p className="premium-home__eyebrow">{copy.hero.eyebrow}</p>
@@ -210,7 +212,7 @@ async function LocalizedHome({ locale, initialPurpose }: Readonly<{ locale: Loca
 
         <FaqSection eyebrow={content.faq.eyebrow} heading={content.faq.title} items={content.faq.items} />
 
-        <section aria-labelledby="home-closing-title" className="home-closing-v2 home-closing-v2--image-led">
+        <section aria-labelledby="home-closing-title" className="home-closing-v2 home-closing-v2--image-led home-closing-v2--separated">
           <Image alt={content.cta.imageAlt} className="home-closing-v2__image" height={841} sizes="(max-width: 800px) 100vw, 1200px" src="/images/home-premium/enquiry-cta.webp" width={1870} />
           <span className="home-closing-v2__shade" aria-hidden="true" />
           <div className="home-closing-v2__content"><p>{content.cta.eyebrow}</p><h2 id="home-closing-title">{content.cta.title}</h2><span>{content.cta.text}</span></div>
