@@ -18,12 +18,18 @@ def parser() -> argparse.ArgumentParser:
     subcommands = value.add_subparsers(dest="command", required=True)
     load = subcommands.add_parser("load", help="Load the immutable 50-row owner manifest")
     load.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
-    subcommands.add_parser(
+    pilot = subcommands.add_parser(
         "sobha-siniya-pilot", help="Run or reuse the one authorized controlled acquisition pilot"
     )
+    pilot.add_argument("--refresh", action="store_true")
     subcommands.add_parser(
         "sobha-siniya-process", help="Queue or reuse the authorized pilot processing job"
     )
+    tanami = subcommands.add_parser(
+        "tanami-batch",
+        help="Acquire an explicit owner-approved list of exact Tanami Project URLs",
+    )
+    tanami.add_argument("--url", action="append", required=True, dest="urls")
     for command in ("acquire", "refresh", "retry-failed", "media-intake", "status"):
         item = subcommands.add_parser(command)
         item.add_argument("--batch-id")
@@ -46,7 +52,7 @@ async def run(args: argparse.Namespace) -> None:
         if args.command == "sobha-siniya-pilot":
             from app.acquisition.sobha_siniya_pilot import run_sobha_siniya_pilot
 
-            pilot_result = await run_sobha_siniya_pilot(db, get_settings())
+            pilot_result = await run_sobha_siniya_pilot(db, get_settings(), refresh=args.refresh)
             print(
                 json.dumps(
                     {
@@ -66,6 +72,12 @@ async def run(args: argparse.Namespace) -> None:
 
             job_id = await queue_sobha_siniya_processing(db)
             print(json.dumps({"processing_job_id": str(job_id)}, indent=2))
+            return
+        if args.command == "tanami-batch":
+            from app.acquisition.tanami import acquire_explicit_batch
+
+            batch = await acquire_explicit_batch(db, get_settings(), args.urls)
+            print(json.dumps(status_summary(batch), indent=2))
             return
         if args.command == "load":
             batch = await load_manifest(db, args.manifest)

@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import io
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pytest
@@ -35,6 +35,8 @@ from app.db import SessionLocal
 from app.models import (
     AreaCommunity,
     Developer,
+    DeveloperTranslation,
+    DeveloperVerificationStatus,
     EditorialApprovalStatus,
     ImportReviewStatus,
     MediaRightsStatus,
@@ -475,8 +477,40 @@ async def test_private_media_intake_is_sanitized_pending_and_authenticated(
 @pytest.mark.asyncio
 async def test_retry_preserves_human_mapping_and_never_auto_marks_ready(test_settings) -> None:
     async with SessionLocal() as db:
-        developer = await db.scalar(select(Developer).where(Developer.slug == "emaar-properties"))
-        assert developer is not None
+        developer = Developer(
+            slug="qa-retry-developer",
+            legal_name="QA Retry Developer LLC",
+            source_name="QA Retry Developer",
+            internal_aliases=["QA Retry Dev"],
+            primary_emirate="Dubai",
+            other_presence=[],
+            selected_projects=[],
+            official_website="https://example.com/qa-retry-developer",
+            source_url="https://example.com/qa-retry-developer/source",
+            additional_source_urls=[],
+            verification_date=date(2026, 8, 26),
+            verification_status=DeveloperVerificationStatus.VERIFIED,
+            enquiry_types=[],
+            status=PublicationStatus.DRAFT,
+            translations=[
+                DeveloperTranslation(
+                    locale="en",
+                    name="QA Retry Developer",
+                    description="Disposable Developer fixture.",
+                    focus="Disposable Project fixtures.",
+                    verification_note="Synthetic QA evidence only.",
+                ),
+                DeveloperTranslation(
+                    locale="ar",
+                    name="مطور اختبار إعادة المحاولة",
+                    description="بيانات مطور مؤقتة للاختبار.",
+                    focus="مشاريع اختبار مؤقتة.",
+                    verification_note="أدلة اختبار اصطناعية فقط.",
+                ),
+            ],
+        )
+        db.add(developer)
+        await db.flush()
         area = AreaCommunity(
             slug="qa-retry-area",
             name_en="QA Retry Area",

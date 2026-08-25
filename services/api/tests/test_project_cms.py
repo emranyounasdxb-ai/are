@@ -18,6 +18,7 @@ from app.models import (
     ProjectImportCandidate,
 )
 from app.schemas import PaymentPlanInput
+from tests.test_developer_cms import developer_payload
 
 
 async def authenticate(client: AsyncClient, email: str, password: str) -> dict[str, object]:
@@ -153,8 +154,18 @@ async def test_project_rbac_publication_and_public_field_boundaries(
     email, password = await create_user("super-admin")
     session = await authenticate(client, email, password)
     csrf = str(session["csrf_token"])
-    developers = await client.get("/api/v1/admin/developers?page_size=1")
-    developer_id = developers.json()["items"][0]["id"]
+    developer = await client.post(
+        "/api/v1/admin/developers",
+        json=developer_payload(slug="qa-project-developer"),
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert developer.status_code == 201, developer.text
+    developer_id = developer.json()["id"]
+    developer_published = await client.post(
+        f"/api/v1/admin/developers/{developer_id}/publish",
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert developer_published.status_code == 200, developer_published.text
     area = await client.post(
         "/api/v1/admin/areas",
         json={
@@ -415,6 +426,16 @@ async def test_import_review_summary_bulk_readiness_and_draft_are_safe(
     detail = await client.get(f"/api/v1/admin/project-imports/{batch_id}/candidates/{candidate_id}")
     assert detail.status_code == 200
     assert detail.json()["raw_source_payload"]
+    assert detail.json()["overview_provider"] == {
+        "state": "configuration-required",
+        "message": "Provider configuration required",
+        "required_environment_variables": [
+            "ARE_OVERVIEW_AI_PROVIDER",
+            "ARE_OVERVIEW_AI_MODEL",
+            "ARE_OVERVIEW_AI_MODEL_VERSION",
+            "ARE_OVERVIEW_AI_API_KEY",
+        ],
+    }
 
     missing_csrf = await client.post(
         f"/api/v1/admin/project-imports/{batch_id}/bulk",

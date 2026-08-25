@@ -3,7 +3,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import field_validator, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -11,8 +11,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="ARE_", case_sensitive=False)
 
     environment: Literal["local", "test", "production"] = "local"
-    database_url: str
-    redis_url: str
+    database_url: str = Field(repr=False)
+    redis_url: str = Field(repr=False)
     cors_origins: str = "http://127.0.0.1:50001,http://127.0.0.1:50002"
     session_cookie_secure: bool = False
     session_lifetime_minutes: int = 480
@@ -24,6 +24,25 @@ class Settings(BaseSettings):
     private_storage_path: str = "/app/private-storage"
     enquiry_retention_days: int | None = None
     application_retention_days: int | None = None
+    overview_ai_provider: str | None = None
+    overview_ai_model: str | None = None
+    overview_ai_model_version: str | None = None
+    overview_ai_api_key: SecretStr | None = None
+
+    @model_validator(mode="after")
+    def require_complete_overview_provider_configuration(self) -> Settings:
+        values = (
+            self.overview_ai_provider,
+            self.overview_ai_model,
+            self.overview_ai_model_version,
+            self.overview_ai_api_key,
+        )
+        if any(values) and not all(values):
+            raise ValueError(
+                "ARE Overview AI configuration must provide provider, model, model version, "
+                "and API key together"
+            )
+        return self
 
     @field_validator("database_url")
     @classmethod

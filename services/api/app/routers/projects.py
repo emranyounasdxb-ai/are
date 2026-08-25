@@ -1387,7 +1387,46 @@ async def apply_recovery_action(
     request: Request,
     context: AuthContext = Depends(require_mutation_permission("project-processing.recover")),
     db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ) -> dict[str, object]:
+    if payload.action in {"retry-acquisition", "retry-official-source", "retry-media"}:
+        diagnostic_record = await db.get(ProjectProcessingDiagnostic, diagnostic_id)
+        if not diagnostic_record:
+            raise HTTPException(
+                status.HTTP_404_NOT_FOUND,
+                detail={"code": "not_found", "message": "Processing diagnostic not found."},
+            )
+        processing_item = await db.get(ProjectProcessingItem, diagnostic_record.item_id)
+        if not processing_item:
+            raise HTTPException(
+                status.HTTP_404_NOT_FOUND,
+                detail={"code": "not_found", "message": "Processing item not found."},
+            )
+        candidate = await db.get(ProjectImportCandidate, processing_item.candidate_id)
+        if not candidate:
+            raise HTTPException(
+                status.HTTP_404_NOT_FOUND,
+                detail={"code": "not_found", "message": "Import candidate not found."},
+            )
+        if payload.action in {"retry-acquisition", "retry-official-source"}:
+            from app.acquisition.tanami import TANAMI_ADAPTER_KEY, refresh_explicit_candidate
+
+            if candidate.adapter_key == TANAMI_ADAPTER_KEY:
+                await refresh_explicit_candidate(db, settings, candidate.id)
+            else:
+                from app.acquisition.sobha_siniya_pilot import (
+                    PILOT_ADAPTER_KEY,
+                    run_sobha_siniya_pilot,
+                )
+
+                if candidate.adapter_key == PILOT_ADAPTER_KEY:
+                    await run_sobha_siniya_pilot(db, settings, refresh=True)
+        if payload.action == "retry-media":
+            from app.acquisition.media_intake import intake_private_media
+
+            await intake_private_media(
+                db, settings, candidate.batch_id, candidate_ids=[candidate.id]
+            )
     try:
         diagnostic = await resolve_diagnostic(
             db,
@@ -1420,6 +1459,7 @@ async def import_candidate_detail(
     candidate_id: uuid.UUID,
     _: AuthContext = Depends(require_permission("project-import.manage")),
     db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
     candidate = await db.scalar(
         select(ProjectImportCandidate)
@@ -1439,10 +1479,47 @@ async def import_candidate_detail(
             status.HTTP_404_NOT_FOUND,
             detail={"code": "not_found", "message": "Import candidate not found."},
         )
+    latest_generation = await db.scalar(
+        select(ProjectOverviewGeneration)
+        .where(ProjectOverviewGeneration.candidate_id == candidate.id)
+        .order_by(ProjectOverviewGeneration.generated_at.desc())
+        .limit(1)
+    )
     return {
         **import_candidate_summary_dict(candidate),
         **import_candidate_dict(candidate),
         "eligibility_errors": eligibility_errors(candidate),
+        "overview_provider": {
+            "state": (
+                "configured"
+                if settings.overview_ai_provider
+                and settings.overview_ai_model
+                and settings.overview_ai_model_version
+                and settings.overview_ai_api_key
+                else "configuration-required"
+            ),
+            "message": (
+                "Provider configured; generation remains review-gated."
+                if settings.overview_ai_provider
+                else "Provider configuration required"
+            ),
+            "required_environment_variables": [
+                "ARE_OVERVIEW_AI_PROVIDER",
+                "ARE_OVERVIEW_AI_MODEL",
+                "ARE_OVERVIEW_AI_MODEL_VERSION",
+                "ARE_OVERVIEW_AI_API_KEY",
+            ],
+        },
+        "overview_generation": (
+            {
+                "state": latest_generation.result_status,
+                "fact_guard_result": latest_generation.fact_guard_result,
+                "generated_at": latest_generation.generated_at,
+                "approval_status": latest_generation.approval_status.value,
+            }
+            if latest_generation
+            else None
+        ),
     }
 
 

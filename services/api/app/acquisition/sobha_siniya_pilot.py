@@ -22,6 +22,7 @@ from sqlalchemy.orm import selectinload
 from app.acquisition.contracts import FetchResult, SourceFetcher
 from app.acquisition.parser import parse_html
 from app.acquisition.security import BatchCachingFetcher, SecureFetcher
+from app.acquisition.tanami import exact_project_media
 from app.config import Settings
 from app.models import (
     AreaAlias,
@@ -34,7 +35,6 @@ from app.models import (
     ProjectImportBatch,
     ProjectImportCandidate,
     ProjectImportMedia,
-    ProjectMediaCategory,
     ProjectProcessingStatus,
     ProjectSourceSnapshot,
     ProjectSourceType,
@@ -147,6 +147,7 @@ async def run_sobha_siniya_pilot(
     settings: Settings,
     *,
     fetcher: SourceFetcher | None = None,
+    refresh: bool = False,
 ) -> PilotResult:
     """Acquire or reuse the one authorized candidate without publishing anything."""
     require_exact_pilot_url(PRIMARY_URL)
@@ -170,6 +171,7 @@ async def run_sobha_siniya_pilot(
     retained_urls = {item.source_url for item in batch.candidates[0].evidence} if batch else set()
     if (
         batch
+        and not refresh
         and batch.candidates[0].normalized_payload
         and set(AUTHORIZED_DOCUMENTS) <= retained_urls
     ):
@@ -284,6 +286,7 @@ async def run_sobha_siniya_pilot(
         "Construction status is not confirmed by the retained source set.",
     ]
     candidate.arabic_review_required = True
+    media_discovered = await _stage_exact_project_media(db, candidate, tuple(results))
     candidate.acquisition_summary = {
         "scope": "one-project-controlled-pilot",
         "document_requests": len(AUTHORIZED_DOCUMENTS),
@@ -295,11 +298,11 @@ async def run_sobha_siniya_pilot(
         },
         "overview_generation": "pending-approved-provider",
         "fact_guard": "pending-overview-generation",
+        "media_discovered": media_discovered,
         "publication": "not-permitted",
     }
     candidate.review_status = ImportReviewStatus.NEEDS_REVIEW
     candidate.processing_status = ProjectProcessingStatus.NEEDS_REVIEW
-    await _stage_exact_project_media(db, candidate, tanami)
     batch.started_at = batch.started_at or datetime.now(UTC)
     batch.completed_at = datetime.now(UTC)
     batch.clean_count = 0
@@ -611,24 +614,11 @@ async def _canonical_area(db: AsyncSession) -> AreaCommunity:
 async def _stage_exact_project_media(
     db: AsyncSession,
     candidate: ProjectImportCandidate,
-    tanami: FetchResult,
-) -> None:
-    page = parse_html(tanami.body, tanami.url)
-    accepted = [
-        (
-            "https://manage.tanamiproperties.com/Banner/1811/Large/17458.webp",
-            ProjectMediaCategory.COVER,
-        ),
-        (
-            "https://manage.tanamiproperties.com/Project/Project_Index/1811/Thumb/1811.webp",
-            ProjectMediaCategory.GALLERY,
-        ),
-    ]
-    present = set(page.media_urls)
+    results: tuple[FetchResult, ...],
+) -> int:
+    accepted = exact_project_media(PRIMARY_URL, results)
     existing = {item.source_url for item in candidate.staged_media}
     for url, category in accepted:
-        if url not in present:
-            continue
         if url in existing:
             continue
         db.add(
@@ -640,3 +630,4 @@ async def _stage_exact_project_media(
                 stage_status="reference-only",
             )
         )
+    return len(accepted)

@@ -364,6 +364,12 @@ class DiagnosticResolutionInput(StrictModel):
     action: Literal[
         "diagnose-ai",
         "apply-safe-correction",
+        "retry-acquisition",
+        "retry-official-source",
+        "retry-media",
+        "retry-overview",
+        "resume-failed-stage",
+        "request-human-input",
         "mark-human-input-required",
         "resolve",
         "reject",

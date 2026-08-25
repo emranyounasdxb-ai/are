@@ -37,6 +37,7 @@ class DiscoveryResult:
     suggested_url: str | None = None
     conflict_reason: str | None = None
     failures: tuple[str, ...] = ()
+    localized_urls: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

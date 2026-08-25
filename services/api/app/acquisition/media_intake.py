@@ -18,6 +18,7 @@ from app.acquisition.media import (
     validate_raster,
 )
 from app.acquisition.sobha_siniya_pilot import media_domains_for_candidate
+from app.acquisition.tanami import TANAMI_ADAPTER_KEY, TANAMI_MEDIA_DOMAINS
 from app.config import Settings
 from app.models import ProjectImportBatch, ProjectImportCandidate, ProjectImportMedia
 from app.project_processing import descriptive_media_filename, public_media_metadata
@@ -78,6 +79,8 @@ async def intake_private_media(
     for candidate in sorted(selected, key=lambda value: value.manifest_row_id):
         adapter = adapter_for(str(candidate.owner_manifest_values.get("owner_developer", "")))
         allowed_domains = media_domains_for_candidate(candidate)
+        if candidate.adapter_key == TANAMI_ADAPTER_KEY:
+            allowed_domains = TANAMI_MEDIA_DOMAINS
         if allowed_domains is None and adapter is not None:
             allowed_domains = adapter.allowed_domains
         for order, media in enumerate(
