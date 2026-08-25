@@ -202,7 +202,7 @@ async def test_project_rbac_publication_and_public_field_boundaries(
     media_id = created.json()["media"][0]["id"]
     assert (await client.get("/api/v1/public/projects?locale=en")).json()["meta"]["total"] == 0
     image = io.BytesIO()
-    Image.new("RGB", (640, 360), "#745238").save(image, "WEBP")
+    Image.new("RGB", (1600, 900), "#745238").save(image, "WEBP")
     uploaded = await client.post(
         f"/api/v1/admin/projects/{project_id}/media/{media_id}",
         files={"image": ("project.webp", image.getvalue(), "image/webp")},
@@ -218,6 +218,22 @@ async def test_project_rbac_publication_and_public_field_boundaries(
         headers={"X-CSRF-Token": csrf},
     )
     assert saved.status_code == 200, saved.text
+    preview = await client.get(f"/api/v1/admin/projects/{project_id}/preview?locale=en")
+    assert preview.status_code == 200, preview.text
+    preview_record = preview.json()
+    assert preview_record["official_name"] == "QA Off-Plan Project"
+    assert preview_record["media"][0]["url"].endswith(
+        f"/admin/projects/{project_id}/preview-media/{media_id}"
+    )
+    assert "priority" not in preview_record
+    assert "internal_notes" not in preview_record
+    assert "sources" not in preview_record
+    assert "workflow_status" not in preview_record
+    preview_media = await client.get(
+        f"/api/v1/admin/projects/{project_id}/preview-media/{media_id}"
+    )
+    assert preview_media.status_code == 200
+    assert preview_media.headers["cache-control"] == "private, no-store, max-age=0"
     submitted = await client.post(
         f"/api/v1/admin/projects/{project_id}/submit-review",
         headers={"X-CSRF-Token": csrf},
@@ -436,6 +452,23 @@ async def test_import_review_summary_bulk_readiness_and_draft_are_safe(
             "ARE_OVERVIEW_AI_API_KEY",
         ],
     }
+    preview = await client.get(
+        f"/api/v1/admin/project-imports/{batch_id}/candidates/{candidate_id}/preview?locale=en"
+    )
+    assert preview.status_code == 200, preview.text
+    preview_data = preview.json()
+    assert preview_data["project_name"] == "QA Source-Grounded Project"
+    assert preview_data["availability_status"] == "not-confirmed"
+    assert preview_data["construction_status"] == "not-confirmed"
+    assert preview_data["media"] == []
+    assert not {
+        "source_urls",
+        "official_source_url",
+        "raw_source_payload",
+        "validation_errors",
+        "conflict_reasons",
+        "priority",
+    } & set(preview_data)
 
     missing_csrf = await client.post(
         f"/api/v1/admin/project-imports/{batch_id}/bulk",

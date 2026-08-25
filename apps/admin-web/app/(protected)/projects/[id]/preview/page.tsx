@@ -1,6 +1,8 @@
-import { ProjectView } from "../../../../../components/project-view";
+import { redirect } from "next/navigation";
+
+import { PUBLIC_WEB_URL } from "../../../../../lib/api";
 
 export default async function PreviewProjectPage({ params }: Readonly<{ params: Promise<{ id: string }> }>) {
   const { id } = await params;
-  return <ProjectView id={id} preview/>;
+  redirect(`${PUBLIC_WEB_URL}/en/preview/projects/${encodeURIComponent(id)}`);
 }

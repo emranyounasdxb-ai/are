@@ -50,6 +50,7 @@ from app.models import (
     ProjectBedroomValue,
     ProjectImportBatch,
     ProjectImportCandidate,
+    ProjectImportEditorialDraft,
     ProjectImportMedia,
     ProjectMedia,
     ProjectMediaCategory,
@@ -102,10 +103,12 @@ from app.schemas import (
 )
 from app.serializers import (
     area_dict,
+    candidate_public_preview_dict,
     import_batch_dict,
     import_candidate_dict,
     import_candidate_summary_dict,
     project_dict,
+    project_preview_dict,
 )
 from app.storage import PrivateStorage
 
@@ -496,6 +499,48 @@ async def get_project(
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     return project_dict(await project_or_404(record_id, db))
+
+
+@admin_router.get("/projects/{record_id}/preview")
+async def preview_project(
+    record_id: uuid.UUID,
+    locale: Literal["en", "ar"],
+    _: AuthContext = Depends(require_permission("project.read")),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    return project_preview_dict(await project_or_404(record_id, db), locale)
+
+
+@admin_router.get("/projects/{record_id}/preview-media/{media_id}")
+async def preview_project_media(
+    record_id: uuid.UUID,
+    media_id: uuid.UUID,
+    _: AuthContext = Depends(require_permission("project.read")),
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    media = await db.scalar(
+        select(ProjectMedia).where(
+            ProjectMedia.id == media_id,
+            ProjectMedia.project_id == record_id,
+            ProjectMedia.rights_status == MediaRightsStatus.APPROVED,
+        )
+    )
+    if not media or not media.storage_key or not media.mime_type:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            detail={"code": "not_found", "message": "Approved preview media not found."},
+        )
+    content = await asyncio.to_thread(PrivateStorage(settings).read, media.storage_key)
+    return Response(
+        content=content,
+        media_type=media.mime_type,
+        headers={
+            "Cache-Control": "private, no-store, max-age=0",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "default-src 'none'; img-src 'self'; sandbox",
+        },
+    )
 
 
 @admin_router.post("/projects", status_code=status.HTTP_201_CREATED)
@@ -1532,6 +1577,88 @@ async def import_candidate_detail(
     }
 
 
+@admin_router.get("/project-imports/{batch_id}/candidates/{candidate_id}/preview")
+async def import_candidate_public_preview(
+    batch_id: uuid.UUID,
+    candidate_id: uuid.UUID,
+    locale: Literal["en", "ar"],
+    _: AuthContext = Depends(require_permission("project-import.manage")),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    candidate = await db.scalar(
+        select(ProjectImportCandidate)
+        .where(
+            ProjectImportCandidate.id == candidate_id,
+            ProjectImportCandidate.batch_id == batch_id,
+        )
+        .options(
+            selectinload(ProjectImportCandidate.staged_media),
+            selectinload(ProjectImportCandidate.editorial_draft),
+        )
+    )
+    if not candidate:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            detail={"code": "not_found", "message": "Import candidate not found."},
+        )
+    if not candidate.proposed_developer_id or not candidate.proposed_area_id:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail={"code": "preview_not_ready", "message": "Canonical mappings are required."},
+        )
+    developer = await db.scalar(
+        select(Developer)
+        .where(Developer.id == candidate.proposed_developer_id)
+        .options(selectinload(Developer.translations))
+    )
+    area = await db.get(AreaCommunity, candidate.proposed_area_id)
+    if not developer or not area:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail={"code": "preview_not_ready", "message": "Canonical mappings are unavailable."},
+        )
+    return candidate_public_preview_dict(candidate, developer, area, locale)
+
+
+@admin_router.get("/project-imports/candidates/{candidate_id}/preview-media/{media_id}")
+async def import_candidate_preview_media(
+    candidate_id: uuid.UUID,
+    media_id: uuid.UUID,
+    size: Literal["thumbnail", "full"] = "thumbnail",
+    _: AuthContext = Depends(require_permission("project-import.manage")),
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    media = await db.scalar(
+        select(ProjectImportMedia).where(
+            ProjectImportMedia.id == media_id,
+            ProjectImportMedia.candidate_id == candidate_id,
+            ProjectImportMedia.rights_status == MediaRightsStatus.APPROVED,
+            ProjectImportMedia.stage_status == "downloaded",
+        )
+    )
+    storage_key = (
+        media.thumbnail_storage_key
+        if media and size == "thumbnail"
+        else (media.storage_key if media else None)
+    )
+    if not media or not storage_key:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            detail={"code": "not_found", "message": "Approved preview media not found."},
+        )
+    content = await asyncio.to_thread(PrivateStorage(settings).read, storage_key)
+    return Response(
+        content=content,
+        media_type="image/webp" if size == "thumbnail" else media.mime_type,
+        headers={
+            "Cache-Control": "private, no-store, max-age=0",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "default-src 'none'; img-src 'self'; sandbox",
+        },
+    )
+
+
 @admin_router.post("/project-imports/{batch_id}/bulk")
 async def bulk_import_candidates(
     batch_id: uuid.UUID,
@@ -1813,6 +1940,11 @@ async def approve_candidate_overview(
         generation.approved_by = context.user.id
         generation.approved_at = draft.approved_at
     if payload.approved:
+        candidate.validation_errors = [
+            item
+            for item in candidate.validation_errors
+            if not (isinstance(item, dict) and item.get("field") == "overview")
+        ]
         items = (
             await db.scalars(
                 select(ProjectProcessingItem).where(
@@ -1866,6 +1998,24 @@ async def approve_import_media_rights(
     media.rights_basis = payload.rights_basis
     media.rights_confirmed_by = context.user.id
     media.rights_confirmed_at = datetime.now(UTC)
+    candidate = await db.get(ProjectImportCandidate, media.candidate_id)
+    if candidate and payload.approved:
+        accepted_media = (
+            await db.scalars(
+                select(ProjectImportMedia).where(
+                    ProjectImportMedia.candidate_id == media.candidate_id,
+                    ProjectImportMedia.stage_status == "downloaded",
+                )
+            )
+        ).all()
+        if accepted_media and all(
+            item.rights_status == MediaRightsStatus.APPROVED for item in accepted_media
+        ):
+            candidate.validation_errors = [
+                item
+                for item in candidate.validation_errors
+                if not (isinstance(item, dict) and item.get("field") == "media_rights")
+            ]
     await write_audit(
         db,
         action="project-processing.media-rights.approve"
@@ -1943,6 +2093,37 @@ async def update_import_media_preparation(
     }
 
 
+async def _reconcile_completed_candidate_gates(
+    candidate: ProjectImportCandidate, db: AsyncSession
+) -> None:
+    resolved_fields: set[str] = set()
+    draft = await db.scalar(
+        select(ProjectImportEditorialDraft).where(
+            ProjectImportEditorialDraft.candidate_id == candidate.id
+        )
+    )
+    if draft and draft.approval_status == EditorialApprovalStatus.APPROVED:
+        resolved_fields.add("overview")
+    accepted_media = (
+        await db.scalars(
+            select(ProjectImportMedia).where(
+                ProjectImportMedia.candidate_id == candidate.id,
+                ProjectImportMedia.stage_status == "downloaded",
+            )
+        )
+    ).all()
+    if accepted_media and all(
+        item.rights_status == MediaRightsStatus.APPROVED for item in accepted_media
+    ):
+        resolved_fields.add("media_rights")
+    if resolved_fields:
+        candidate.validation_errors = [
+            item
+            for item in candidate.validation_errors
+            if not (isinstance(item, dict) and str(item.get("field", "")) in resolved_fields)
+        ]
+
+
 @admin_router.put("/project-imports/candidates/{candidate_id}")
 async def review_import_candidate(
     candidate_id: uuid.UUID,
@@ -2000,6 +2181,7 @@ async def review_import_candidate(
     candidate.arabic_review_required = payload.arabic_review_required
     candidate.reviewed_by = context.user.id
     candidate.review_version += 1
+    await _reconcile_completed_candidate_gates(candidate, db)
     await write_audit(
         db,
         action="project-import.review.update",

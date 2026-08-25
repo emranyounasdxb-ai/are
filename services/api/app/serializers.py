@@ -387,7 +387,14 @@ def project_dict(record: Project, locale: str | None = None) -> dict[str, Any]:
                 "height": item["height"],
             }
             for item in media
-            if item["rights_status"] == "approved" and item["has_upload"]
+            if item["rights_status"] == "approved"
+            and item["has_upload"]
+            and isinstance(item["width"], int)
+            and isinstance(item["height"], int)
+            and isinstance(item["category"], str)
+            and classify_media_dimensions(
+                item["width"], item["height"], item["category"]
+            ).public_eligible
         ]
         data.pop("status", None)
         data.pop("archived_at", None)
@@ -399,6 +406,19 @@ def project_dict(record: Project, locale: str | None = None) -> dict[str, Any]:
         data["priority"] = record.priority.value if record.priority else None
         data["internal_notes"] = record.internal_notes
         data["translations"] = translations
+    return data
+
+
+def project_preview_dict(record: Project, locale: str) -> dict[str, Any]:
+    """Return the public allowlist for an authenticated canonical Project preview."""
+    data = project_dict(record, locale)
+    data["media"] = [
+        {
+            **item,
+            "url": f"/api/v1/admin/projects/{record.id}/preview-media/{item['id']}",
+        }
+        for item in data["media"]
+    ]
     return data
 
 
@@ -557,6 +577,125 @@ def import_candidate_dict(record: ProjectImportCandidate) -> dict[str, Any]:
     }
 
 
+_PREVIEW_LABELS = {
+    "ar": {
+        "apartment": "شقق",
+        "villa": "فلل",
+        "mansion": "قصور",
+        "Family golf course": "ملعب غولف عائلي",
+        "Floating pavilion": "جناح عائم",
+        "Event halls": "قاعات للفعاليات",
+        "Helix bridge": "جسر حلزوني",
+        "White sand beaches": "شواطئ ذات رمال بيضاء",
+        "Mangrove and tide trail": "مسار القرم والمد والجزر",
+        "Community centre": "مركز مجتمعي",
+        "Ecopark": "حديقة بيئية",
+        "Play zone": "منطقة ألعاب",
+        "Dubai": "دبي",
+        "Sharjah": "الشارقة",
+        "Al Marjan Island": "جزيرة المرجان",
+        "1, 2 and 3 Bedroom Apartments": "شقق بغرفة نوم واحدة وغرفتين وثلاث غرف نوم",
+        "4, 5 and 6 Bedroom Villas": "فلل بأربع وخمس وست غرف نوم",
+        "Mansions (configuration not confirmed)": "قصور (التكوين غير مؤكد)",
+    }
+}
+
+
+def candidate_public_preview_dict(
+    record: ProjectImportCandidate,
+    developer: Developer,
+    area: AreaCommunity,
+    locale: str,
+) -> dict[str, Any]:
+    """Return an authenticated public-style allowlist without provenance or workflow internals."""
+    proposal = record.normalized_payload or {}
+    ar = locale == "ar"
+    labels = _PREVIEW_LABELS.get(locale, {})
+    developer_name = next(
+        (item.name for item in developer.translations if item.locale == locale), developer.slug
+    )
+    overview = record.editorial_draft
+    approved_overview = (
+        overview if overview and overview.approval_status.value == "approved" else None
+    )
+    media = [
+        {
+            "id": item.id,
+            "category": item.category.value,
+            "thumbnail_url": (
+                f"/api/v1/admin/project-imports/candidates/{record.id}/preview-media/"
+                f"{item.id}?size=thumbnail"
+            ),
+            "full_url": (
+                f"/api/v1/admin/project-imports/candidates/{record.id}/preview-media/"
+                f"{item.id}?size=full"
+            ),
+            "alt": item.alt_ar_draft if ar else item.alt_en_draft,
+            "width": item.width,
+            "height": item.height,
+            "display_order": item.display_order,
+        }
+        for item in sorted(record.staged_media, key=lambda value: value.display_order)
+        if item.stage_status == "downloaded"
+        and item.rights_status.value == "approved"
+        and item.storage_key
+    ]
+    milestones = proposal.get("payment_milestones", [])
+    return {
+        "candidate_id": record.id,
+        "locale": locale,
+        "project_name": proposal.get("project_name_ar" if ar else "project_name")
+        or record.normalized_project_name,
+        "developer": {"name": developer_name},
+        "emirate": EMIRATE_LABELS[locale][area.emirate],
+        "area": area.name_ar if ar else area.name_en,
+        "overview": approved_overview.overview_ar
+        if ar and approved_overview
+        else (approved_overview.overview_en if approved_overview else None),
+        "property_types": [
+            labels.get(str(value), str(value).replace("-", " ").title())
+            for value in proposal.get("property_types", [])
+        ],
+        "unit_types": [
+            labels.get(str(value), str(value)) for value in proposal.get("unit_types", [])
+        ],
+        "bedrooms": proposal.get("bedrooms", []),
+        "size_min": proposal.get("size_min"),
+        "size_max": proposal.get("size_max"),
+        "size_unit": proposal.get("size_unit"),
+        "size_ranges": proposal.get("size_ranges", []),
+        "down_payment_percentage": proposal.get("down_payment_percentage"),
+        "payment_plan": proposal.get("payment_plan"),
+        "payment_milestones": [
+            {
+                "sequence": index + 1,
+                "stage": str(value.get("stage", "other")),
+                "percentage": value.get("percentage"),
+            }
+            for index, value in enumerate(milestones)
+            if isinstance(value, dict)
+        ],
+        "handover_quarter": proposal.get("handover_quarter"),
+        "handover_year": proposal.get("handover_year"),
+        "handover_verification": "requires-verification",
+        "availability_status": "not-confirmed",
+        "construction_status": "not-confirmed",
+        "amenities": [
+            labels.get(str(value), str(value)) for value in proposal.get("amenities", [])
+        ],
+        "nearby_places": [
+            {
+                "name": labels.get(str(value.get("name")), str(value.get("name"))),
+                "travel_time_minutes": value.get("travel_time_minutes"),
+            }
+            for value in proposal.get("nearby_places", [])
+            if isinstance(value, dict)
+        ],
+        "media": media,
+        "has_cover": any(item["category"] == "cover" for item in media),
+    }
+
+
 def import_candidate_summary_dict(record: ProjectImportCandidate) -> dict[str, Any]:
     missing = [
         str(item.get("field", "Unknown"))
@@ -564,6 +703,7 @@ def import_candidate_summary_dict(record: ProjectImportCandidate) -> dict[str, A
         if isinstance(item, dict)
     ]
     media_statuses = [item.stage_status for item in record.staged_media]
+    accepted_media = [item for item in record.staged_media if item.stage_status == "downloaded"]
     blockers = [_review_message(item) for item in record.validation_errors]
     blockers.extend(str(item) for item in record.conflict_reasons)
     if not record.proposed_developer_id:
@@ -613,7 +753,7 @@ def import_candidate_summary_dict(record: ProjectImportCandidate) -> dict[str, A
         "blockers": blockers,
         "warnings": [
             "Private media rights remain Pending."
-            for item in record.staged_media
+            for item in accepted_media
             if item.rights_status.value == "pending"
         ][:1],
         "conflict_count": len(record.conflict_reasons),
@@ -625,8 +765,11 @@ def import_candidate_summary_dict(record: ProjectImportCandidate) -> dict[str, A
         "human_review_completed": record.human_review_completed,
         "arabic_review_state": ("review-required" if record.arabic_review_required else "reviewed"),
         "rights_status": (
-            "pending"
-            if any(item.rights_status.value == "pending" for item in record.staged_media)
+            "approved"
+            if accepted_media
+            and all(item.rights_status.value == "approved" for item in accepted_media)
+            else "pending"
+            if any(item.rights_status.value == "pending" for item in accepted_media)
             else "none"
         ),
         "eligibility": eligibility,

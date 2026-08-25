@@ -470,6 +470,11 @@ async def test_private_media_intake_is_sanitized_pending_and_authenticated(
     assert unauthenticated.status_code == 401
     email, password = await create_user("super-admin")
     await client.post("/api/v1/auth/login", json={"email": email, "password": password})
+    blocked_preview = await client.get(
+        f"/api/v1/admin/project-imports/candidates/{candidate.id}/preview-media/"
+        f"{media_id}?size=thumbnail"
+    )
+    assert blocked_preview.status_code == 404
     preview = await client.get(f"/api/v1/admin/project-import-media/{media_id}/thumbnail")
     assert preview.status_code == 200
     assert preview.headers["cache-control"] == "private, no-store, max-age=0"
@@ -478,6 +483,18 @@ async def test_private_media_intake_is_sanitized_pending_and_authenticated(
     assert full.status_code == 200
     assert full.headers["cache-control"] == "private, no-store, max-age=0"
     assert full.headers["content-type"].startswith("image/jpeg")
+    async with SessionLocal() as db:
+        media = await db.get(ProjectImportMedia, media_id)
+        assert media is not None
+        media.rights_status = MediaRightsStatus.APPROVED
+        await db.commit()
+    approved_preview = await client.get(
+        f"/api/v1/admin/project-imports/candidates/{candidate.id}/preview-media/"
+        f"{media_id}?size=thumbnail"
+    )
+    assert approved_preview.status_code == 200
+    assert approved_preview.headers["cache-control"] == "private, no-store, max-age=0"
+    assert approved_preview.headers["content-type"].startswith("image/webp")
 
 
 @pytest.mark.asyncio

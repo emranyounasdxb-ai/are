@@ -24,6 +24,7 @@ from app.models import (
     ImportReviewStatus,
     ProjectImportBatch,
     ProjectImportCandidate,
+    ProjectImportChange,
     ProjectOverviewPack,
     ProjectProcessingStatus,
     User,
@@ -266,6 +267,62 @@ async def test_import_is_review_gated_and_exact_repeat_is_idempotent(
         assert loaded.last_successful_stage == "prepare-overview"
         repeated = await import_overview_response(
             db, pack=pack, response=response, correlation_id="qa-manual-repeat"
+        )
+        assert repeated["results"][0]["status"] == "unchanged"  # type: ignore[index]
+
+
+@pytest.mark.asyncio
+async def test_pending_overview_can_be_corrected_with_history_preserved(
+    test_settings: Settings,
+) -> None:
+    batch, actor = await _fixture(1)
+    candidate = batch.candidates[0]
+    async with SessionLocal() as db:
+        pack = await create_overview_pack(
+            db,
+            test_settings,
+            batch_id=batch.id,
+            candidate_ids=[candidate.id],
+            expected_versions={candidate.id: 1},
+            selection_mode="single",
+            actor_id=actor.id,
+            idempotency_key=f"qa-manual-overview-revision-{uuid.uuid4()}",
+        )
+        original = _response(pack, candidate)
+        first = await import_overview_response(
+            db, pack=pack, response=original, correlation_id="qa-manual-original"
+        )
+        assert first["imported"] == 1
+        corrected = _response(
+            pack,
+            candidate,
+            overview_en=(
+                "This residential community brings together homes and a community garden from "
+                "the reviewed fact packet for careful editorial consideration only."
+            ),
+            overview_ar=(
+                "يجمع هذا المجتمع السكني بين المنازل وحديقة مجتمعية واردة في حزمة الحقائق "
+                "المراجعة للنظر التحريري الدقيق فقط دون إضافة ادعاءات."
+            ),
+        )
+        second = await import_overview_response(
+            db, pack=pack, response=corrected, correlation_id="qa-manual-corrected"
+        )
+        assert second["imported"] == 1 and second["failed"] == 0
+        await db.commit()
+
+        change = await db.scalar(
+            select(ProjectImportChange).where(
+                ProjectImportChange.candidate_id == candidate.id,
+                ProjectImportChange.field_name == "overview",
+            )
+        )
+        assert change is not None
+        assert change.existing_value["overview_en"] == original.items[0].overview_en
+        assert change.new_value["overview_en"] == corrected.items[0].overview_en
+
+        repeated = await import_overview_response(
+            db, pack=pack, response=corrected, correlation_id="qa-manual-corrected-repeat"
         )
         assert repeated["results"][0]["status"] == "unchanged"  # type: ignore[index]
 

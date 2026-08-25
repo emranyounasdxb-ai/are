@@ -16,6 +16,7 @@ from app.config import Settings
 from app.models import (
     EditorialApprovalStatus,
     ProjectImportCandidate,
+    ProjectImportChange,
     ProjectImportEditorialDraft,
     ProjectOverviewPack,
     ProjectOverviewPackItem,
@@ -469,10 +470,16 @@ async def import_overview_response(
             if exact_repeat:
                 results.append({"candidate_id": response_item.candidate_id, "status": "unchanged"})
                 continue
-            code, message = (
-                "human-edited-conflict",
-                "An existing editorial draft cannot be overwritten by bulk import.",
-            )
+            if existing.approval_status == EditorialApprovalStatus.APPROVED:
+                code, message = (
+                    "approved-overview-conflict",
+                    "An approved editorial Overview requires a separate revision workflow.",
+                )
+            elif {"overview", "overview_en", "overview_ar"} & edited:
+                code, message = (
+                    "human-edited-conflict",
+                    "A human-edited editorial Overview cannot be replaced by bulk import.",
+                )
         if code:
             if pack_item:
                 pack_item.status = "failed"
@@ -489,20 +496,66 @@ async def import_overview_response(
             )
             continue
         assert candidate is not None and pack_item is not None
-        candidate.editorial_draft = ProjectImportEditorialDraft(
-            overview_en=response_item.overview_en.strip(),
-            overview_ar=response_item.overview_ar.strip(),
-            source_version=candidate.content_hash,
-            generated_at=datetime.now(UTC),
-            approval_status=EditorialApprovalStatus.NEEDS_REVIEW,
-            origin=ORIGIN,
-            overview_pack_id=pack.id,
-            overview_pack_hash=pack.pack_hash,
-            fact_input_version=pack_item.fact_input_version,
-            fact_input_hash=response_item.fact_input_hash,
-            candidate_version=response_item.candidate_version,
-            import_correlation_id=correlation_id,
-        )
+        imported_at = datetime.now(UTC)
+        if existing:
+            db.add(
+                ProjectImportChange(
+                    candidate_id=candidate.id,
+                    classification="editorial-revision",
+                    field_name="overview",
+                    existing_value={
+                        "overview_en": existing.overview_en,
+                        "overview_ar": existing.overview_ar,
+                        "source_version": existing.source_version,
+                        "approval_status": existing.approval_status.value,
+                        "origin": existing.origin,
+                        "overview_pack_id": str(existing.overview_pack_id)
+                        if existing.overview_pack_id
+                        else None,
+                        "fact_input_hash": existing.fact_input_hash,
+                    },
+                    new_value={
+                        "overview_en": response_item.overview_en.strip(),
+                        "overview_ar": response_item.overview_ar.strip(),
+                        "source_version": candidate.content_hash,
+                        "approval_status": EditorialApprovalStatus.NEEDS_REVIEW.value,
+                        "origin": ORIGIN,
+                        "overview_pack_id": str(pack.id),
+                        "fact_input_hash": response_item.fact_input_hash,
+                    },
+                    detected_at=imported_at,
+                    content_hash=response_item.fact_input_hash,
+                )
+            )
+            existing.overview_en = response_item.overview_en.strip()
+            existing.overview_ar = response_item.overview_ar.strip()
+            existing.source_version = candidate.content_hash
+            existing.generated_at = imported_at
+            existing.approval_status = EditorialApprovalStatus.NEEDS_REVIEW
+            existing.approved_by = None
+            existing.approved_at = None
+            existing.origin = ORIGIN
+            existing.overview_pack_id = pack.id
+            existing.overview_pack_hash = pack.pack_hash
+            existing.fact_input_version = pack_item.fact_input_version
+            existing.fact_input_hash = response_item.fact_input_hash
+            existing.candidate_version = response_item.candidate_version
+            existing.import_correlation_id = correlation_id
+        else:
+            candidate.editorial_draft = ProjectImportEditorialDraft(
+                overview_en=response_item.overview_en.strip(),
+                overview_ar=response_item.overview_ar.strip(),
+                source_version=candidate.content_hash,
+                generated_at=imported_at,
+                approval_status=EditorialApprovalStatus.NEEDS_REVIEW,
+                origin=ORIGIN,
+                overview_pack_id=pack.id,
+                overview_pack_hash=pack.pack_hash,
+                fact_input_version=pack_item.fact_input_version,
+                fact_input_hash=response_item.fact_input_hash,
+                candidate_version=response_item.candidate_version,
+                import_correlation_id=correlation_id,
+            )
         candidate.processing_status = ProjectProcessingStatus.NEEDS_REVIEW
         candidate.last_successful_stage = "prepare-overview"
         pack_item.status = "imported-needs-review"
