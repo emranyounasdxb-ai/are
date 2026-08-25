@@ -1641,37 +1641,6 @@ html[dir="rtl"] .criteria-summary > p:first-child {
   text-transform: none;
 }
 
-.breadcrumbs {
-  margin-block-end: 2rem;
-  color: var(--are-muted);
-  font-size: 0.78rem;
-  font-weight: 700;
-}
-
-.breadcrumbs ol {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  margin: 0;
-  padding: 0;
-  gap: 0.55rem;
-  list-style: none;
-}
-
-.breadcrumbs li:not(:last-child)::after {
-  margin-inline-start: 0.55rem;
-  color: var(--are-champagne);
-  content: "/";
-}
-
-.breadcrumbs a { text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 0.25rem; }
-.breadcrumbs a:hover,
-.breadcrumbs a:focus-visible { text-decoration-color: currentColor; }
-.hero-section .breadcrumbs,
-.inner-hero .breadcrumbs { color: rgba(248, 246, 242, 0.66); }
-.hero-section .breadcrumbs { position: relative; z-index: 3; margin-block-end: 1.5rem; }
-.inner-hero .breadcrumbs { margin-block-end: 2.5rem; }
-
 .content-section,
 .feature-pathways,
 .closing-cta {
@@ -1840,7 +1809,6 @@ html[dir="rtl"] .criteria-summary > p:first-child {
   width: min(calc(100% - 4rem), var(--are-container));
   margin-inline: auto;
 }
-.careers-hero .breadcrumbs { color: rgba(248, 246, 242, 0.66); }
 .careers-hero__copy { display: grid; grid-template-columns: minmax(0, 1fr) minmax(18rem, 0.38fr); align-items: end; gap: clamp(2rem, 8vw, 8rem); }
 .careers-hero__copy > p { grid-column: 1 / -1; margin: 2.5rem 0 0; color: var(--are-champagne); font-size: 0.72rem; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; }
 .careers-hero__copy h1 { max-width: 12ch; margin: 0; font-size: clamp(4rem, 8vw, 8.2rem); font-weight: 540; letter-spacing: -0.065em; line-height: 0.92; text-wrap: balance; }
