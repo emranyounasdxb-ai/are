@@ -21,7 +21,6 @@ from app.models import (
     AvailabilityStatus,
     ConstructionStatus,
     EnquiryStatus,
-    ImportReviewStatus,
     JobStatus,
     MediaRightsStatus,
     PaymentStage,
@@ -213,7 +212,7 @@ class ProjectInput(StrictModel):
     handover_year: int | None = Field(default=None, ge=2000, le=2200)
     original_handover_value: str | None = Field(default=None, max_length=240)
     last_verified_at: datetime | None = None
-    priority: ProjectPriority = ProjectPriority.B
+    priority: ProjectPriority | None = None
     featured: bool = False
     display_order: int = Field(default=0, ge=0, le=10000)
     internal_notes: str | None = Field(default=None, max_length=10000)
@@ -245,19 +244,41 @@ class ProjectInput(StrictModel):
 
 
 class ImportCandidateReviewInput(StrictModel):
-    review_status: Literal[
-        ImportReviewStatus.NEEDS_REVIEW,
-        ImportReviewStatus.READY_FOR_APPROVAL,
-        ImportReviewStatus.APPROVED,
-        ImportReviewStatus.REJECTED,
-        ImportReviewStatus.MERGED,
+    expected_version: int = Field(ge=1)
+    proposed_developer_id: uuid.UUID | None = None
+    proposed_area_id: uuid.UUID | None = None
+    human_review_completed: bool = False
+    arabic_review_required: bool = True
+
+
+class ImportBulkActionInput(StrictModel):
+    action: Literal[
+        "retry-acquisition",
+        "assign-developer",
+        "assign-area",
+        "reject",
+        "mark-ready",
+        "create-drafts",
     ]
-    linked_project_id: uuid.UUID | None = None
+    candidate_ids: list[uuid.UUID] = Field(min_length=1, max_length=50)
+    expected_versions: dict[uuid.UUID, int]
+    idempotency_key: str = Field(min_length=16, max_length=100, pattern=r"^[A-Za-z0-9._:-]+$")
+    developer_id: uuid.UUID | None = None
+    area_id: uuid.UUID | None = None
+    rejection_reason: str | None = Field(default=None, min_length=3, max_length=1000)
 
     @model_validator(mode="after")
-    def require_project_for_merge(self) -> ImportCandidateReviewInput:
-        if self.review_status == ImportReviewStatus.MERGED and not self.linked_project_id:
-            raise ValueError("Merged candidates require a linked canonical Project")
+    def validate_action_fields(self) -> ImportBulkActionInput:
+        if len(set(self.candidate_ids)) != len(self.candidate_ids):
+            raise ValueError("Candidate selection must not contain duplicates")
+        if set(self.expected_versions) != set(self.candidate_ids):
+            raise ValueError("Every selected candidate requires an expected version")
+        if self.action == "assign-developer" and not self.developer_id:
+            raise ValueError("assign-developer requires developer_id")
+        if self.action == "assign-area" and not self.area_id:
+            raise ValueError("assign-area requires area_id")
+        if self.action == "reject" and not self.rejection_reason:
+            raise ValueError("reject requires a reason")
         return self
 
 

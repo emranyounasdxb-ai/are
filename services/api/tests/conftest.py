@@ -23,6 +23,7 @@ from app.models import (
     JobOpening,
     Project,
     ProjectImportBatch,
+    ProjectImportCandidate,
     Property,
     Role,
     Session,
@@ -60,6 +61,32 @@ async def clean_disposable_records(test_settings: Settings) -> AsyncIterator[Non
             if application.file:
                 storage.delete(application.file.storage_key)
             await db.delete(application)
+        import_batches = (
+            await db.scalars(
+                select(ProjectImportBatch)
+                .where(ProjectImportBatch.name.like("QA %"))
+                .options(
+                    selectinload(ProjectImportBatch.candidates).selectinload(
+                        ProjectImportCandidate.staged_media
+                    ),
+                    selectinload(ProjectImportBatch.candidates).selectinload(
+                        ProjectImportCandidate.evidence
+                    ),
+                )
+            )
+        ).all()
+        for batch in import_batches:
+            for candidate in batch.candidates:
+                for evidence in candidate.evidence:
+                    if evidence.storage_key:
+                        storage.delete(evidence.storage_key)
+                for media in candidate.staged_media:
+                    if media.storage_key:
+                        storage.delete(media.storage_key)
+                    if media.thumbnail_storage_key:
+                        storage.delete(media.thumbnail_storage_key)
+            await db.delete(batch)
+        await db.flush()
         projects = (
             await db.scalars(
                 select(Project)
@@ -77,7 +104,6 @@ async def clean_disposable_records(test_settings: Settings) -> AsyncIterator[Non
                 await db.delete(plan)
                 await db.flush()
             await db.delete(project)
-        await db.execute(delete(ProjectImportBatch).where(ProjectImportBatch.name.like("QA %")))
         await db.execute(delete(AreaCommunity).where(AreaCommunity.slug.like("qa-%")))
         await db.execute(
             delete(ContactEnquiry).where(

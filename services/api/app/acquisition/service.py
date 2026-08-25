@@ -162,6 +162,32 @@ async def acquire_batch(
     return await _batch(db, batch.id)
 
 
+async def retry_candidates(
+    db: AsyncSession,
+    settings: Settings,
+    candidates: list[ProjectImportCandidate],
+    *,
+    fetcher: SourceFetcher | None = None,
+) -> None:
+    """Refresh only an explicit reviewed selection while preserving human mappings."""
+    source_fetcher = fetcher or BatchCachingFetcher(SecureFetcher())
+    storage = PrivateStorage(settings)
+    for candidate in candidates:
+        developer_id = candidate.proposed_developer_id
+        area_id = candidate.proposed_area_id
+        await db.refresh(candidate, attribute_names=["staged_media"])
+        await _acquire_candidate(db, candidate, source_fetcher, storage, refresh=True)
+        if developer_id:
+            candidate.proposed_developer_id = developer_id
+        if area_id:
+            candidate.proposed_area_id = area_id
+        candidate.human_review_completed = False
+        candidate.review_version += 1
+    if candidates:
+        batch = await _batch(db, candidates[0].batch_id)
+        await _update_counts(db, batch)
+
+
 async def _acquire_candidate(
     db: AsyncSession,
     candidate: ProjectImportCandidate,
@@ -251,15 +277,8 @@ async def _acquire_candidate(
     candidate.arabic_review_required = not bool(
         normalized.source_extracted.get("arabic_content_available")
     )
-    candidate.review_status = (
-        ImportReviewStatus.READY_FOR_APPROVAL
-        if not candidate.validation_errors
-        and not conflicts
-        and not candidate.arabic_review_required
-        and developer_id
-        and area_id
-        else ImportReviewStatus.NEEDS_REVIEW
-    )
+    # Acquisition only proposes evidence. Readiness always requires an explicit human action.
+    candidate.review_status = ImportReviewStatus.NEEDS_REVIEW
     await _stage_media(db, candidate, snapshot, normalized, adapter.allowed_domains)
     if refresh:
         classification = classify_change(

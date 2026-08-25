@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import math
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -25,17 +26,20 @@ from app.audit import request_correlation_id, write_audit
 from app.config import Settings, get_settings
 from app.db import get_db
 from app.dependencies import AuthContext, require_mutation_permission, require_permission
+from app.import_review import apply_bulk_action, eligibility_errors
 from app.models import (
     AreaAlias,
     AreaCommunity,
     ConstructionStatus,
     Developer,
+    ImportReviewStatus,
     MediaRightsStatus,
     Project,
     ProjectAvailabilityStatus,
     ProjectBedroomValue,
     ProjectImportBatch,
     ProjectImportCandidate,
+    ProjectImportMedia,
     ProjectMedia,
     ProjectMediaCategory,
     ProjectPaymentMilestone,
@@ -48,11 +52,17 @@ from app.models import (
     ProjectTranslation,
     PublicationStatus,
 )
-from app.schemas import AreaInput, ImportCandidateReviewInput, ProjectInput
+from app.schemas import (
+    AreaInput,
+    ImportBulkActionInput,
+    ImportCandidateReviewInput,
+    ProjectInput,
+)
 from app.serializers import (
     area_dict,
     import_batch_dict,
     import_candidate_dict,
+    import_candidate_summary_dict,
     project_dict,
 )
 from app.storage import PrivateStorage
@@ -592,6 +602,20 @@ async def list_import_batches(
 @admin_router.get("/project-imports/{batch_id}")
 async def import_batch_detail(
     batch_id: uuid.UUID,
+    q: str = Query(default="", max_length=160),
+    review_status: str | None = Query(default=None),
+    developer_id: uuid.UUID | None = Query(default=None),
+    area_id: uuid.UUID | None = Query(default=None),
+    area_mapping: Literal["mapped", "unmapped"] | None = Query(default=None),
+    official_source: Literal["available", "missing"] | None = Query(default=None),
+    missing_evidence: bool | None = Query(default=None),
+    arabic_review: Literal["reviewed", "review-required"] | None = Query(default=None),
+    has_conflicts: bool | None = Query(default=None),
+    media_status: str | None = Query(default=None),
+    sort: Literal["row", "project", "status", "last-checked"] = Query(default="row"),
+    direction: Literal["asc", "desc"] = Query(default="asc"),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=25, ge=1, le=25),
     _: AuthContext = Depends(require_permission("project-import.manage")),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
@@ -600,13 +624,7 @@ async def import_batch_detail(
         .where(ProjectImportBatch.id == batch_id)
         .options(
             selectinload(ProjectImportBatch.candidates).selectinload(
-                ProjectImportCandidate.evidence
-            ),
-            selectinload(ProjectImportBatch.candidates).selectinload(
                 ProjectImportCandidate.staged_media
-            ),
-            selectinload(ProjectImportBatch.candidates).selectinload(
-                ProjectImportCandidate.changes
             ),
         )
     )
@@ -615,10 +633,155 @@ async def import_batch_detail(
             status.HTTP_404_NOT_FOUND,
             detail={"code": "not_found", "message": "Import batch not found."},
         )
+    all_candidates = list(batch.candidates)
+    metrics = {
+        "all": len(all_candidates),
+        "needs-review": sum(
+            item.review_status == ImportReviewStatus.NEEDS_REVIEW for item in all_candidates
+        ),
+        "failed": sum(item.review_status == ImportReviewStatus.FAILED for item in all_candidates),
+        "ready-for-approval": sum(
+            item.review_status == ImportReviewStatus.READY_FOR_APPROVAL for item in all_candidates
+        ),
+        "rejected": sum(
+            item.review_status == ImportReviewStatus.REJECTED for item in all_candidates
+        ),
+        "merged": sum(item.review_status == ImportReviewStatus.MERGED for item in all_candidates),
+    }
+    normalized_query = q.casefold().strip()
+    records = [
+        item
+        for item in all_candidates
+        if (
+            not normalized_query
+            or normalized_query
+            in " ".join(
+                (
+                    item.normalized_project_name or "",
+                    str(item.owner_manifest_values.get("owner_project_name", "")),
+                    str(item.owner_manifest_values.get("owner_developer", "")),
+                    str(item.owner_manifest_values.get("owner_area", "")),
+                    str(item.manifest_row_id),
+                )
+            ).casefold()
+        )
+        and (not review_status or item.review_status.value == review_status)
+        and (not developer_id or item.proposed_developer_id == developer_id)
+        and (not area_id or item.proposed_area_id == area_id)
+        and (
+            area_mapping is None
+            or (item.proposed_area_id is not None) == (area_mapping == "mapped")
+        )
+        and (
+            official_source is None
+            or bool(item.official_source_url) == (official_source == "available")
+        )
+        and (missing_evidence is None or bool(item.validation_errors) == missing_evidence)
+        and (
+            arabic_review is None
+            or item.arabic_review_required == (arabic_review == "review-required")
+        )
+        and (has_conflicts is None or bool(item.conflict_reasons) == has_conflicts)
+        and (
+            not media_status
+            or any(media.stage_status == media_status for media in item.staged_media)
+        )
+    ]
+    key = {
+        "row": lambda item: item.manifest_row_id,
+        "project": lambda item: (item.normalized_project_name or "").casefold(),
+        "status": lambda item: item.review_status.value,
+        "last-checked": lambda item: item.last_verified_at or datetime.min.replace(tzinfo=UTC),
+    }[sort]
+    records.sort(key=key, reverse=direction == "desc")
+    total = len(records)
+    start = (page - 1) * page_size
+    summaries = {str(item.id): import_candidate_summary_dict(item) for item in records}
     return {
         **import_batch_dict(batch),
-        "candidates": [import_candidate_dict(item) for item in batch.candidates],
+        "metrics": metrics,
+        "candidates": [summaries[str(item.id)] for item in records[start : start + page_size]],
+        "candidate_meta": meta(page, page_size, total),
+        "filtered_candidate_ids": [item.id for item in records],
+        "filtered_candidate_versions": {str(item.id): item.review_version for item in records},
+        "filtered_candidate_info": {
+            str(item.id): {
+                "project_name": summaries[str(item.id)]["project_name"],
+                "owner_developer": summaries[str(item.id)]["owner_developer"],
+                "owner_area": summaries[str(item.id)]["owner_area"],
+                "review_status": summaries[str(item.id)]["review_status"],
+                "eligibility": summaries[str(item.id)]["eligibility"],
+            }
+            for item in records
+        },
     }
+
+
+@admin_router.get("/project-imports/{batch_id}/candidates/{candidate_id}")
+async def import_candidate_detail(
+    batch_id: uuid.UUID,
+    candidate_id: uuid.UUID,
+    _: AuthContext = Depends(require_permission("project-import.manage")),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    candidate = await db.scalar(
+        select(ProjectImportCandidate)
+        .where(
+            ProjectImportCandidate.id == candidate_id,
+            ProjectImportCandidate.batch_id == batch_id,
+        )
+        .options(
+            selectinload(ProjectImportCandidate.evidence),
+            selectinload(ProjectImportCandidate.staged_media),
+            selectinload(ProjectImportCandidate.changes),
+        )
+    )
+    if not candidate:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            detail={"code": "not_found", "message": "Import candidate not found."},
+        )
+    return {
+        **import_candidate_summary_dict(candidate),
+        **import_candidate_dict(candidate),
+        "eligibility_errors": eligibility_errors(candidate),
+    }
+
+
+@admin_router.post("/project-imports/{batch_id}/bulk")
+async def bulk_import_candidates(
+    batch_id: uuid.UUID,
+    payload: ImportBulkActionInput,
+    request: Request,
+    context: AuthContext = Depends(require_mutation_permission("project-import.manage")),
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    return await apply_bulk_action(db, batch_id, payload, request, context, settings)
+
+
+@admin_router.get("/project-import-media/{media_id}/thumbnail")
+async def import_media_thumbnail(
+    media_id: uuid.UUID,
+    _: AuthContext = Depends(require_permission("project-import.manage")),
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    media = await db.get(ProjectImportMedia, media_id)
+    if not media or not media.thumbnail_storage_key:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            detail={"code": "not_found", "message": "Private thumbnail not found."},
+        )
+    content = await asyncio.to_thread(PrivateStorage(settings).read, media.thumbnail_storage_key)
+    return Response(
+        content=content,
+        media_type="image/webp",
+        headers={
+            "Cache-Control": "private, no-store, max-age=0",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 @admin_router.put("/project-imports/candidates/{candidate_id}")
@@ -629,34 +792,70 @@ async def review_import_candidate(
     context: AuthContext = Depends(require_mutation_permission("project-import.manage")),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
-    candidate = await db.get(ProjectImportCandidate, candidate_id)
+    candidate = await db.scalar(
+        select(ProjectImportCandidate)
+        .where(ProjectImportCandidate.id == candidate_id)
+        .with_for_update()
+    )
     if not candidate:
         raise HTTPException(
             status.HTTP_404_NOT_FOUND,
             detail={"code": "not_found", "message": "Import candidate not found."},
         )
-    if payload.linked_project_id and not await db.get(Project, payload.linked_project_id):
+    if candidate.review_version != payload.expected_version:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail={
+                "code": "stale_candidate",
+                "message": "This candidate changed. Refresh and retry.",
+            },
+        )
+    if candidate.review_status != ImportReviewStatus.NEEDS_REVIEW:
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail={"code": "invalid_project", "message": "Linked Project does not exist."},
+            detail={
+                "code": "review_state_locked",
+                "message": "Mappings and review decisions can change only while Needs Review.",
+            },
         )
-    before = candidate.review_status.value
-    candidate.review_status = payload.review_status
-    candidate.linked_project_id = payload.linked_project_id
+    if payload.proposed_developer_id and not await db.get(Developer, payload.proposed_developer_id):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={"code": "invalid_developer", "message": "Canonical Developer does not exist."},
+        )
+    if payload.proposed_area_id and not await db.get(AreaCommunity, payload.proposed_area_id):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={"code": "invalid_area", "message": "Canonical Area does not exist."},
+        )
+    before = {
+        "developer_id": str(candidate.proposed_developer_id)
+        if candidate.proposed_developer_id
+        else None,
+        "area_id": str(candidate.proposed_area_id) if candidate.proposed_area_id else None,
+        "human_review_completed": candidate.human_review_completed,
+    }
+    candidate.proposed_developer_id = payload.proposed_developer_id
+    candidate.proposed_area_id = payload.proposed_area_id
+    candidate.human_review_completed = payload.human_review_completed
+    candidate.arabic_review_required = payload.arabic_review_required
     candidate.reviewed_by = context.user.id
+    candidate.review_version += 1
     await write_audit(
         db,
-        action=f"project-import.{payload.review_status.value}",
+        action="project-import.review.update",
         entity_type="project_import_candidate",
         entity_id=candidate.id,
         actor_user_id=context.user.id,
         correlation_id=request_correlation_id(request),
-        before={"status": before},
+        before=before,
         after={
-            "status": candidate.review_status.value,
-            "linked_project_id": str(candidate.linked_project_id)
-            if candidate.linked_project_id
+            "developer_id": str(candidate.proposed_developer_id)
+            if candidate.proposed_developer_id
             else None,
+            "area_id": str(candidate.proposed_area_id) if candidate.proposed_area_id else None,
+            "human_review_completed": candidate.human_review_completed,
+            "review_version": candidate.review_version,
         },
     )
     await db.commit()

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import io
+import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -11,12 +12,24 @@ from sqlalchemy import select
 
 from app.acquisition.adapters import ADAPTERS, adapter_for
 from app.acquisition.contracts import FetchResult, ManifestCandidate
-from app.acquisition.media import duplicate_hash, validate_raster
+from app.acquisition.media import RasterFetchResult, duplicate_hash, validate_raster
+from app.acquisition.media_intake import intake_private_media
 from app.acquisition.parser import normalize_evidence, parse_html
 from app.acquisition.security import AcquisitionSecurityError, validate_public_url
-from app.acquisition.service import classify_change, load_manifest, read_manifest
+from app.acquisition.service import classify_change, load_manifest, read_manifest, retry_candidates
 from app.db import SessionLocal
-from app.models import ProjectImportBatch
+from app.models import (
+    AreaCommunity,
+    Developer,
+    ImportReviewStatus,
+    MediaRightsStatus,
+    ProjectImportBatch,
+    ProjectImportCandidate,
+    ProjectImportMedia,
+    ProjectMediaCategory,
+    PublicationStatus,
+)
+from app.storage import PrivateStorage
 
 
 def public_resolver(
@@ -198,3 +211,134 @@ async def test_manifest_is_exact_and_loading_is_idempotent(tmp_path: Path) -> No
             ).all()
         )
         assert count == 1
+
+
+class RasterFixtureFetcher:
+    def __init__(self, content: bytes) -> None:
+        self.content = content
+
+    def fetch(self, url: str, allowed_domains: tuple[str, ...]) -> RasterFetchResult:
+        assert "emaar.com" in allowed_domains
+        return RasterFetchResult(url, self.content, "image/jpeg", 200)
+
+
+@pytest.mark.asyncio
+async def test_private_media_intake_is_sanitized_pending_and_authenticated(
+    client, create_user, test_settings
+) -> None:
+    image = io.BytesIO()
+    Image.new("RGB", (640, 360), "#745238").save(image, "JPEG", exif=b"private-metadata")
+    batch_id = uuid.uuid4()
+    media_id = uuid.uuid4()
+    async with SessionLocal() as db:
+        batch = ProjectImportBatch(
+            id=batch_id,
+            name="QA Private Media Import",
+            source_reference="qa-media.csv",
+            manifest_hash=uuid.uuid4().hex + uuid.uuid4().hex,
+            adapter_version="test",
+            total_count=1,
+        )
+        candidate = ProjectImportCandidate(
+            manifest_row_id=1,
+            raw_source_payload={},
+            owner_manifest_values={
+                "owner_project_name": "QA Media Project",
+                "owner_developer": "Emaar",
+                "owner_area": "Dubai",
+            },
+            source_urls=[],
+            content_hash="d" * 64,
+            validation_errors=[],
+            conflict_reasons=[],
+            review_status=ImportReviewStatus.NEEDS_REVIEW,
+        )
+        candidate.staged_media = [
+            ProjectImportMedia(
+                id=media_id,
+                category=ProjectMediaCategory.GALLERY,
+                source_url="https://properties.emaar.com/media/qa-project.jpg",
+                rights_status=MediaRightsStatus.PENDING,
+                stage_status="reference-only",
+            )
+        ]
+        batch.candidates = [candidate]
+        db.add(batch)
+        await db.commit()
+        stats = await intake_private_media(
+            db,
+            test_settings,
+            batch_id,
+            fetcher=RasterFixtureFetcher(image.getvalue()),
+        )
+        assert stats["downloaded"] == 1
+        media = await db.get(ProjectImportMedia, media_id)
+        assert media is not None
+        assert media.rights_status == MediaRightsStatus.PENDING
+        assert media.thumbnail_storage_key
+        assert media.storage_key
+        sanitized = PrivateStorage(test_settings).read(media.storage_key)
+        assert b"private-metadata" not in sanitized
+
+    unauthenticated = await client.get(f"/api/v1/admin/project-import-media/{media_id}/thumbnail")
+    assert unauthenticated.status_code == 401
+    email, password = await create_user("super-admin")
+    await client.post("/api/v1/auth/login", json={"email": email, "password": password})
+    preview = await client.get(f"/api/v1/admin/project-import-media/{media_id}/thumbnail")
+    assert preview.status_code == 200
+    assert preview.headers["cache-control"] == "private, no-store, max-age=0"
+    assert preview.headers["content-type"].startswith("image/webp")
+
+
+@pytest.mark.asyncio
+async def test_retry_preserves_human_mapping_and_never_auto_marks_ready(test_settings) -> None:
+    async with SessionLocal() as db:
+        developer = await db.scalar(select(Developer).where(Developer.slug == "emaar-properties"))
+        assert developer is not None
+        area = AreaCommunity(
+            slug="qa-retry-area",
+            name_en="QA Retry Area",
+            name_ar="منطقة إعادة المحاولة",
+            emirate="Dubai",
+            status=PublicationStatus.DRAFT,
+        )
+        batch = ProjectImportBatch(
+            name="QA Retry Import",
+            source_reference="qa-retry.csv",
+            manifest_hash=uuid.uuid4().hex + uuid.uuid4().hex,
+            adapter_version="test",
+            total_count=1,
+        )
+        candidate = ProjectImportCandidate(
+            manifest_row_id=1,
+            raw_source_payload={},
+            owner_manifest_values={
+                "owner_project_name": "Fixture Residence",
+                "owner_developer": "Emaar",
+                "owner_area": "QA Retry Area",
+            },
+            normalized_project_name="Fixture Residence",
+            proposed_developer_id=developer.id,
+            proposed_area_id=area.id,
+            human_review_completed=True,
+            source_urls=[],
+            content_hash="e" * 64,
+            validation_errors=[],
+            conflict_reasons=[],
+            review_status=ImportReviewStatus.FAILED,
+        )
+        batch.candidates = [candidate]
+        db.add_all([area, batch])
+        await db.commit()
+        await retry_candidates(
+            db,
+            test_settings,
+            [candidate],
+            fetcher=FixtureFetcher(),
+        )
+        await db.commit()
+        assert candidate.proposed_developer_id == developer.id
+        assert candidate.proposed_area_id == area.id
+        assert candidate.human_review_completed is False
+        assert candidate.review_status == ImportReviewStatus.NEEDS_REVIEW
+        assert candidate.review_version == 2

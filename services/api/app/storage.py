@@ -125,6 +125,16 @@ class PrivateStorage:
             sha256=hashlib.sha256(content).hexdigest(),
         )
 
+    async def save_acquisition_media(
+        self, content: bytes, extension: str, *, thumbnail: bool = False
+    ) -> str:
+        if extension not in {"jpg", "png", "webp"} or not content:
+            raise ValueError("Unsupported acquisition media output.")
+        prefix = "acquisition-thumb" if thumbnail else "acquisition-media"
+        storage_key = f"{prefix}-{uuid.uuid4().hex}.{extension}"
+        await asyncio.to_thread(self._path(storage_key).write_bytes, content)
+        return storage_key
+
     async def _save_image(self, upload: UploadFile, prefix: str) -> StoredImage:
         filename = upload.filename or ""
         if (

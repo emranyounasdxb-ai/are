@@ -17,7 +17,7 @@ def parser() -> argparse.ArgumentParser:
     subcommands = value.add_subparsers(dest="command", required=True)
     load = subcommands.add_parser("load", help="Load the immutable 50-row owner manifest")
     load.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
-    for command in ("acquire", "refresh", "retry-failed", "status"):
+    for command in ("acquire", "refresh", "retry-failed", "media-intake", "status"):
         item = subcommands.add_parser(command)
         item.add_argument("--batch-id")
     return value
@@ -33,6 +33,14 @@ async def run(args: argparse.Namespace) -> None:
             batch = await acquire_batch(db, get_settings(), args.batch_id, refresh=True)
         elif args.command == "retry-failed":
             batch = await acquire_batch(db, get_settings(), args.batch_id, failed_only=True)
+        elif args.command == "media-intake":
+            from app.acquisition.media_intake import intake_private_media
+            from app.acquisition.service import selected_batch
+
+            batch = await selected_batch(db, args.batch_id)
+            result = await intake_private_media(db, get_settings(), batch.id)
+            print(json.dumps(result, indent=2))
+            return
         else:
             from app.acquisition.service import selected_batch
 

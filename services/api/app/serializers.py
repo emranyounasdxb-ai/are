@@ -5,6 +5,7 @@ from typing import Any
 from app.models import (
     AreaCommunity,
     Developer,
+    ImportReviewStatus,
     InsightPost,
     JobOpening,
     Project,
@@ -321,7 +322,7 @@ def project_dict(record: Project, locale: str | None = None) -> dict[str, Any]:
     else:
         data["developer_id"] = record.developer_id
         data["area_id"] = record.area_id
-        data["priority"] = record.priority.value
+        data["priority"] = record.priority.value if record.priority else None
         data["internal_notes"] = record.internal_notes
         data["translations"] = translations
     return data
@@ -332,8 +333,6 @@ def import_batch_dict(record: ProjectImportBatch) -> dict[str, Any]:
         "id": record.id,
         "name": record.name,
         "source_reference": record.source_reference,
-        "manifest_hash": record.manifest_hash,
-        "adapter_version": record.adapter_version,
         "started_at": record.started_at,
         "completed_at": record.completed_at,
         "total_count": record.total_count,
@@ -369,6 +368,9 @@ def import_candidate_dict(record: ProjectImportCandidate) -> dict[str, Any]:
         "validation_errors": record.validation_errors,
         "conflict_reasons": record.conflict_reasons,
         "review_status": record.review_status.value,
+        "review_version": record.review_version,
+        "human_review_completed": record.human_review_completed,
+        "rejection_reason": record.rejection_reason,
         "linked_project_id": record.linked_project_id,
         "evidence": [
             {
@@ -393,6 +395,12 @@ def import_candidate_dict(record: ProjectImportCandidate) -> dict[str, Any]:
                 "source_url": item.source_url,
                 "rights_status": item.rights_status.value,
                 "stage_status": item.stage_status,
+                "id": item.id,
+                "has_thumbnail": bool(item.thumbnail_storage_key),
+                "retrieved_at": item.retrieved_at,
+                "size_bytes": item.size_bytes,
+                "duplicate_of_id": item.duplicate_of_id,
+                "failure_reason": item.failure_reason,
                 "sha256": item.sha256,
                 "width": item.width,
                 "height": item.height,
@@ -413,6 +421,94 @@ def import_candidate_dict(record: ProjectImportCandidate) -> dict[str, Any]:
         "created_at": record.created_at,
         "updated_at": record.updated_at,
     }
+
+
+def import_candidate_summary_dict(record: ProjectImportCandidate) -> dict[str, Any]:
+    missing = [
+        str(item.get("field", "Unknown"))
+        for item in record.validation_errors
+        if isinstance(item, dict)
+    ]
+    media_statuses = [item.stage_status for item in record.staged_media]
+    blockers = [_review_message(item) for item in record.validation_errors]
+    blockers.extend(str(item) for item in record.conflict_reasons)
+    if not record.proposed_developer_id:
+        blockers.append("Select the canonical Developer.")
+    if not record.proposed_area_id:
+        blockers.append("Select the canonical Area.")
+    if not record.official_source_url:
+        blockers.append("Official evidence is incomplete.")
+    proposal = record.normalized_payload or {}
+    for key in ("property_types", "bedrooms", "availability_status", "construction_status"):
+        if proposal.get(key) in (None, [], {}):
+            blockers.append(f"Review the source-grounded {key.replace('_', ' ')}.")
+    if record.arabic_review_required:
+        blockers.append("Arabic evidence requires human review.")
+    if not record.human_review_completed:
+        blockers.append("Complete the human field review.")
+    ready = not blockers and bool(record.official_source_url)
+    status = record.review_status
+    eligibility = {
+        "retry-acquisition": status == ImportReviewStatus.FAILED,
+        "assign-developer": status == ImportReviewStatus.NEEDS_REVIEW,
+        "assign-area": status == ImportReviewStatus.NEEDS_REVIEW,
+        "reject": status
+        in {
+            ImportReviewStatus.FAILED,
+            ImportReviewStatus.NEEDS_REVIEW,
+            ImportReviewStatus.READY_FOR_APPROVAL,
+        },
+        "mark-ready": status == ImportReviewStatus.NEEDS_REVIEW and ready,
+        "create-drafts": status == ImportReviewStatus.READY_FOR_APPROVAL,
+    }
+    return {
+        "id": record.id,
+        "manifest_row_id": record.manifest_row_id,
+        "project_name": record.normalized_project_name
+        or record.owner_manifest_values.get("owner_project_name")
+        or "Unnamed candidate",
+        "owner_developer": record.owner_manifest_values.get("owner_developer"),
+        "owner_area": record.owner_manifest_values.get("owner_area"),
+        "proposed_developer_id": record.proposed_developer_id,
+        "proposed_area_id": record.proposed_area_id,
+        "official_source_url": record.official_source_url,
+        "review_status": record.review_status.value,
+        "missing_fields": missing,
+        "blockers": blockers,
+        "warnings": [
+            "Private media rights remain Pending."
+            for item in record.staged_media
+            if item.rights_status.value == "pending"
+        ][:1],
+        "conflict_count": len(record.conflict_reasons),
+        "media_count": len(record.staged_media),
+        "media_downloaded_count": sum(value == "downloaded" for value in media_statuses),
+        "media_failed_count": sum(value == "failed" for value in media_statuses),
+        "last_verified_at": record.last_verified_at,
+        "review_version": record.review_version,
+        "human_review_completed": record.human_review_completed,
+        "arabic_review_state": ("review-required" if record.arabic_review_required else "reviewed"),
+        "rights_status": (
+            "pending"
+            if any(item.rights_status.value == "pending" for item in record.staged_media)
+            else "none"
+        ),
+        "eligibility": eligibility,
+        "updated_at": record.updated_at,
+    }
+
+
+def _review_message(value: dict[str, Any]) -> str:
+    code = str(value.get("code", ""))
+    field = str(value.get("field", "evidence")).replace("_", " ")
+    messages = {
+        "official_source_not_found": "No matching public official Project page was found.",
+        "missing_official_evidence": f"Official evidence is incomplete for {field}.",
+        "missing_canonical_area": "Select the canonical Area.",
+        "missing_canonical_developer": "Select the canonical Developer.",
+        "name_conflict": "Manifest and official Project names differ.",
+    }
+    return messages.get(code, str(value.get("message") or f"Review {field}."))
 
 
 def insight_dict(record: InsightPost, locale: str | None = None) -> dict[str, Any]:

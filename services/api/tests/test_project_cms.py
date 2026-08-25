@@ -13,6 +13,7 @@ from app.db import SessionLocal
 from app.models import (
     AuditLog,
     ImportReviewStatus,
+    Project,
     ProjectImportBatch,
     ProjectImportCandidate,
 )
@@ -211,11 +212,31 @@ async def test_project_rbac_publication_and_public_field_boundaries(
 
 
 @pytest.mark.asyncio
-async def test_import_candidate_review_is_admin_only_and_audited(
+async def test_import_review_summary_bulk_readiness_and_draft_are_safe(
     client: AsyncClient, create_user
 ) -> None:
+    email, password = await create_user("super-admin")
+    session = await authenticate(client, email, password)
+    csrf = str(session["csrf_token"])
+    developer_id = (await client.get("/api/v1/admin/developers?page_size=1")).json()["items"][0][
+        "id"
+    ]
+    area = await client.post(
+        "/api/v1/admin/areas",
+        json={
+            "slug": "qa-import-area",
+            "name_en": "QA Import Area",
+            "name_ar": "منطقة استيراد مؤقتة",
+            "emirate": "Dubai",
+            "status": "draft",
+            "aliases": [],
+        },
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert area.status_code == 201, area.text
     batch_id = uuid.uuid4()
     candidate_id = uuid.uuid4()
+    checked_at = datetime.now(UTC)
     async with SessionLocal() as db:
         batch = ProjectImportBatch(
             id=batch_id,
@@ -231,39 +252,104 @@ async def test_import_candidate_review_is_admin_only_and_audited(
                 id=candidate_id,
                 manifest_row_id=1,
                 raw_source_payload={"owner_project_name": "Unverified QA candidate"},
-                owner_manifest_values={"owner_project_name": "Unverified QA candidate"},
-                source_urls=[],
+                normalized_payload={
+                    "project_name": "QA Source-Grounded Project",
+                    "property_types": ["apartment"],
+                    "bedrooms": ["1"],
+                    "handover_quarter": "Q4",
+                    "handover_year": 2030,
+                    "original_handover_value": "Q4 2030",
+                    "payment_plan": None,
+                    "availability_status": "coming-soon",
+                    "construction_status": "pre-launch",
+                },
+                owner_manifest_values={
+                    "owner_project_name": "QA Source-Grounded Project",
+                    "owner_developer": "QA Developer",
+                    "owner_area": "QA Import Area",
+                },
+                normalized_project_name="QA Source-Grounded Project",
+                proposed_developer_id=uuid.UUID(developer_id),
+                proposed_area_id=uuid.UUID(area.json()["id"]),
+                official_source_url="https://example.com/official-project",
+                source_urls=["https://example.com/official-project"],
+                extracted_at=checked_at,
+                last_verified_at=checked_at,
                 content_hash="b" * 64,
                 validation_errors=[],
-                conflict_reasons=["Canonical Area is unresolved."],
+                conflict_reasons=[],
+                arabic_review_required=False,
+                human_review_completed=True,
                 review_status=ImportReviewStatus.NEEDS_REVIEW,
             )
         ]
         db.add(batch)
         await db.commit()
-    email, password = await create_user("super-admin")
-    session = await authenticate(client, email, password)
-    ready = await client.put(
-        f"/api/v1/admin/project-imports/candidates/{candidate_id}",
-        json={"review_status": "ready-for-approval", "linked_project_id": None},
-        headers={"X-CSRF-Token": str(session["csrf_token"])},
+    summary = await client.get(f"/api/v1/admin/project-imports/{batch_id}")
+    assert summary.status_code == 200, summary.text
+    assert "manifest_hash" not in summary.json()
+    candidate_summary = summary.json()["candidates"][0]
+    assert "raw_source_payload" not in candidate_summary
+    assert "content_hash" not in candidate_summary
+    detail = await client.get(f"/api/v1/admin/project-imports/{batch_id}/candidates/{candidate_id}")
+    assert detail.status_code == 200
+    assert detail.json()["raw_source_payload"]
+
+    missing_csrf = await client.post(
+        f"/api/v1/admin/project-imports/{batch_id}/bulk",
+        json={
+            "action": "mark-ready",
+            "candidate_ids": [str(candidate_id)],
+            "expected_versions": {str(candidate_id): 1},
+            "idempotency_key": f"qa-missing-{uuid.uuid4()}",
+        },
+    )
+    assert missing_csrf.status_code == 403
+    ready_payload = {
+        "action": "mark-ready",
+        "candidate_ids": [str(candidate_id)],
+        "expected_versions": {str(candidate_id): 1},
+        "idempotency_key": f"qa-ready-{uuid.uuid4()}",
+    }
+    ready = await client.post(
+        f"/api/v1/admin/project-imports/{batch_id}/bulk",
+        json=ready_payload,
+        headers={"X-CSRF-Token": csrf},
     )
     assert ready.status_code == 200, ready.text
-    assert ready.json()["review_status"] == "ready-for-approval"
-    reviewed = await client.put(
-        f"/api/v1/admin/project-imports/candidates/{candidate_id}",
-        json={"review_status": "rejected", "linked_project_id": None},
-        headers={"X-CSRF-Token": str(session["csrf_token"])},
+    replay = await client.post(
+        f"/api/v1/admin/project-imports/{batch_id}/bulk",
+        json=ready_payload,
+        headers={"X-CSRF-Token": csrf},
     )
-    assert reviewed.status_code == 200, reviewed.text
-    assert reviewed.json()["review_status"] == "rejected"
+    assert replay.status_code == 200
+    stale = await client.post(
+        f"/api/v1/admin/project-imports/{batch_id}/bulk",
+        json={**ready_payload, "idempotency_key": f"qa-stale-{uuid.uuid4()}"},
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert stale.status_code == 409
+    drafts = await client.post(
+        f"/api/v1/admin/project-imports/{batch_id}/bulk",
+        json={
+            "action": "create-drafts",
+            "candidate_ids": [str(candidate_id)],
+            "expected_versions": {str(candidate_id): 2},
+            "idempotency_key": f"qa-draft-{uuid.uuid4()}",
+        },
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert drafts.status_code == 200, drafts.text
     assert (await client.get("/api/v1/public/projects?locale=en")).json()["meta"]["total"] == 0
     async with SessionLocal() as db:
-        audit = await db.scalar(
-            select(AuditLog).where(
-                AuditLog.entity_id == candidate_id,
-                AuditLog.action == "project-import.rejected",
-            )
-        )
+        candidate = await db.get(ProjectImportCandidate, candidate_id)
+        assert candidate is not None
+        assert candidate.review_status == ImportReviewStatus.MERGED
+        assert candidate.linked_project_id is not None
+        project = await db.get(Project, candidate.linked_project_id)
+        assert project is not None
+        assert project.status.value == "draft"
+        assert project.priority is None
+        audit = await db.scalar(select(AuditLog).where(AuditLog.entity_id == candidate_id).limit(1))
         assert audit is not None
         assert "raw_source_payload" not in str(audit.after_summary)

@@ -407,8 +407,8 @@ class Project(TimestampMixin, Base):
     handover_year: Mapped[int | None]
     original_handover_value: Mapped[str | None] = mapped_column(String(240))
     last_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    priority: Mapped[ProjectPriority] = mapped_column(
-        Enum(ProjectPriority, name="project_priority"), default=ProjectPriority.B, nullable=False
+    priority: Mapped[ProjectPriority | None] = mapped_column(
+        Enum(ProjectPriority, name="project_priority"), nullable=True
     )
     featured: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     display_order: Mapped[int] = mapped_column(default=0, nullable=False)
@@ -634,6 +634,9 @@ class ProjectImportCandidate(TimestampMixin, Base):
     reviewed_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id")
     )
+    review_version: Mapped[int] = mapped_column(default=1, nullable=False)
+    human_review_completed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    rejection_reason: Mapped[str | None] = mapped_column(String(1000))
     evidence: Mapped[list[ProjectSourceSnapshot]] = relationship(
         cascade="all, delete-orphan", lazy="selectin"
     )
@@ -696,6 +699,7 @@ class ProjectImportMedia(TimestampMixin, Base):
     )
     stage_status: Mapped[str] = mapped_column(String(40), nullable=False)
     storage_key: Mapped[str | None] = mapped_column(String(180), unique=True)
+    thumbnail_storage_key: Mapped[str | None] = mapped_column(String(180), unique=True)
     mime_type: Mapped[str | None] = mapped_column(String(80))
     size_bytes: Mapped[int | None]
     sha256: Mapped[str | None] = mapped_column(String(64))
@@ -703,6 +707,27 @@ class ProjectImportMedia(TimestampMixin, Base):
     height: Mapped[int | None]
     duplicate_of_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("project_import_media.id")
+    )
+    retrieved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    failure_reason: Mapped[str | None] = mapped_column(String(500))
+
+
+class ProjectImportBulkOperation(TimestampMixin, Base):
+    __tablename__ = "project_import_bulk_operations"
+    __table_args__ = (UniqueConstraint("batch_id", "idempotency_key"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    batch_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("project_import_batches.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    idempotency_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    action: Mapped[str] = mapped_column(String(40), nullable=False)
+    request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    result: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    actor_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
     )
 
 
