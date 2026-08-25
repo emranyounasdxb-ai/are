@@ -157,36 +157,31 @@ select {
 
 .desktop-navigation a {
   position: relative;
-  padding-block: 0.75rem;
+  display: inline-flex;
+  min-height: 2.5rem;
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: 0.7rem;
+  padding: 0.5rem 0.72rem;
   color: rgba(248, 246, 242, 0.78);
   font-size: 0.82rem;
   font-weight: 600;
   letter-spacing: 0.03em;
-  transition: color 180ms ease;
-}
-
-.desktop-navigation a::after {
-  position: absolute;
-  inset-block-end: 0.25rem;
-  inset-inline: 0;
-  height: 1px;
-  background: var(--are-champagne);
-  content: "";
-  scale: 0 1;
-  transform-origin: center;
-  transition: scale 240ms var(--are-ease);
+  white-space: nowrap;
+  transition: background 180ms ease, border-color 180ms ease, color 180ms ease;
 }
 
 .desktop-navigation a:hover,
-.desktop-navigation a:focus-visible,
-.desktop-navigation a[aria-current="page"] {
+.desktop-navigation a:focus-visible {
+  border-color: rgba(226, 201, 143, 0.42);
+  background: rgba(43, 28, 22, 0.56);
   color: var(--are-white);
 }
 
-.desktop-navigation a:hover::after,
-.desktop-navigation a:focus-visible::after,
-.desktop-navigation a[aria-current="page"]::after {
-  scale: 1 1;
+.desktop-navigation a[aria-current="page"] {
+  border-color: rgba(226, 201, 143, 0.72);
+  background: var(--are-espresso);
+  color: var(--are-white);
 }
 
 .site-header__actions {
@@ -352,7 +347,10 @@ select {
   grid-template-columns: 2.2rem 1fr;
   align-items: center;
   min-height: 4.2rem;
-  border-block-end: 1px solid var(--are-border);
+  border: 1px solid transparent;
+  border-block-end-color: var(--are-border);
+  border-radius: 0.75rem;
+  padding-inline: 0.75rem;
   font-size: clamp(1.5rem, 6vw, 2rem);
   font-weight: 600;
   letter-spacing: -0.03em;
@@ -366,7 +364,13 @@ select {
 }
 
 .mobile-menu > nav a[aria-current="page"] {
-  color: var(--are-brown);
+  border-color: var(--are-gold);
+  background: var(--are-espresso);
+  color: var(--are-ivory);
+}
+
+.mobile-menu > nav a[aria-current="page"] span {
+  color: var(--are-gold-light);
 }
 
 .mobile-menu__footer {
@@ -2669,11 +2673,6 @@ html[lang="ar"] :where(p, span, a, button, label, input, select, textarea, small
   font-weight: 500;
 }
 
-.desktop-navigation a::after {
-  background: var(--are-gold-light);
-  transform-origin: center;
-}
-
 .locale-control,
 .header-cta,
 .menu-button {
@@ -2902,15 +2901,6 @@ html[dir="rtl"] .page-progress {
 .career-vacancy-grid article > span { color: var(--are-bronze); font-size: .75rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 
 @media (max-width: 900px) { .cms-property-grid,.career-vacancy-grid { grid-template-columns: 1fr; } }
-
-@keyframes header-entrance {
-  from { opacity: 0.92; transform: translateY(-12px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.site-header {
-  animation: header-entrance 560ms var(--are-cinematic-ease) both;
-}
 
 .mobile-menu-backdrop { animation: faq-content-in 180ms ease both; }
 .mobile-menu { animation: drawer-in 240ms var(--are-cinematic-ease) both; }

@@ -10,7 +10,6 @@ import {
   ProcessList,
 } from "../../../components/content/editorial-content";
 import { SiteFooter } from "../../../components/navigation/site-footer";
-import { SiteHeader } from "../../../components/navigation/site-header";
 import { DiscoverySearch } from "../../../components/search/discovery-search";
 import { homeCopy, isLocale, isPurpose, type Locale } from "../../../lib/home-copy";
 import { getDevelopers, getInsights } from "../../../lib/api";
@@ -59,8 +58,6 @@ async function LocalizedHome({ locale, initialPurpose }: { locale: Locale; initi
 
   return (
     <div id="top">
-      <SiteHeader copy={copy.header} locale={locale} />
-
       <main id="main-content">
         <section aria-labelledby="hero-title" className="hero-section">
           <div className="hero-orbit hero-orbit--one" aria-hidden="true" />

@@ -4,7 +4,6 @@ import { notFound } from "next/navigation";
 
 import { Breadcrumbs, Checklist, EditorialCards, FaqSection, FinalCta, RelatedPages } from "../../../../../components/content/editorial-content";
 import { SiteFooter } from "../../../../../components/navigation/site-footer";
-import { SiteHeader } from "../../../../../components/navigation/site-header";
 import { Reveal } from "../../../../../components/motion/reveal";
 import { homeCopy, isLocale, type Locale } from "../../../../../lib/home-copy";
 import { calculateReadingTime, type InsightArticle } from "../../../../../lib/insights-data";
@@ -18,7 +17,7 @@ export default async function InsightArticlePage({ params }: Props) { const { lo
 
 function LocalizedArticle({ locale, article }: Readonly<{ locale: Locale; article: InsightArticle }>) {
   const copy = article.content[locale]; const ar = locale === "ar"; const minutes = calculateReadingTime(article, locale);
-  return <div className="article-page" id="top"><SiteHeader copy={homeCopy[locale].header} locale={locale} /><main id="main-content">
+  return <div className="article-page" id="top"><main id="main-content">
     <article>
       <header className="article-hero"><div className="article-hero__inner"><Breadcrumbs items={[{ href: `/${locale}`, label: richCopy[locale].homeLabel }, { href: `/${locale}/insights`, label: homeCopy[locale].header.insights }, { label: copy.title }]} label={richCopy[locale].breadcrumb} /><Reveal className="article-hero__reveal" distance={18}><p>{copy.categoryLabel}</p><h1>{copy.title}</h1><div className="article-meta"><span>{ar ? "نُشر" : "Published"}: <time dateTime={article.published}>{article.published}</time></span><span>{ar ? "حُدث" : "Updated"}: <time dateTime={article.updated}>{article.updated}</time></span><span>{minutes} {ar ? "دقائق قراءة" : "min read"}</span></div></Reveal></div></header>
       <div className="article-layout"><aside className="article-toc"><strong>{ar ? "في هذا الدليل" : "In this guide"}</strong><nav aria-label={ar ? "محتويات المقال" : "Article contents"}>{copy.sections.map((section, index) => <a href={`#section-${index + 1}`} key={section.heading}>{section.heading}</a>)}<a href="#checklist">{copy.checklistTitle}</a><a href="#sources">{copy.sourcesTitle}</a></nav></aside><div className="article-body">

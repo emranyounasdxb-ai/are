@@ -5,7 +5,6 @@ import { Breadcrumbs, FaqSection, FinalCta, ProcessList, RelatedPages } from "..
 import { DeveloperDirectory } from "../../../../components/developers/developer-directory";
 import { Reveal } from "../../../../components/motion/reveal";
 import { SiteFooter } from "../../../../components/navigation/site-footer";
-import { SiteHeader } from "../../../../components/navigation/site-header";
 import { getDevelopers } from "../../../../lib/api";
 import { homeCopy, isLocale, locales, type Locale } from "../../../../lib/home-copy";
 import { richCopy } from "../../../../lib/rich-copy";
@@ -25,7 +24,7 @@ async function LocalizedDevelopers({ locale }: Readonly<{ locale: Locale }>) {
   };
   const records = await getDevelopers(locale);
   const sorted = [...(records ?? [])].sort((a, b) => a.name.localeCompare(b.name, locale));
-  return <div className="developers-page" id="top"><SiteHeader copy={homeCopy[locale].header} locale={locale} /><main id="main-content">
+  return <div className="developers-page" id="top"><main id="main-content">
     <section className="developer-hero"><div className="developer-hero__inner"><Breadcrumbs items={[{ href: `/${locale}`, label: richCopy[locale].homeLabel }, { label: homeCopy[locale].header.developers }]} label={richCopy[locale].breadcrumb} /><Reveal className="developer-hero__reveal" distance={18}><p>{copy.eyebrow}</p><h1>{copy.title}</h1><span>{copy.intro}</span></Reveal><div className="developer-hero__assistance"><strong>ARE / {ar ? "المساعدة" : "ASSISTANCE"}</strong><p>{copy.assistance}</p></div></div><div aria-hidden="true" className="developer-hero__index"><span>{String(sorted.length).padStart(2, "0")}</span><small>{ar ? "مرجعاً أولياً" : "STARTING REFERENCES"}</small></div></section>
     <section aria-labelledby="developer-directory-title" className="content-section developer-directory-section"><div className="content-heading"><p>{copy.directory}</p><h2 id="developer-directory-title">{copy.directoryTitle}</h2></div><DeveloperDirectory developers={sorted} locale={locale} unavailable={records === null} /></section>
     <section className="content-section content-section--dark"><div className="content-heading"><p>{copy.journey}</p><h2>{copy.journeyTitle}</h2></div><ProcessList items={ar ? [{ title: "حدّد", text: "اختر الاسم أو المشروع الذي تريد فهمه." }, { title: "تحقق", text: "راجع التسجيل والمصدر الرسمي والمعلومات الحالية." }, { title: "قارن", text: "وازن المستندات والملاءمة والتوقيت والالتزام." }, { title: "استفسر", text: "شارك أسئلتك من دون افتراض التوفر أو النتيجة." }] : [{ title: "Identify", text: "Choose the name or project you want to understand." }, { title: "Verify", text: "Review registration, the official source and current information." }, { title: "Compare", text: "Consider documents, suitability, timing and commitment." }, { title: "Enquire", text: "Share questions without assuming availability or outcome." }]} /></section>

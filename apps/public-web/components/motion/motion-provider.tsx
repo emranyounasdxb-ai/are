@@ -13,8 +13,6 @@ import {
 } from "motion/react";
 import * as m from "motion/react-m";
 
-import { cinematicEase, motionDuration } from "./tokens";
-
 const revealSelector = [
   "main > section",
   "main > header",
@@ -74,16 +72,9 @@ function MotionDocument({ children }: Readonly<{ children: ReactNode }>) {
         className="page-progress"
         style={{ scaleX: reduceMotion ? 0 : progressScale }}
       />
-      <m.div
-        animate={{ opacity: 1, y: 0 }}
-        className="motion-document"
-        initial={reduceMotion ? { opacity: 1 } : { opacity: 0.96, y: 12 }}
-        key={pathname}
-        ref={rootRef}
-        transition={{ duration: reduceMotion ? 0 : motionDuration.standard, ease: cinematicEase }}
-      >
+      <div className="motion-document" ref={rootRef}>
         {children}
-      </m.div>
+      </div>
     </>
   );
 }

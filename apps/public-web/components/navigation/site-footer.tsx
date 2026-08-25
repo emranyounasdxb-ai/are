@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
 import type { HeaderCopy, Locale } from "../../lib/home-copy";
+import { isNavigationHrefActive } from "../../lib/navigation";
 import { siteCopy } from "../../lib/site-copy";
 
 export function SiteFooter({ copy, locale }: Readonly<{ copy: HeaderCopy; locale: Locale }>) {
@@ -29,7 +30,7 @@ export function SiteFooter({ copy, locale }: Readonly<{ copy: HeaderCopy; locale
   ];
 
   function isActive(href: string) {
-    return pathname === href || (href.endsWith("/insights") && pathname.startsWith(`${href}/`));
+    return isNavigationHrefActive(pathname, href);
   }
 
   function switchLocale(nextLocale: Locale) {

@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import type { HeaderCopy, Locale } from "../../lib/home-copy";
+import { isNavigationHrefActive } from "../../lib/navigation";
 
 type SiteHeaderProps = Readonly<{
   copy: HeaderCopy;
@@ -37,7 +38,7 @@ export function SiteHeader({ copy, locale }: SiteHeaderProps) {
   ];
 
   function isActive(href: string) {
-    return pathname === href || (href.endsWith("/insights") && pathname.startsWith(`${href}/`));
+    return isNavigationHrefActive(pathname, href);
   }
 
   useEffect(() => {
@@ -213,7 +214,7 @@ export function SiteHeader({ copy, locale }: SiteHeaderProps) {
               </Link>
             </nav>
             <Link
-              aria-current={pathname === `/${locale}/contact` ? "page" : undefined}
+              aria-current={isActive(`/${locale}/contact`) ? "page" : undefined}
               className="header-cta"
               href={`/${locale}/contact`}
             >

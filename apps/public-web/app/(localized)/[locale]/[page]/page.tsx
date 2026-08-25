@@ -13,7 +13,6 @@ import {
   RelatedPages,
 } from "../../../../components/content/editorial-content";
 import { SiteFooter } from "../../../../components/navigation/site-footer";
-import { SiteHeader } from "../../../../components/navigation/site-header";
 import { DiscoverySearch } from "../../../../components/search/discovery-search";
 import { homeCopy, isLocale, locales, type Locale, type Purpose } from "../../../../lib/home-copy";
 import { isPageSlug, pageSlugs, siteCopy, type PageSlug } from "../../../../lib/site-copy";
@@ -69,7 +68,6 @@ async function LocalizedInnerPage({
 
   return (
     <div className={`inner-page inner-page--${page}`} id="top">
-      <SiteHeader copy={home.header} locale={locale} />
       <main id="main-content">
         <section aria-labelledby="page-title" className="inner-hero">
           <div className="inner-hero__orbit" aria-hidden="true" />
