@@ -2929,14 +2929,16 @@ html[dir="rtl"] .mobile-menu { animation-name: drawer-in-rtl; }
 }
 
 .desktop-navigation a {
-  min-height: 2.5rem;
-  gap: 0.35rem;
-  border: 1px solid transparent;
+  min-height: 2.6rem;
+  gap: 0.38rem;
+  border: 0;
   border-radius: 0.4rem;
-  padding: 0.4rem 0.48rem;
-  font-size: 0.7rem;
+  padding: 0.45rem 0.55rem;
+  color: rgba(248, 246, 242, 0.72);
+  font-size: 0.76rem;
   font-weight: 700;
   letter-spacing: 0;
+  transition: background 150ms ease, color 150ms ease;
 }
 
 .desktop-navigation a svg,
@@ -2948,25 +2950,26 @@ html[dir="rtl"] .mobile-menu { animation-name: drawer-in-rtl; }
 
 .desktop-navigation a:hover,
 .desktop-navigation a:focus-visible {
-  border-color: transparent;
-  background: rgba(217, 180, 135, 0.12);
+  background: rgba(217, 180, 135, 0.14);
+  color: var(--are-white);
 }
 
 .desktop-navigation a[aria-current="page"] {
-  border-color: rgba(226, 201, 143, 0.68);
   border-radius: 0.4rem;
-  background: var(--are-espresso);
-  box-shadow: none;
+  background: rgba(217, 180, 135, 0.14);
+  color: var(--are-white);
+  box-shadow: inset 0 -2px #c69b62;
 }
 
 .site-header__actions {
-  gap: 0.35rem;
+  gap: 0.5rem;
 }
 
 .admin-login-link,
 .locale-control,
 .header-cta {
-  min-height: 2.5rem;
+  height: 2.75rem;
+  min-height: 2.75rem;
   border-radius: 0.4rem;
 }
 
@@ -3027,8 +3030,7 @@ html[dir="rtl"] .mobile-menu { animation-name: drawer-in-rtl; }
   min-height: 3rem;
   align-items: center;
   gap: 0.65rem;
-  border: 1px solid transparent;
-  border-block-end-color: transparent;
+  border: 0;
   border-radius: 0.4rem;
   padding: 0.5rem 0.75rem;
   font-size: 0.9rem;
@@ -3042,10 +3044,10 @@ html[dir="rtl"] .mobile-menu { animation-name: drawer-in-rtl; }
 }
 
 .mobile-menu > nav a[aria-current="page"] {
-  border-color: var(--are-gold);
   border-radius: 0.4rem;
   background: var(--are-espresso);
-  box-shadow: none;
+  color: var(--are-white);
+  box-shadow: inset 0 -2px #c69b62;
 }
 
 .mobile-menu > nav a span,
@@ -3060,38 +3062,33 @@ html[dir="rtl"] .mobile-menu > nav a {
   text-align: start;
 }
 
-@media (min-width: 1200px) and (max-width: 1350px) {
-  .site-header__inner {
-    gap: 0.35rem;
-  }
+.mobile-admin-login,
+.mobile-enquire-link {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 0.4rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
 
-  .desktop-navigation a {
-    gap: 0.25rem;
-    padding-inline: 0.34rem;
-    font-size: 0.65rem;
-  }
+.mobile-admin-login {
+  border-color: rgba(90, 56, 39, 0.45);
+}
 
-  .desktop-navigation a svg,
-  .admin-login-link svg,
-  .header-cta svg {
-    width: 0.8rem;
-    height: 0.8rem;
-  }
+.mobile-enquire-link {
+  border: 1px solid var(--are-gold);
+  background: var(--are-gold-light);
+  color: var(--are-ink);
+}
 
-  .admin-login-link {
-    padding-inline: 0.45rem;
-    font-size: 0.62rem;
-  }
-
-  .locale-control a {
-    min-width: 1.8rem;
-    font-size: 0.62rem;
-  }
-
-  .header-cta {
-    padding-inline: 0.55rem;
-    font-size: 0.65rem;
-  }
+.mobile-admin-login span,
+.mobile-enquire-link span {
+  color: inherit;
+  font-size: inherit;
+  line-height: inherit;
 }
 
 /* ARE-WEB-07: shared, semantic star-action family. */
