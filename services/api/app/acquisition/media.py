@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import io
+import re
 from dataclasses import dataclass
 from email.message import Message
-from typing import Any
+from typing import Any, Literal, cast
 from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin
 from urllib.request import HTTPRedirectHandler, Request, build_opener
@@ -45,6 +46,57 @@ class RasterFetchResult:
         return self.status == 200 and bool(self.body) and not self.error_code
 
 
+@dataclass(frozen=True)
+class ResponsiveDerivative:
+    content: bytes
+    format: Literal["webp", "avif"]
+    mime_type: str
+    width: int
+    height: int
+    size_bytes: int
+    sha256: str
+
+
+def normalized_media_filename(
+    project_slug: str, category: str, display_order: int, digest: str, extension: str
+) -> str:
+    safe_slug = re.sub(r"[^a-z0-9]+", "-", project_slug.casefold()).strip("-")[:80]
+    safe_category = re.sub(r"[^a-z0-9]+", "-", category.casefold()).strip("-")[:24]
+    if not safe_slug or not safe_category or extension not in {"jpg", "png", "webp", "avif"}:
+        raise ValueError("A safe project media filename could not be generated.")
+    return f"{safe_slug}-{safe_category}-{display_order:02d}-{digest[:12]}.{extension}"
+
+
+def responsive_derivatives(
+    raster: ValidatedRaster, widths: tuple[int, ...] = (480, 960, 1600)
+) -> tuple[ResponsiveDerivative, ...]:
+    outputs: list[ResponsiveDerivative] = []
+    with Image.open(io.BytesIO(raster.content)) as source:
+        base = source.convert("RGB")
+        for width in sorted({value for value in widths if 0 < value <= raster.width}):
+            height = max(1, round(raster.height * width / raster.width))
+            resized = base.resize((width, height), Image.Resampling.LANCZOS)
+            for image_format, extension, mime_type, options in (
+                ("WEBP", "webp", "image/webp", {"quality": 84, "method": 6}),
+                ("AVIF", "avif", "image/avif", {"quality": 72}),
+            ):
+                buffer = io.BytesIO()
+                resized.save(buffer, image_format, **options)
+                content = buffer.getvalue()
+                outputs.append(
+                    ResponsiveDerivative(
+                        content=content,
+                        format=cast(Literal["webp", "avif"], extension),
+                        mime_type=mime_type,
+                        width=width,
+                        height=height,
+                        size_bytes=len(content),
+                        sha256=hashlib.sha256(content).hexdigest(),
+                    )
+                )
+    return tuple(outputs)
+
+
 class _NoRedirect(HTTPRedirectHandler):
     def redirect_request(
         self,
@@ -80,7 +132,12 @@ class SecureRasterFetcher:
                 try:
                     with self._opener.open(request, timeout=self.timeout_seconds) as response:
                         content_type = response.headers.get_content_type().lower()
-                        if content_type not in {"image/jpeg", "image/png", "image/webp"}:
+                        if content_type not in {
+                            "image/jpeg",
+                            "image/png",
+                            "image/webp",
+                            "image/avif",
+                        }:
                             return RasterFetchResult(
                                 current,
                                 status=response.status,
@@ -141,6 +198,9 @@ def validate_raster(content: bytes, declared_mime: str) -> ValidatedRaster:
             elif source.format == "WEBP" and declared_mime == "image/webp":
                 source.save(output, "WEBP", quality=90, method=6)
                 mime, extension = "image/webp", "webp"
+            elif source.format == "AVIF" and declared_mime == "image/avif":
+                source.convert("RGB").save(output, "AVIF", quality=90)
+                mime, extension = "image/avif", "avif"
             else:
                 raise ValueError("Raster extension, MIME and decoded format do not match.")
     except (UnidentifiedImageError, OSError) as exc:

@@ -9,7 +9,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.acquisition.adapters import adapter_for
-from app.acquisition.media import SecureRasterFetcher, thumbnail, validate_raster
+from app.acquisition.media import (
+    SecureRasterFetcher,
+    normalized_media_filename,
+    responsive_derivatives,
+    thumbnail,
+    validate_raster,
+)
 from app.config import Settings
 from app.models import ProjectImportBatch, ProjectImportCandidate, ProjectImportMedia
 from app.storage import PrivateStorage
@@ -68,7 +74,9 @@ async def intake_private_media(
     }
     for candidate in sorted(selected, key=lambda value: value.manifest_row_id):
         adapter = adapter_for(str(candidate.owner_manifest_values.get("owner_developer", "")))
-        for media in sorted(candidate.staged_media, key=lambda value: value.source_url)[:12]:
+        for order, media in enumerate(
+            sorted(candidate.staged_media, key=lambda value: value.source_url)[:12]
+        ):
             stats["references"] += 1
             if media.category.value == "video-reference":
                 stats["skipped_video"] += 1
@@ -100,6 +108,22 @@ async def intake_private_media(
                 media.failure_reason = str(exc)[:500]
                 stats["failed"] += 1
                 continue
+            project_slug = "-".join(
+                part
+                for part in (
+                    candidate.normalized_project_name or f"project-{candidate.manifest_row_id}"
+                )
+                .casefold()
+                .replace("_", "-")
+                .split("-")
+                if part.isalnum()
+            )
+            normalized_filename = normalized_media_filename(
+                project_slug, media.category.value, order, raster.sha256, raster.extension
+            )
+            media.normalized_filename = normalized_filename
+            media.display_order = order
+            media.last_seen_at = media.retrieved_at
             duplicate = await db.scalar(
                 select(ProjectImportMedia).where(
                     ProjectImportMedia.sha256 == raster.sha256,
@@ -116,15 +140,62 @@ async def intake_private_media(
                 media.stage_status = "duplicate"
                 stats["deduplicated"] += 1
                 continue
-            storage_key = await storage.save_acquisition_media(raster.content, raster.extension)
+            raw_key: str | None = None
+            storage_key: str | None = None
+            thumbnail_key: str | None = None
+            derivative_keys: list[str] = []
             try:
+                raw_key = await storage.save_acquisition_media(
+                    result.body,
+                    raster.extension,
+                    normalized_filename=normalized_filename.replace(
+                        f".{raster.extension}", f"-raw.{raster.extension}"
+                    ),
+                )
+                storage_key = await storage.save_acquisition_media(
+                    raster.content,
+                    raster.extension,
+                    normalized_filename=normalized_filename,
+                )
                 thumbnail_content = await asyncio.to_thread(thumbnail, raster)
                 thumbnail_key = await storage.save_acquisition_media(
-                    thumbnail_content, "webp", thumbnail=True
+                    thumbnail_content,
+                    "webp",
+                    normalized_filename=normalized_filename.rsplit(".", 1)[0] + "-thumb.webp",
+                    thumbnail=True,
                 )
+                derivative_manifest: list[dict[str, object]] = []
+                for derivative in await asyncio.to_thread(responsive_derivatives, raster):
+                    filename = normalized_filename.rsplit(".", 1)[0]
+                    filename = f"{filename}-{derivative.width}w.{derivative.format}"
+                    key = await storage.save_acquisition_media(
+                        derivative.content,
+                        derivative.format,
+                        normalized_filename=filename,
+                    )
+                    derivative_keys.append(key)
+                    derivative_manifest.append(
+                        {
+                            "storage_key": key,
+                            "format": derivative.format,
+                            "mime_type": derivative.mime_type,
+                            "width": derivative.width,
+                            "height": derivative.height,
+                            "size_bytes": derivative.size_bytes,
+                            "sha256": derivative.sha256,
+                        }
+                    )
             except Exception:
-                storage.delete(storage_key)
+                if raw_key:
+                    storage.delete(raw_key)
+                if storage_key:
+                    storage.delete(storage_key)
+                if thumbnail_key:
+                    storage.delete(thumbnail_key)
+                for key in derivative_keys:
+                    storage.delete(key)
                 raise
+            media.raw_storage_key = raw_key
             media.storage_key = storage_key
             media.thumbnail_storage_key = thumbnail_key
             media.mime_type = raster.mime_type
@@ -134,6 +205,8 @@ async def intake_private_media(
             media.height = raster.height
             media.failure_reason = None
             media.stage_status = "downloaded"
+            media.derivative_manifest = derivative_manifest
+            media.change_status = "newly-added"
             existing_hashes.add(raster.sha256)
             stats["downloaded"] += 1
         await db.commit()

@@ -61,6 +61,10 @@ def developer_dict(record: Developer, locale: str | None = None) -> dict[str, An
     if locale:
         data.update(translations.get(locale, {}))
     else:
+        data["legal_name"] = record.legal_name
+        data["source_name"] = record.source_name
+        data["internal_aliases"] = record.internal_aliases
+        data["verification_status"] = record.verification_status.value
         data["translations"] = translations
     return data
 
@@ -437,6 +441,7 @@ def import_candidate_dict(record: ProjectImportCandidate) -> dict[str, Any]:
         "review_status": record.review_status.value,
         "review_version": record.review_version,
         "human_review_completed": record.human_review_completed,
+        "human_edited_fields": record.human_edited_fields,
         "rejection_reason": record.rejection_reason,
         "linked_project_id": record.linked_project_id,
         "evidence": [
@@ -447,6 +452,7 @@ def import_candidate_dict(record: ProjectImportCandidate) -> dict[str, Any]:
                 "retrieved_at": item.retrieved_at,
                 "adapter": f"{item.adapter_key}@{item.adapter_version}",
                 "content_type": item.content_type,
+                "size_bytes": item.size_bytes,
                 "etag": item.etag,
                 "last_modified": item.last_modified,
                 "content_hash": item.content_hash,
@@ -471,12 +477,19 @@ def import_candidate_dict(record: ProjectImportCandidate) -> dict[str, Any]:
                 "sha256": item.sha256,
                 "width": item.width,
                 "height": item.height,
+                "normalized_filename": item.normalized_filename,
+                "display_order": item.display_order,
+                "alt_en_draft": item.alt_en_draft,
+                "alt_ar_draft": item.alt_ar_draft,
+                "derivatives": item.derivative_manifest,
+                "change_status": item.change_status,
             }
             for item in record.staged_media
         ],
         "changes": [
             {
                 "classification": item.classification,
+                "field_name": item.field_name,
                 "existing_value": item.existing_value,
                 "new_value": item.new_value,
                 "source_url": item.source_url,
@@ -485,6 +498,20 @@ def import_candidate_dict(record: ProjectImportCandidate) -> dict[str, Any]:
             }
             for item in record.changes
         ],
+        "editorial_draft": (
+            {
+                "overview_en": record.editorial_draft.overview_en,
+                "overview_ar": record.editorial_draft.overview_ar,
+                "source_version": record.editorial_draft.source_version,
+                "model_name": record.editorial_draft.model_name,
+                "model_version": record.editorial_draft.model_version,
+                "generated_at": record.editorial_draft.generated_at,
+                "approval_status": record.editorial_draft.approval_status.value,
+                "approved_at": record.editorial_draft.approved_at,
+            }
+            if record.editorial_draft
+            else None
+        ),
         "created_at": record.created_at,
         "updated_at": record.updated_at,
     }

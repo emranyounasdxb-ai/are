@@ -137,6 +137,9 @@ def apply_developer_payload(
     record: Developer, payload: DeveloperInput, actor_user_id: uuid.UUID
 ) -> None:
     record.slug = payload.slug
+    record.legal_name = payload.legal_name
+    record.source_name = payload.source_name
+    record.internal_aliases = payload.internal_aliases
     record.primary_emirate = payload.primary_emirate
     record.other_presence = payload.other_presence
     record.selected_projects = payload.selected_projects
@@ -144,6 +147,7 @@ def apply_developer_payload(
     record.source_url = str(payload.source_url)
     record.additional_source_urls = [str(url) for url in payload.additional_source_urls]
     record.verification_date = payload.verification_date
+    record.verification_status = payload.verification_status
     record.enquiry_types = [str(item) for item in payload.enquiry_types]
     record.featured = payload.featured
     record.display_order = payload.display_order
@@ -319,9 +323,13 @@ async def publish_developer(
 ) -> dict[str, Any]:
     record = await developer_for_action(record_id, db)
     translations = {item.locale: item for item in record.translations}
-    if set(translations) != {"en", "ar"} or any(
-        not all((item.name, item.description, item.focus, item.verification_note))
-        for item in translations.values()
+    if (
+        record.verification_status.value != "verified"
+        or set(translations) != {"en", "ar"}
+        or any(
+            not all((item.name, item.description, item.focus, item.verification_note))
+            for item in translations.values()
+        )
     ):
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_CONTENT,

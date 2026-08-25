@@ -11,6 +11,9 @@ from tests.test_admin_cms import authenticate
 def developer_payload(status: str = "draft", slug: str = "qa-developer") -> dict[str, object]:
     return {
         "slug": slug,
+        "legal_name": "QA Developer Legal LLC",
+        "source_name": "QA Dev Source",
+        "internal_aliases": ["QA Dev", "QA Developer PJSC"],
         "primary_emirate": "Dubai",
         "other_presence": ["Abu Dhabi"],
         "selected_projects": ["QA identity reference"],
@@ -18,6 +21,7 @@ def developer_payload(status: str = "draft", slug: str = "qa-developer") -> dict
         "source_url": "https://example.com/government-source",
         "additional_source_urls": ["https://example.com/official-source"],
         "verification_date": "2026-08-24",
+        "verification_status": "verified",
         "enquiry_types": ["new-booking", "primary-sale", "resale"],
         "featured": False,
         "display_order": 999,
@@ -59,6 +63,9 @@ async def test_developer_draft_publish_archive_locale_and_audit(
     public_ar = await client.get("/api/v1/public/developers/qa-developer?locale=ar")
     assert public_en.json()["name"] == "QA Developer"
     assert public_ar.json()["name"] == "مطور اختبار"
+    assert {"legal_name", "source_name", "internal_aliases", "verification_status"}.isdisjoint(
+        public_en.json()
+    )
 
     archived = await client.post(f"/api/v1/admin/developers/{record_id}/archive", headers=headers)
     assert archived.status_code == 200, archived.text

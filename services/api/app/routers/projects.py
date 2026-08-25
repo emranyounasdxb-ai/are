@@ -871,6 +871,7 @@ async def import_candidate_detail(
             selectinload(ProjectImportCandidate.evidence),
             selectinload(ProjectImportCandidate.staged_media),
             selectinload(ProjectImportCandidate.changes),
+            selectinload(ProjectImportCandidate.editorial_draft),
         )
     )
     if not candidate:

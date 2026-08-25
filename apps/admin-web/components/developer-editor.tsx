@@ -16,6 +16,7 @@ const enquiryOptions = [["new-booking", "New booking"], ["primary-sale", "Primar
 
 type Values = {
   slug: string; primaryEmirate: string; otherPresence: string[]; selectedProjects: string[];
+  legalName: string; sourceName: string; internalAliases: string; verificationStatus: string;
   officialWebsite: string; sourceUrl: string; additionalSourceUrls: string[]; verificationDate: string;
   enquiryTypes: string[]; featured: boolean; displayOrder: string; nameEn: string; nameAr: string;
   descriptionEn: string; descriptionAr: string; focusEn: string; focusAr: string; noteEn: string; noteAr: string;
@@ -23,6 +24,7 @@ type Values = {
 
 const empty: Values = {
   slug: "", primaryEmirate: "Dubai", otherPresence: [], selectedProjects: [""], officialWebsite: "",
+  legalName: "", sourceName: "", internalAliases: "", verificationStatus: "pending",
   sourceUrl: "", additionalSourceUrls: [""], verificationDate: "", enquiryTypes: enquiryOptions.map(([token]) => token),
   featured: false, displayOrder: "0", nameEn: "", nameAr: "", descriptionEn: "", descriptionAr: "",
   focusEn: "", focusAr: "", noteEn: "", noteAr: "",
@@ -39,6 +41,9 @@ function recordValues(data: ResourceRecord): Values {
   const sources = (data.additional_source_urls as string[] | undefined) ?? [];
   return {
     slug: String(data.slug ?? ""), primaryEmirate: String(data.primary_emirate ?? "Dubai"),
+    legalName: String(data.legal_name ?? ""), sourceName: String(data.source_name ?? ""),
+    internalAliases: ((data.internal_aliases as string[] | undefined) ?? []).join("\n"),
+    verificationStatus: String(data.verification_status ?? "pending"),
     otherPresence: (data.other_presence as string[] | undefined) ?? [], selectedProjects: projects.length ? projects : [""],
     officialWebsite: String(data.official_website ?? ""), sourceUrl: String(data.source_url ?? ""),
     additionalSourceUrls: sources.length ? sources : [""], verificationDate: String(data.verification_date ?? ""),
@@ -91,6 +96,9 @@ export function DeveloperEditor({ id }: Readonly<{ id?: string }>) {
     setNotice(""); clearErrors("root"); setPendingAction(nextStatus);
     const payload = {
       slug: formValues.slug, primary_emirate: formValues.primaryEmirate,
+      legal_name: formValues.legalName || null, source_name: formValues.sourceName || null,
+      internal_aliases: cleanList(formValues.internalAliases.split("\n")),
+      verification_status: formValues.verificationStatus,
       other_presence: formValues.otherPresence.filter((item) => item !== formValues.primaryEmirate),
       selected_projects: cleanList(formValues.selectedProjects), official_website: formValues.officialWebsite,
       source_url: formValues.sourceUrl, additional_source_urls: cleanList(formValues.additionalSourceUrls),
@@ -161,7 +169,7 @@ export function DeveloperEditor({ id }: Readonly<{ id?: string }>) {
       <fieldset className="form-section" id="developer-provenance"><legend>3. Provenance and verification</legend><p className="section-guidance">Official provenance and a verification date are required before publication. URLs and technical values remain left-to-right.</p><div className="form-grid">
         <label>Official website<input dir="ltr" inputMode="url" type="url" {...register("officialWebsite", { required: requiredMessage, validate: validWebUrl })}/><FieldError message={errors.officialWebsite?.message}/></label>
         <label>Primary source URL<input dir="ltr" inputMode="url" type="url" {...register("sourceUrl", { required: requiredMessage, validate: validWebUrl })}/><FieldError message={errors.sourceUrl?.message}/></label>
-        <label>Verification date<input dir="ltr" type="date" {...register("verificationDate", { required: requiredMessage })}/><FieldError message={errors.verificationDate?.message}/></label>
+        <label>Internal legal name <em>Private</em><input {...register("legalName")}/></label><label>Internal source name <em>Private</em><input {...register("sourceName")}/></label><label className="wide">Internal aliases <em>Private · one per line</em><textarea rows={4} {...register("internalAliases")}/></label><label>Verification date<input dir="ltr" type="date" {...register("verificationDate", { required: requiredMessage })}/><FieldError message={errors.verificationDate?.message}/></label><label>Identity verification status<select {...register("verificationStatus")}><option value="pending">Pending</option><option value="verified">Verified</option><option value="rejected">Rejected</option></select></label>
         <div className="field-group"><span className="field-label">Enquiry types</span><div className="check-grid">{enquiryOptions.map(([token, label]) => <label className="check" key={token}><input type="checkbox" value={token} {...register("enquiryTypes")}/>{label}</label>)}</div></div>
         <Repeater errors={errors} field="additionalSourceUrls" label="Additional official source URLs" values={values.additionalSourceUrls ?? [""]} register={register} onAdd={() => addItem("additionalSourceUrls")} onRemove={(index) => removeItem("additionalSourceUrls", index)} urls />
       </div></fieldset>

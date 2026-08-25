@@ -244,7 +244,17 @@ async def _acquire_candidate(
     snapshot = await _evidence(
         db, candidate, adapter.key, adapter.version, result, stored.storage_key, storage
     )
-    proposal = normalized.normalized_proposal
+    source_proposal = normalized.normalized_proposal
+    proposal = dict(source_proposal)
+    field_changes = compare_fields(
+        previous or {},
+        source_proposal,
+        human_edited_fields=set(candidate.human_edited_fields),
+    )
+    for change in field_changes:
+        if change["classification"] == "human-edited-conflict":
+            field_name = str(change["field"])
+            proposal[field_name] = change["existing_value"]
     developer_id = await _match_developer(db, adapter.canonical_developer_slug)
     area_id = await _match_area(db, manifest.area)
     conflicts = list(normalized.conflicts)
@@ -281,9 +291,20 @@ async def _acquire_candidate(
     candidate.review_status = ImportReviewStatus.NEEDS_REVIEW
     await _stage_media(db, candidate, snapshot, normalized, adapter.allowed_domains)
     if refresh:
+        for change in field_changes:
+            await _record_change(
+                db,
+                candidate,
+                str(change["classification"]),
+                {"value": change["existing_value"]},
+                result.url,
+                stored.sha256,
+                {"value": change["new_value"]},
+                field_name=str(change["field"]),
+            )
         classification = classify_change(
             previous,
-            proposal,
+            source_proposal,
             same_hash=previous is not None and previous_hash == stored.sha256,
         )
         await _record_change(
@@ -306,6 +327,40 @@ def classify_change(
     if previous.get("project_name") != current.get("project_name"):
         return "conflict-detected"
     return "changed"
+
+
+def compare_fields(
+    previous: dict[str, object],
+    current: dict[str, object],
+    *,
+    human_edited_fields: set[str] | None = None,
+) -> list[dict[str, object]]:
+    """Return review-only field changes without overwriting approved human edits."""
+    protected = human_edited_fields or set()
+    changes: list[dict[str, object]] = []
+    for field_name in sorted(set(previous) | set(current)):
+        old = previous.get(field_name)
+        new = current.get(field_name)
+        if old == new:
+            classification = "unchanged"
+        elif field_name in protected:
+            classification = "human-edited-conflict"
+        elif field_name not in previous:
+            classification = "newly-added"
+        elif field_name not in current:
+            classification = "removed-from-source"
+        else:
+            classification = "changed"
+        changes.append(
+            {
+                "field": field_name,
+                "classification": classification,
+                "existing_value": old,
+                "new_value": new,
+                "may_apply_automatically": classification == "unchanged",
+            }
+        )
+    return changes
 
 
 async def _stage_media(
@@ -412,6 +467,7 @@ async def _evidence(
         adapter_key=adapter_key,
         adapter_version=adapter_version,
         content_type=result.content_type,
+        size_bytes=len(result.body),
         etag=result.etag,
         last_modified=result.last_modified,
         content_hash=digest,
@@ -452,6 +508,7 @@ async def _record_failure_evidence(
             adapter_key=adapter_key,
             adapter_version=adapter_version,
             content_type=result.content_type,
+            size_bytes=len(result.body) if result.body else None,
             etag=result.etag,
             last_modified=result.last_modified,
             content_hash=digest,
@@ -470,11 +527,14 @@ async def _record_change(
     source_url: str | None,
     content_hash: str | None,
     current: dict[str, object] | None = None,
+    *,
+    field_name: str | None = None,
 ) -> None:
     db.add(
         ProjectImportChange(
             candidate_id=candidate.id,
             classification=classification,
+            field_name=field_name,
             existing_value=previous,
             new_value=current,
             source_url=source_url,
@@ -487,8 +547,18 @@ async def _record_change(
 async def _match_developer(db: AsyncSession, slug: str | None) -> UUID | None:
     if not slug:
         return None
-    value = await db.scalar(select(Developer.id).where(Developer.slug == slug))
-    return value if isinstance(value, UUID) else None
+    return await match_developer_identity(db, slug)
+
+
+async def match_developer_identity(db: AsyncSession, source_name: str) -> UUID | None:
+    normalized = normalize_name(source_name)
+    records = (await db.scalars(select(Developer))).all()
+    for record in records:
+        identities = [record.slug, record.source_name or "", *record.internal_aliases]
+        identities.extend(item.name for item in record.translations if item.locale == "en")
+        if normalized in {normalize_name(value) for value in identities if value}:
+            return record.id
+    return None
 
 
 async def _match_area(db: AsyncSession, name: str) -> UUID | None:

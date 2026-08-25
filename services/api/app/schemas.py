@@ -20,6 +20,7 @@ from app.models import (
     ApplicationStatus,
     AvailabilityStatus,
     ConstructionStatus,
+    DeveloperVerificationStatus,
     EnquiryStatus,
     JobStatus,
     MediaRightsStatus,
@@ -386,6 +387,9 @@ class DeveloperTranslationInput(StrictModel):
 
 class DeveloperInput(StrictModel):
     slug: str = Field(min_length=2, max_length=180)
+    legal_name: str | None = Field(default=None, max_length=320)
+    source_name: str | None = Field(default=None, max_length=320)
+    internal_aliases: list[str] = Field(default_factory=list, max_length=100)
     primary_emirate: str = Field(min_length=2, max_length=120)
     other_presence: list[str] = Field(default_factory=list, max_length=20)
     selected_projects: list[str] = Field(default_factory=list, max_length=100)
@@ -393,6 +397,7 @@ class DeveloperInput(StrictModel):
     source_url: HttpUrl
     additional_source_urls: list[HttpUrl] = Field(default_factory=list, max_length=20)
     verification_date: date
+    verification_status: DeveloperVerificationStatus = DeveloperVerificationStatus.PENDING
     enquiry_types: list[Literal["new-booking", "primary-sale", "resale"]] = Field(
         default_factory=list, max_length=3
     )
@@ -415,6 +420,11 @@ class DeveloperInput(StrictModel):
                 raise ValueError("Published developers require English and Arabic content")
             if not self.source_url or not self.verification_date:
                 raise ValueError("Published developers require provenance and a verification date")
+            if self.verification_status != DeveloperVerificationStatus.VERIFIED:
+                raise ValueError("Published developers require verified identity status")
+        normalized_aliases = [" ".join(value.casefold().split()) for value in self.internal_aliases]
+        if len(set(normalized_aliases)) != len(normalized_aliases):
+            raise ValueError("Developer aliases must be unique")
         return self
 
 

@@ -81,10 +81,16 @@ async def clean_disposable_records(test_settings: Settings) -> AsyncIterator[Non
                     if evidence.storage_key:
                         storage.delete(evidence.storage_key)
                 for media in candidate.staged_media:
+                    if media.raw_storage_key:
+                        storage.delete(media.raw_storage_key)
                     if media.storage_key:
                         storage.delete(media.storage_key)
                     if media.thumbnail_storage_key:
                         storage.delete(media.thumbnail_storage_key)
+                    for derivative in media.derivative_manifest:
+                        key = derivative.get("storage_key")
+                        if isinstance(key, str):
+                            storage.delete(key)
             await db.delete(batch)
         await db.flush()
         projects = (
