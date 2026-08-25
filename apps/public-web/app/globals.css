@@ -4976,11 +4976,12 @@ html[dir="rtl"] .home-closing-v2__content h2 {
 }
 
 .home-closing-v2--separated {
-  margin-block-end: clamp(5rem, 8vw, 8rem);
+  margin-block-end: clamp(4rem, 7vw, 5.5rem);
 }
 
 .site-footer {
   border: 0;
+  padding-block: 0;
   background: var(--are-ivory);
   color: var(--are-ink);
 }
@@ -4989,14 +4990,19 @@ html[dir="rtl"] .home-closing-v2__content h2 {
   display: grid;
   grid-template-columns: minmax(0, 6fr) minmax(22rem, 6fr);
   align-items: center;
-  gap: clamp(2rem, 6vw, 6rem);
+  gap: clamp(2.5rem, 5vw, 5rem);
   width: min(calc(100% - 2.5rem), var(--are-container));
-  margin-inline: auto;
-  padding-block: clamp(4.5rem, 7vw, 7rem);
+  margin: 0 auto clamp(4rem, 6vw, 6rem);
+  border: 1px solid rgba(73, 51, 40, 0.12);
+  border-radius: clamp(1.25rem, 2vw, 1.75rem);
+  padding: clamp(2.5rem, 4.5vw, 4.5rem);
+  background: linear-gradient(135deg, var(--are-white), var(--are-stone));
+  box-shadow: 0 24px 70px rgba(43, 28, 20, 0.08);
 }
 
 .newsletter-panel__copy {
   display: grid;
+  min-width: 0;
   gap: 1rem;
 }
 
@@ -5037,11 +5043,15 @@ html[dir="rtl"] :is(.newsletter-panel h2, .mobile-app-panel h2) {
 
 .newsletter-panel__state {
   display: grid;
+  min-width: 0;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: end;
   gap: 0.75rem;
-  border-block: 1px solid var(--are-border);
-  padding-block: 1.5rem;
+  border: 1px solid rgba(73, 51, 40, 0.12);
+  border-radius: 1rem;
+  padding: clamp(1rem, 2vw, 1.35rem);
+  background: rgba(255, 255, 255, 0.58);
+  box-shadow: 0 12px 34px rgba(43, 28, 20, 0.05);
 }
 
 .newsletter-panel__state label {
@@ -5057,7 +5067,7 @@ html[dir="rtl"] :is(.newsletter-panel h2, .mobile-app-panel h2) {
 
 .newsletter-panel__state input,
 .newsletter-panel__state button {
-  min-height: 3.25rem;
+  min-height: 3.5rem;
   border: 1px solid var(--are-border);
   border-radius: 0.65rem;
   padding-inline: 1rem;
@@ -5102,15 +5112,15 @@ html[dir="rtl"] :is(.newsletter-panel h2, .mobile-app-panel h2) {
   position: relative;
   isolation: isolate;
   display: grid;
-  grid-template-columns: minmax(0, 7fr) minmax(20rem, 5fr);
+  grid-template-columns: minmax(0, 6.6fr) minmax(20rem, 5.4fr);
   align-items: center;
-  min-height: clamp(34rem, 44vw, 42rem);
+  min-height: clamp(38rem, 46vw, 46rem);
   width: min(calc(100% - 2.5rem), var(--are-container));
   margin: clamp(1.25rem, 3vw, 2.5rem) auto clamp(4rem, 7vw, 7rem);
   overflow: hidden;
   border: 1px solid rgba(226, 201, 143, 0.24);
   border-radius: clamp(1.5rem, 3vw, 2.5rem);
-  padding: clamp(2.25rem, 6vw, 6rem);
+  padding: clamp(2.75rem, 5.5vw, 5.5rem);
   background:
     radial-gradient(circle at 78% 24%, rgba(217, 180, 135, 0.16), transparent 34%),
     linear-gradient(135deg, var(--are-espresso), var(--are-carbon));
@@ -5178,8 +5188,8 @@ html[dir="rtl"] .mobile-app-panel__pattern {
 
 .mobile-app-panel__stores :is(a, button) {
   display: grid;
-  min-width: 10.5rem;
-  min-height: 3.75rem;
+  min-width: 11.5rem;
+  min-height: 4rem;
   align-content: center;
   justify-items: start;
   border: 1px solid rgba(255, 255, 255, 0.2);
@@ -5195,7 +5205,7 @@ html[dir="rtl"] .mobile-app-panel__pattern {
 }
 
 .mobile-app-panel__stores :is(a, button) span {
-  font-size: 0.9rem;
+  font-size: 1rem;
   font-weight: 750;
 }
 
@@ -5207,13 +5217,13 @@ html[dir="rtl"] .mobile-app-panel__pattern {
 .mobile-app-panel__devices {
   position: relative;
   align-self: end;
-  min-height: 28rem;
+  min-height: 32rem;
 }
 
 .mobile-app-panel__device {
   position: absolute;
   inset-block-end: -7rem;
-  width: clamp(12rem, 18vw, 16rem);
+  width: clamp(15rem, 21vw, 19rem);
   aspect-ratio: 0.52;
   overflow: hidden;
   border: 1px solid rgba(226, 201, 143, 0.38);
@@ -5229,7 +5239,7 @@ html[dir="rtl"] .mobile-app-panel__pattern {
 
 .mobile-app-panel__device--front {
   display: grid;
-  inset-inline-end: clamp(7rem, 9vw, 9rem);
+  inset-inline-end: clamp(8.5rem, 11vw, 11rem);
   place-items: center;
   transform: rotate(-4deg);
 }
@@ -5260,7 +5270,7 @@ html[dir="rtl"] .mobile-app-panel__pattern {
 }
 
 .site-footer__inner {
-  grid-template-columns: minmax(20rem, 5fr) minmax(30rem, 7fr);
+  grid-template-columns: minmax(22rem, 5.5fr) minmax(30rem, 6.5fr);
   gap: clamp(3rem, 8vw, 8rem);
   padding-block: 0 clamp(3.5rem, 6vw, 5.5rem);
 }
@@ -5281,8 +5291,8 @@ html[dir="rtl"] .mobile-app-panel__pattern {
 
 .site-footer__brand > span {
   display: grid;
-  width: 4.25rem;
-  height: 4.25rem;
+  width: 4.75rem;
+  height: 4.75rem;
   place-items: center;
   overflow: hidden;
   border-radius: 0.75rem;
@@ -5313,7 +5323,7 @@ html[dir="rtl"] .mobile-app-panel__pattern {
 
 .site-footer__whatsapp {
   display: inline-flex;
-  min-height: 2.75rem;
+  min-height: 3rem;
   align-items: center;
   margin-block-start: 0.75rem;
   border: 1px solid rgba(226, 201, 143, 0.3);
@@ -5330,14 +5340,14 @@ html[dir="rtl"] .mobile-app-panel__pattern {
 
 .site-footer__navigation strong {
   color: var(--are-gold-light);
-  font-size: 0.78rem;
+  font-size: 0.82rem;
 }
 
 .site-footer__navigation a,
 .site-footer__languages a {
   min-height: 2.75rem;
-  color: rgba(255, 255, 255, 0.8);
-  font-size: 0.94rem;
+  color: rgba(255, 255, 255, 0.84);
+  font-size: 0.98rem;
 }
 
 .site-footer__bottom {
@@ -5353,7 +5363,7 @@ html[dir="rtl"] .mobile-app-panel__pattern {
 
 .site-footer__bottom p {
   margin: 0;
-  color: rgba(255, 255, 255, 0.65);
+  color: rgba(255, 255, 255, 0.74);
   font-size: 0.82rem;
 }
 
@@ -5368,7 +5378,7 @@ html[dir="rtl"] .mobile-app-panel__pattern {
   }
 
   .mobile-app-panel__devices {
-    min-height: 20rem;
+    min-height: 23rem;
   }
 
   .mobile-app-panel__device {
@@ -5402,19 +5412,24 @@ html[dir="rtl"] .mobile-app-panel__pattern {
   }
 
   .home-closing-v2--separated {
-    margin-block-end: 5rem;
+    margin-block-end: 4rem;
   }
 }
 
 @media (max-width: 600px) {
   .newsletter-panel {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     width: calc(100% - 1.5rem);
-    padding-block: 4rem;
+    margin-block-end: 4rem;
+    padding: 2.25rem 1.5rem;
   }
 
   .newsletter-panel__state {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .newsletter-panel__state input {
+    width: 100%;
   }
 
   .newsletter-panel__state button,
@@ -5437,7 +5452,7 @@ html[dir="rtl"] .mobile-app-panel__pattern {
 
   .mobile-app-panel {
     width: calc(100% - 1.5rem);
-    min-height: 52rem;
+    min-height: 56rem;
     margin-block: 0.75rem 4rem;
     padding: 2rem 1.25rem;
   }
@@ -5458,16 +5473,16 @@ html[dir="rtl"] .mobile-app-panel__pattern {
   }
 
   .mobile-app-panel__devices {
-    min-height: 18rem;
+    min-height: 20rem;
   }
 
   .mobile-app-panel__device {
-    width: 11rem;
+    width: 12.25rem;
     inset-block-end: -9rem;
   }
 
   .mobile-app-panel__device--front {
-    inset-inline-end: 6rem;
+    inset-inline-end: 6.5rem;
   }
 
   .site-footer__inner,
