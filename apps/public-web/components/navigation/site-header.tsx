@@ -3,19 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import {
-  BriefcaseBusiness,
-  Building2,
-  House,
-  Info,
-  Landmark,
-  LogIn,
-  MapPin,
-  Newspaper,
-  PanelsTopLeft,
-  Send,
-  type LucideIcon,
-} from "lucide-react";
+import { LogIn, Send } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import type { HeaderCopy, Locale } from "../../lib/home-copy";
@@ -28,27 +16,26 @@ type SiteHeaderProps = Readonly<{
 
 type NavigationItem = Readonly<{
   href: string;
-  icon: LucideIcon;
   label: string;
 }>;
 
 export function SiteHeader({ copy, locale }: SiteHeaderProps) {
   const adminUrl = process.env.NEXT_PUBLIC_ARE_ADMIN_URL ?? "http://127.0.0.1:50002";
-  const adminLabel = locale === "ar" ? "تسجيل الدخول" : "Login";
+  const adminAccessibleLabel = locale === "ar" ? "تسجيل دخول الإدارة" : "Admin login";
   const [isOpen, setIsOpen] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const menuPanelRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
   const router = useRouter();
   const directNavigation: ReadonlyArray<NavigationItem> = [
-    { href: `/${locale}`, icon: House, label: copy.home },
-    { href: `/${locale}/about`, icon: Info, label: copy.about },
-    { href: `/${locale}/properties`, icon: Building2, label: copy.properties },
-    { href: `/${locale}/off-plan`, icon: PanelsTopLeft, label: copy.offPlan },
-    { href: `/${locale}/communities`, icon: MapPin, label: copy.communities },
-    { href: `/${locale}/developers`, icon: Landmark, label: copy.developers },
-    { href: `/${locale}/insights`, icon: Newspaper, label: copy.insights },
-    { href: `/${locale}/careers`, icon: BriefcaseBusiness, label: copy.careers },
+    { href: `/${locale}`, label: copy.home },
+    { href: `/${locale}/about`, label: copy.about },
+    { href: `/${locale}/properties`, label: copy.properties },
+    { href: `/${locale}/off-plan`, label: copy.offPlan },
+    { href: `/${locale}/communities`, label: copy.communities },
+    { href: `/${locale}/developers`, label: copy.developers },
+    { href: `/${locale}/insights`, label: copy.insights },
+    { href: `/${locale}/careers`, label: copy.careers },
   ];
   const mobileNavigation = directNavigation;
 
@@ -188,20 +175,16 @@ export function SiteHeader({ copy, locale }: SiteHeaderProps) {
           </Link>
 
           <nav aria-label={copy.navigation} className="desktop-navigation">
-            {directNavigation.map((item) => {
-              const Icon = item.icon;
-              return (
-                <Link
-                  aria-current={isActive(item.href) ? "page" : undefined}
-                  href={item.href}
-                  key={item.href}
-                  onClick={(event) => resetCurrentRoute(event, item.href)}
-                >
-                  <Icon aria-hidden="true" size={15} strokeWidth={1.75} />
-                  <span>{item.label}</span>
-                </Link>
-              );
-            })}
+            {directNavigation.map((item) => (
+              <Link
+                aria-current={isActive(item.href) ? "page" : undefined}
+                href={item.href}
+                key={item.href}
+                onClick={(event) => resetCurrentRoute(event, item.href)}
+              >
+                <span>{item.label}</span>
+              </Link>
+            ))}
           </nav>
 
           <div className="site-header__actions">
@@ -229,9 +212,13 @@ export function SiteHeader({ copy, locale }: SiteHeaderProps) {
                 العربية
               </Link>
             </nav>
-            <a aria-label={adminLabel} className="admin-login-link" href={adminUrl}>
+            <a
+              aria-label={adminAccessibleLabel}
+              className="admin-login-link"
+              href={adminUrl}
+              title={adminAccessibleLabel}
+            >
               <LogIn aria-hidden="true" size={15} strokeWidth={1.75} />
-              <span>{adminLabel}</span>
             </a>
             <Link
               aria-current={isActive(`/${locale}/contact`) ? "page" : undefined}
@@ -275,23 +262,19 @@ export function SiteHeader({ copy, locale }: SiteHeaderProps) {
               </button>
             </div>
             <nav aria-label={copy.navigation}>
-              {mobileNavigation.map((item) => {
-                const Icon = item.icon;
-                return (
-                  <Link
-                    aria-current={isActive(item.href) ? "page" : undefined}
-                    href={item.href}
-                    key={item.href}
-                    onClick={(event) => {
-                      resetCurrentRoute(event, item.href);
-                      closeMenu();
-                    }}
-                  >
-                    <Icon aria-hidden="true" size={18} strokeWidth={1.75} />
-                    <span>{item.label}</span>
-                  </Link>
-                );
-              })}
+              {mobileNavigation.map((item) => (
+                <Link
+                  aria-current={isActive(item.href) ? "page" : undefined}
+                  href={item.href}
+                  key={item.href}
+                  onClick={(event) => {
+                    resetCurrentRoute(event, item.href);
+                    closeMenu();
+                  }}
+                >
+                  <span>{item.label}</span>
+                </Link>
+              ))}
             </nav>
             <div className="mobile-menu__footer">
               <p>{copy.activeLanguage}</p>
@@ -320,9 +303,14 @@ export function SiteHeader({ copy, locale }: SiteHeaderProps) {
                   العربية
                 </Link>
               </nav>
-              <a className="mobile-admin-login" href={adminUrl} onClick={closeMenu}>
+              <a
+                aria-label={adminAccessibleLabel}
+                className="mobile-admin-login"
+                href={adminUrl}
+                onClick={closeMenu}
+                title={adminAccessibleLabel}
+              >
                 <LogIn aria-hidden="true" size={15} strokeWidth={1.75} />
-                <span>{adminLabel}</span>
               </a>
               <Link
                 aria-current={isActive(`/${locale}/contact`) ? "page" : undefined}

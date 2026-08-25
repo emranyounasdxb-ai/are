@@ -1,11 +1,11 @@
 "use client";
 
 import { BriefcaseBusiness, Building2, Factory, FileText, Gauge, Inbox, LogOut, Menu, ScrollText, Users, X } from "lucide-react";
-import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { useAuth } from "./auth-provider";
+import { AdminBrandLogo } from "./admin-brand-logo";
 import { GuardedLink, NavigationGuardProvider, useNavigationGuard } from "./navigation-guard";
 
 const links = [
@@ -18,10 +18,6 @@ const links = [
 
 export function AdminShell({ children }: Readonly<{ children: ReactNode }>) {
   return <NavigationGuardProvider><AdminShellContent>{children}</AdminShellContent></NavigationGuardProvider>;
-}
-
-function AdminBrandMark() {
-  return <span aria-hidden="true" className="admin-brand-mark"><Image alt="" height={462} sizes="26px" src="/brand/aliyas-mark-white.png" width={510}/></span>;
 }
 
 function AdminShellContent({ children }: Readonly<{ children: ReactNode }>) {
@@ -53,5 +49,5 @@ function AdminShellContent({ children }: Readonly<{ children: ReactNode }>) {
   if (loading || !user) return <main className="center-state" aria-live="polite">Checking secure session…</main>;
   const navigation = <nav aria-label="Admin modules">{links.map(([href, label, Icon]) => <GuardedLink aria-current={pathname.startsWith(href) ? "page" : undefined} href={href} key={href} onNavigate={() => setMenuOpen(false)}><Icon aria-hidden size={17}/><span>{label}</span></GuardedLink>)}</nav>;
   const doLogout = async () => { if (!confirmDiscard()) return; await logout(); router.replace("/login"); };
-  return <div className="admin-layout"><header className="admin-topbar"><GuardedLink className="admin-brand" href="/dashboard"><AdminBrandMark/><strong>Admin</strong></GuardedLink><div className="desktop-nav">{navigation}</div><div className="admin-utilities"><div className="admin-user"><strong>{user.display_name}</strong></div><button className="logout-button" onClick={doLogout} type="button"><LogOut aria-hidden size={16}/><span>Logout</span></button><button aria-controls="admin-drawer" aria-expanded={menuOpen} aria-label="Open Admin menu" className="menu-button" onClick={() => setMenuOpen(true)} ref={menuButtonRef} type="button"><Menu aria-hidden size={20}/></button></div></header>{menuOpen ? <div className="drawer-backdrop" onMouseDown={(event) => { if (event.currentTarget === event.target) { setMenuOpen(false); menuButtonRef.current?.focus(); } }}><div className="admin-drawer" id="admin-drawer" ref={drawerRef}><div className="drawer-header"><div className="drawer-brand"><AdminBrandMark/><strong>Admin</strong></div><button aria-label="Close Admin menu" onClick={() => { setMenuOpen(false); menuButtonRef.current?.focus(); }} type="button"><X aria-hidden size={20}/></button></div>{navigation}<div className="drawer-user"><strong>{user.display_name}</strong><button onClick={doLogout} type="button"><LogOut aria-hidden size={16}/>Logout</button></div></div></div> : null}<main id="main-content" className="admin-main">{children}</main></div>;
+  return <div className="admin-layout"><header className="admin-topbar"><GuardedLink aria-label="ALIYAS Real Estate Admin dashboard" className="admin-brand" href="/dashboard"><AdminBrandLogo className="admin-brand-mark"/></GuardedLink><div className="desktop-nav">{navigation}</div><div className="admin-utilities"><div className="admin-user"><strong>{user.display_name}</strong></div><button className="logout-button" onClick={doLogout} type="button"><LogOut aria-hidden size={16}/><span>Logout</span></button><button aria-controls="admin-drawer" aria-expanded={menuOpen} aria-label="Open Admin menu" className="menu-button" onClick={() => setMenuOpen(true)} ref={menuButtonRef} type="button"><Menu aria-hidden size={20}/></button></div></header>{menuOpen ? <div className="drawer-backdrop" onMouseDown={(event) => { if (event.currentTarget === event.target) { setMenuOpen(false); menuButtonRef.current?.focus(); } }}><div className="admin-drawer" id="admin-drawer" ref={drawerRef}><div className="drawer-header"><div className="drawer-brand"><AdminBrandLogo className="admin-brand-mark"/></div><button aria-label="Close Admin menu" onClick={() => { setMenuOpen(false); menuButtonRef.current?.focus(); }} type="button"><X aria-hidden size={20}/></button></div>{navigation}<div className="drawer-user"><strong>{user.display_name}</strong><button onClick={doLogout} type="button"><LogOut aria-hidden size={16}/>Logout</button></div></div></div> : null}<main id="main-content" className="admin-main">{children}</main></div>;
 }
