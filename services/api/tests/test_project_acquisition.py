@@ -46,6 +46,14 @@ def private_resolver(
     return [(2, 1, 6, "", ("127.0.0.1", port))]
 
 
+def owner_manifest_path() -> Path:
+    return next(
+        parent / "data-intake" / "offplan-projects-owner-manifest.csv"
+        for parent in Path(__file__).resolve().parents
+        if (parent / "data-intake" / "offplan-projects-owner-manifest.csv").is_file()
+    )
+
+
 def metadata_resolver(
     host: str, port: int, *, type: object
 ) -> list[tuple[int, int, int, str, tuple[str, int]]]:
@@ -179,11 +187,7 @@ def test_raster_validation_sanitizes_and_detects_duplicates() -> None:
 
 @pytest.mark.asyncio
 async def test_manifest_is_exact_and_loading_is_idempotent(tmp_path: Path) -> None:
-    source = next(
-        parent / "data-intake" / "offplan-projects-owner-manifest.csv"
-        for parent in Path(__file__).resolve().parents
-        if (parent / "data-intake" / "offplan-projects-owner-manifest.csv").is_file()
-    )
+    source = owner_manifest_path()
     records, _ = await read_manifest(source)
     assert len(records) == 50
     path = tmp_path / "qa-manifest.csv"

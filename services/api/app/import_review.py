@@ -294,10 +294,14 @@ async def _create_draft(
                 "message": f"A Draft Project already exists for row {candidate.manifest_row_id}.",
             },
         )
+    area = await db.get(AreaCommunity, candidate.proposed_area_id)
+    if not area:
+        raise _invalid("The mapped canonical Area no longer exists.")
     record = Project(
         slug=slug,
         developer_id=candidate.proposed_developer_id,
         area_id=candidate.proposed_area_id,
+        emirate=area.emirate,
         status=PublicationStatus.DRAFT,
         availability_status=ProjectAvailabilityStatus(str(proposal["availability_status"])),
         construction_status=str(proposal["construction_status"]),

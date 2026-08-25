@@ -34,6 +34,7 @@ from app.models import (
     ProjectWorkflowStatus,
     PublicationStatus,
     Purpose,
+    UAEEmirate,
 )
 
 SLUG_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
@@ -134,7 +135,7 @@ class AreaInput(StrictModel):
     slug: str = Field(min_length=2, max_length=180)
     name_en: str = Field(min_length=2, max_length=240)
     name_ar: str = Field(min_length=2, max_length=240)
-    emirate: str = Field(min_length=2, max_length=120)
+    emirate: UAEEmirate
     status: PublicationStatus = PublicationStatus.DRAFT
     aliases: list[AreaAliasInput] = Field(default_factory=list, max_length=100)
 
@@ -228,6 +229,7 @@ class ProjectInput(StrictModel):
     slug: str = Field(min_length=2, max_length=180)
     developer_id: uuid.UUID
     area_id: uuid.UUID
+    emirate: UAEEmirate
     status: PublicationStatus = PublicationStatus.DRAFT
     workflow_status: ProjectWorkflowStatus = ProjectWorkflowStatus.DRAFT
     availability_status: ProjectAvailabilityStatus

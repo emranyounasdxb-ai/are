@@ -13,7 +13,21 @@ from app.models import (
     ProjectImportCandidate,
     Property,
     TrustProfile,
+    UAEEmirate,
 )
+
+EMIRATE_LABELS = {
+    "en": {item: item.value for item in UAEEmirate},
+    "ar": {
+        UAEEmirate.DUBAI: "دبي",
+        UAEEmirate.ABU_DHABI: "أبوظبي",
+        UAEEmirate.SHARJAH: "الشارقة",
+        UAEEmirate.AJMAN: "عجمان",
+        UAEEmirate.UMM_AL_QUWAIN: "أم القيوين",
+        UAEEmirate.RAS_AL_KHAIMAH: "رأس الخيمة",
+        UAEEmirate.FUJAIRAH: "الفجيرة",
+    },
+}
 
 
 def developer_dict(record: Developer, locale: str | None = None) -> dict[str, Any]:
@@ -150,9 +164,9 @@ def area_dict(record: AreaCommunity) -> dict[str, Any]:
     return {
         "id": record.id,
         "slug": record.slug,
+        "emirate": record.emirate.value,
         "name_en": record.name_en,
         "name_ar": record.name_ar,
-        "emirate": record.emirate,
         "status": record.status.value,
         "aliases": [
             {"alias": item.alias, "locale": item.locale, "normalized_alias": item.normalized_alias}
@@ -234,13 +248,14 @@ def project_dict(record: Project, locale: str | None = None) -> dict[str, Any]:
     data: dict[str, Any] = {
         "id": record.id,
         "slug": record.slug,
+        "emirate": record.emirate.value,
         "developer": {"id": record.developer.id, "slug": record.developer.slug},
         "area": {
             "id": record.area.id,
             "slug": record.area.slug,
             "name_en": record.area.name_en,
             "name_ar": record.area.name_ar,
-            "emirate": record.area.emirate,
+            "emirate": record.area.emirate.value,
         },
         "status": record.status.value,
         "workflow_status": record.workflow_status.value,
@@ -298,6 +313,8 @@ def project_dict(record: Project, locale: str | None = None) -> dict[str, Any]:
     }
     if locale:
         data.update(translations.get(locale, {}))
+        data["emirate"] = EMIRATE_LABELS[locale][record.emirate]
+        data["area"]["emirate"] = EMIRATE_LABELS[locale][record.area.emirate]
         data["developer"]["name"] = next(
             (item.name for item in record.developer.translations if item.locale == locale),
             record.developer.slug,

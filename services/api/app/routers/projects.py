@@ -55,6 +55,7 @@ from app.models import (
     ProjectUnitType,
     ProjectWorkflowStatus,
     PublicationStatus,
+    UAEEmirate,
 )
 from app.schemas import (
     AreaInput,
@@ -147,6 +148,14 @@ async def validate_relations(
             detail={
                 "code": "invalid_canonical_relation",
                 "message": "Developer and Area must reference canonical records.",
+            },
+        )
+    if area.emirate != payload.emirate:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={
+                "code": "project_area_emirate_mismatch",
+                "message": "Project Emirate must match the canonical Area Emirate.",
             },
         )
     return developer, area
@@ -242,6 +251,7 @@ async def replace_project_content(record: Project, payload: ProjectInput, db: As
     record.slug = payload.slug
     record.developer_id = payload.developer_id
     record.area_id = payload.area_id
+    record.emirate = payload.emirate
     record.availability_status = payload.availability_status
     record.construction_status = payload.construction_status
     record.handover_quarter = payload.handover_quarter
@@ -383,6 +393,7 @@ async def list_projects(
     search: str | None = Query(None, max_length=120),
     developer_id: uuid.UUID | None = None,
     area_id: uuid.UUID | None = None,
+    emirate: UAEEmirate | None = None,
     property_type: ProjectPropertyType | None = None,
     availability: ProjectAvailabilityStatus | None = None,
     construction: ConstructionStatus | None = None,
@@ -397,6 +408,8 @@ async def list_projects(
         filters.append(Project.developer_id == developer_id)
     if area_id:
         filters.append(Project.area_id == area_id)
+    if emirate:
+        filters.append(Project.emirate == emirate)
     if availability:
         filters.append(Project.availability_status == availability)
     if construction:
@@ -468,6 +481,7 @@ async def create_project(
         slug=payload.slug,
         developer_id=payload.developer_id,
         area_id=payload.area_id,
+        emirate=payload.emirate,
         status=PublicationStatus.DRAFT,
         workflow_status=ProjectWorkflowStatus.DRAFT,
         availability_status=payload.availability_status,

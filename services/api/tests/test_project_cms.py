@@ -42,6 +42,7 @@ def project_payload(developer_id: str, area_id: str, status: str = "draft") -> d
         "slug": "qa-offplan-project",
         "developer_id": developer_id,
         "area_id": area_id,
+        "emirate": "Dubai",
         "status": status,
         "availability_status": "coming-soon",
         "construction_status": "not-confirmed",
@@ -168,6 +169,13 @@ async def test_project_rbac_publication_and_public_field_boundaries(
     )
     assert area.status_code == 201, area.text
     payload = project_payload(developer_id, area.json()["id"])
+    mismatch = await client.post(
+        "/api/v1/admin/projects",
+        json={**payload, "emirate": "Abu Dhabi"},
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert mismatch.status_code == 422
+    assert mismatch.json()["error"]["code"] == "project_area_emirate_mismatch"
     payload["media"][0]["rights_status"] = "pending"  # type: ignore[index]
     direct_publish = await client.post(
         "/api/v1/admin/projects",
@@ -220,6 +228,8 @@ async def test_project_rbac_publication_and_public_field_boundaries(
     public = await client.get("/api/v1/public/projects/qa-offplan-project?locale=en")
     assert public.status_code == 200, public.text
     public_record = public.json()
+    assert public_record["emirate"] == "Dubai"
+    assert public_record["area"]["emirate"] == "Dubai"
     assert public_record["cta"] == "register-interest"
     assert "priority" not in public_record
     assert "internal_notes" not in public_record
@@ -230,6 +240,13 @@ async def test_project_rbac_publication_and_public_field_boundaries(
     assert "down_payment_source_value" not in public_record
     assert "source_id" not in public_record["payment_plan"]
     assert "source_value" not in public_record["payment_plan"]["milestones"][0]
+    arabic = await client.get("/api/v1/public/projects/qa-offplan-project?locale=ar")
+    assert arabic.status_code == 200
+    assert arabic.json()["emirate"] == "دبي"
+    assert arabic.json()["area"]["emirate"] == "دبي"
+    assert (await client.get("/api/v1/admin/projects?emirate=Dubai")).json()["meta"]["total"] == 1
+    fujairah = await client.get("/api/v1/admin/projects?emirate=Fujairah")
+    assert fujairah.json()["meta"]["total"] == 0
     archived = await client.put(
         f"/api/v1/admin/projects/{project_id}",
         json={**payload, "status": "archived"},

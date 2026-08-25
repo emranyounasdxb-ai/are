@@ -91,6 +91,16 @@ class ProjectSizeUnit(StrEnum):
     SQM = "sqm"
 
 
+class UAEEmirate(StrEnum):
+    DUBAI = "Dubai"
+    ABU_DHABI = "Abu Dhabi"
+    SHARJAH = "Sharjah"
+    AJMAN = "Ajman"
+    UMM_AL_QUWAIN = "Umm Al Quwain"
+    RAS_AL_KHAIMAH = "Ras Al Khaimah"
+    FUJAIRAH = "Fujairah"
+
+
 class ProjectPropertyType(StrEnum):
     APARTMENT = "apartment"
     VILLA = "villa"
@@ -366,7 +376,9 @@ class AreaCommunity(TimestampMixin, Base):
     slug: Mapped[str] = mapped_column(String(180), unique=True, nullable=False)
     name_en: Mapped[str] = mapped_column(String(240), nullable=False)
     name_ar: Mapped[str] = mapped_column(String(240), nullable=False)
-    emirate: Mapped[str] = mapped_column(String(120), nullable=False)
+    emirate: Mapped[UAEEmirate] = mapped_column(
+        Enum(UAEEmirate, name="uae_emirate"), nullable=False, index=True
+    )
     status: Mapped[PublicationStatus] = mapped_column(
         Enum(PublicationStatus, name="publication_status", create_type=False),
         default=PublicationStatus.DRAFT,
@@ -399,6 +411,9 @@ class Project(TimestampMixin, Base):
     )
     area_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("area_communities.id"), nullable=False, index=True
+    )
+    emirate: Mapped[UAEEmirate] = mapped_column(
+        Enum(UAEEmirate, name="uae_emirate", create_type=False), nullable=False, index=True
     )
     status: Mapped[PublicationStatus] = mapped_column(
         Enum(PublicationStatus, name="publication_status", create_type=False),
