@@ -102,6 +102,10 @@ class OverviewProvider(Protocol):
     async def generate(self, facts: dict[str, object], source_version: str) -> OverviewResult: ...
 
 
+class OverviewGenerationPending(RuntimeError):
+    """An approved provider has not been configured, so no provenance can be recorded."""
+
+
 class DeterministicSyntheticOverviewProvider:
     """Test-only provider; it never performs network or live AI calls."""
 
@@ -121,7 +125,7 @@ class DeterministicSyntheticOverviewProvider:
 class DisabledOverviewProvider:
     async def generate(self, facts: dict[str, object], source_version: str) -> OverviewResult:
         del facts, source_version
-        raise RuntimeError("No approved Overview provider is configured.")
+        raise OverviewGenerationPending("No approved Overview provider is configured.")
 
 
 class ProcessingFailure(Exception):
@@ -583,6 +587,16 @@ async def _prepare_overview(
         )
     try:
         result = await provider.generate(facts, candidate.content_hash)
+    except OverviewGenerationPending as exc:
+        raise ProcessingFailure(
+            "prepare-overview",
+            "human_approval_required",
+            "Overview generation remains pending because no approved provider is configured.",
+            affected_reference="overview",
+            suggested_resolution=(
+                "Configure an owner-approved provider with accurate provenance before generation."
+            ),
+        ) from exc
     except Exception as exc:
         raise ProcessingFailure(
             "prepare-overview",

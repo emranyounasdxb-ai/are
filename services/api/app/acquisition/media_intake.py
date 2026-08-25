@@ -17,6 +17,7 @@ from app.acquisition.media import (
     thumbnail,
     validate_raster,
 )
+from app.acquisition.sobha_siniya_pilot import media_domains_for_candidate
 from app.config import Settings
 from app.models import ProjectImportBatch, ProjectImportCandidate, ProjectImportMedia
 from app.project_processing import descriptive_media_filename, public_media_metadata
@@ -76,6 +77,9 @@ async def intake_private_media(
     }
     for candidate in sorted(selected, key=lambda value: value.manifest_row_id):
         adapter = adapter_for(str(candidate.owner_manifest_values.get("owner_developer", "")))
+        allowed_domains = media_domains_for_candidate(candidate)
+        if allowed_domains is None and adapter is not None:
+            allowed_domains = adapter.allowed_domains
         for order, media in enumerate(
             sorted(candidate.staged_media, key=lambda value: value.source_url)[:12]
         ):
@@ -85,7 +89,7 @@ async def intake_private_media(
                 continue
             if media.storage_key or media.duplicate_of_id:
                 continue
-            if adapter is None or any(
+            if allowed_domains is None or any(
                 token in media.source_url.casefold() for token in REJECTED_URL_TOKENS
             ):
                 media.stage_status = "failed"
@@ -93,7 +97,7 @@ async def intake_private_media(
                 stats["failed"] += 1
                 continue
             result = await asyncio.to_thread(
-                source_fetcher.fetch, media.source_url, adapter.allowed_domains
+                source_fetcher.fetch, media.source_url, allowed_domains
             )
             media.retrieved_at = datetime.now(UTC)
             if not result.ok or not result.content_type:
@@ -110,15 +114,8 @@ async def intake_private_media(
                 media.failure_reason = str(exc)[:500]
                 stats["failed"] += 1
                 continue
-            project_slug = "-".join(
-                part
-                for part in (
-                    candidate.normalized_project_name or f"project-{candidate.manifest_row_id}"
-                )
-                .casefold()
-                .replace("_", "-")
-                .split("-")
-                if part.isalnum()
+            project_slug = (
+                candidate.normalized_project_name or f"project-{candidate.manifest_row_id}"
             )
             private_master_filename = normalized_media_filename(
                 project_slug, media.category.value, order, raster.sha256, raster.extension
@@ -139,9 +136,14 @@ async def intake_private_media(
             )
             category_title = media.category.value.replace("-", " ").title()
             media.title_en = f"{project_name} {category_title}"
-            media.title_ar = None
+            project_name_ar = str(
+                (candidate.normalized_payload or {}).get("project_name_ar") or project_name
+            )
+            media.title_ar = f"{project_name_ar} - {category_title}"
             media.description_en = f"{category_title} view for {project_name}."
-            media.description_ar = None
+            media.description_ar = f"صورة {category_title} لمشروع {project_name_ar}."
+            media.alt_en_draft = f"{category_title} view of {project_name}"
+            media.alt_ar_draft = f"صورة لمشروع {project_name_ar}"
             media.tags = [project_slug, media.category.value]
             media.public_metadata = public_media_metadata(
                 project_name=project_name,
