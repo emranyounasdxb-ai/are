@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import io
 import uuid
@@ -8,10 +9,18 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from fastapi import HTTPException, UploadFile, status
+from PIL import Image, UnidentifiedImageError
 
 from app.config import Settings
 
 MAX_CV_BYTES = 5 * 1024 * 1024
+MAX_PROPERTY_IMAGE_BYTES = 10 * 1024 * 1024
+IMAGE_MIME_TYPES = {
+    "jpg": "image/jpeg",
+    "jpeg": "image/jpeg",
+    "png": "image/png",
+    "webp": "image/webp",
+}
 MIME_TYPES = {
     "pdf": "application/pdf",
     "doc": "application/msword",
@@ -27,6 +36,12 @@ class StoredFile:
     verified_format: str
     size_bytes: int
     sha256: str
+
+
+@dataclass(frozen=True)
+class StoredImage(StoredFile):
+    width: int
+    height: int
 
 
 class PrivateStorage:
@@ -75,6 +90,58 @@ class PrivateStorage:
             sha256=hashlib.sha256(content).hexdigest(),
         )
 
+    async def save_property_image(self, upload: UploadFile) -> StoredImage:
+        filename = upload.filename or ""
+        if (
+            not filename
+            or Path(filename).name != filename
+            or any(value in filename for value in ("/", "\\", "\x00"))
+        ):
+            raise _invalid_image("Use a valid image filename.")
+        extension = Path(filename).suffix.lower().removeprefix(".")
+        if extension not in IMAGE_MIME_TYPES or upload.content_type != IMAGE_MIME_TYPES[extension]:
+            raise _invalid_image(
+                "Cover image must be a JPEG, PNG or WebP with a matching content type."
+            )
+        content = await upload.read(MAX_PROPERTY_IMAGE_BYTES + 1)
+        await upload.close()
+        if not content or len(content) > MAX_PROPERTY_IMAGE_BYTES:
+            raise _invalid_image("Cover image must be no larger than 10 MB.", too_large=True)
+        try:
+            with Image.open(io.BytesIO(content)) as source:
+                source.verify()
+            with Image.open(io.BytesIO(content)) as source:
+                width, height = source.size
+                if width < 320 or height < 180 or width * height > 40_000_000:
+                    raise _invalid_image("Cover image dimensions are outside the accepted range.")
+                output = io.BytesIO()
+                if extension in {"jpg", "jpeg"}:
+                    source.convert("RGB").save(output, format="JPEG", quality=90, optimize=True)
+                    stored_extension = "jpg"
+                elif extension == "png":
+                    source.save(output, format="PNG", optimize=True)
+                    stored_extension = "png"
+                else:
+                    source.save(output, format="WEBP", quality=90, method=6)
+                    stored_extension = "webp"
+                sanitized = output.getvalue()
+        except (UnidentifiedImageError, OSError, ValueError) as exc:
+            raise _invalid_image(
+                "The uploaded file is not a decodable JPEG, PNG or WebP image."
+            ) from exc
+        storage_key = f"property-{uuid.uuid4().hex}.{stored_extension}"
+        await asyncio.to_thread(self._path(storage_key).write_bytes, sanitized)
+        return StoredImage(
+            storage_key,
+            filename[:255],
+            IMAGE_MIME_TYPES[stored_extension],
+            stored_extension,
+            len(sanitized),
+            hashlib.sha256(sanitized).hexdigest(),
+            width,
+            height,
+        )
+
     def read(self, storage_key: str) -> bytes:
         path = self._path(storage_key)
         if not path.is_file():
@@ -110,4 +177,13 @@ def _invalid_file(message: str, *, too_large: bool = False) -> HTTPException:
         if too_large
         else status.HTTP_422_UNPROCESSABLE_CONTENT,
         detail={"code": "invalid_cv", "message": message},
+    )
+
+
+def _invalid_image(message: str, *, too_large: bool = False) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_413_CONTENT_TOO_LARGE
+        if too_large
+        else status.HTTP_422_UNPROCESSABLE_CONTENT,
+        detail={"code": "invalid_property_image", "message": message},
     )

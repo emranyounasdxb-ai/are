@@ -3,12 +3,13 @@ from __future__ import annotations
 import math
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy.sql.elements import ColumnElement
 
+from app.config import Settings, get_settings
 from app.db import get_db
 from app.models import (
     Developer,
@@ -18,8 +19,16 @@ from app.models import (
     Property,
     PublicationStatus,
     Purpose,
+    TrustProfile,
 )
-from app.serializers import developer_dict, insight_dict, job_dict, property_dict
+from app.serializers import (
+    developer_dict,
+    insight_dict,
+    job_dict,
+    property_dict,
+    trust_profile_dict,
+)
+from app.storage import PrivateStorage
 
 router = APIRouter(prefix="/public", tags=["public"])
 
@@ -103,7 +112,7 @@ async def properties(
         await db.scalars(
             select(Property)
             .where(*filters)
-            .options(selectinload(Property.translations))
+            .options(selectinload(Property.translations), selectinload(Property.cover_media))
             .order_by(order, Property.id)
             .offset((page - 1) * page_size)
             .limit(page_size)
@@ -122,7 +131,7 @@ async def property_detail(
     record = await db.scalar(
         select(Property)
         .where(Property.slug == slug, Property.status == PublicationStatus.PUBLISHED)
-        .options(selectinload(Property.translations))
+        .options(selectinload(Property.translations), selectinload(Property.cover_media))
     )
     if not record:
         raise HTTPException(
@@ -130,6 +139,51 @@ async def property_detail(
             detail={"code": "not_found", "message": "Property not found."},
         )
     return property_dict(record, locale)
+
+
+@router.get("/properties/{slug}/cover")
+async def property_cover(
+    slug: str,
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    record = await db.scalar(
+        select(Property)
+        .where(Property.slug == slug, Property.status == PublicationStatus.PUBLISHED)
+        .options(selectinload(Property.cover_media))
+    )
+    media = record.cover_media if record else None
+    if (
+        not media
+        or not media.storage_key
+        or not media.mime_type
+        or media.rights_status.value != "approved"
+    ):
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            detail={"code": "not_found", "message": "Cover image not found."},
+        )
+    return Response(
+        PrivateStorage(settings).read(media.storage_key),
+        media_type=media.mime_type,
+        headers={
+            "Cache-Control": "public, max-age=3600",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+@router.get("/trust-profile")
+async def trust_profile(db: AsyncSession = Depends(get_db)) -> dict[str, Any]:
+    record = await db.scalar(
+        select(TrustProfile).where(TrustProfile.status == PublicationStatus.PUBLISHED).limit(1)
+    )
+    if not record:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            detail={"code": "not_found", "message": "Trust profile not available."},
+        )
+    return trust_profile_dict(record)
 
 
 @router.get("/insights")

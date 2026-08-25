@@ -45,6 +45,18 @@ class Purpose(StrEnum):
     OFF_PLAN = "off-plan"
 
 
+class AvailabilityStatus(StrEnum):
+    UNVERIFIED = "unverified"
+    VERIFIED_AVAILABLE = "verified-available"
+    VERIFIED_UNAVAILABLE = "verified-unavailable"
+
+
+class MediaRightsStatus(StrEnum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
 class EnquiryStatus(StrEnum):
     NEW = "new"
     IN_REVIEW = "in-review"
@@ -168,6 +180,12 @@ class Property(TimestampMixin, Base):
     featured: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     provenance_note: Mapped[str] = mapped_column(Text, nullable=False)
     external_reference_url: Mapped[str | None] = mapped_column(Text)
+    source_verified_at: Mapped[date | None] = mapped_column(Date)
+    availability_status: Mapped[AvailabilityStatus] = mapped_column(
+        Enum(AvailabilityStatus, name="property_availability_status"),
+        default=AvailabilityStatus.UNVERIFIED,
+        nullable=False,
+    )
     status: Mapped[PublicationStatus] = mapped_column(
         Enum(PublicationStatus, name="publication_status"),
         default=PublicationStatus.DRAFT,
@@ -179,6 +197,9 @@ class Property(TimestampMixin, Base):
     updated_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     translations: Mapped[list[PropertyTranslation]] = relationship(
         cascade="all, delete-orphan", lazy="selectin"
+    )
+    cover_media: Mapped[PropertyCoverMedia | None] = relationship(
+        cascade="all, delete-orphan", lazy="selectin", uselist=False
     )
 
 
@@ -193,6 +214,51 @@ class PropertyTranslation(Base):
     locale: Mapped[str] = mapped_column(String(2), nullable=False)
     title: Mapped[str] = mapped_column(String(240), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class PropertyCoverMedia(TimestampMixin, Base):
+    __tablename__ = "property_cover_media"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    property_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("properties.id", ondelete="CASCADE"), unique=True
+    )
+    storage_key: Mapped[str | None] = mapped_column(String(180), unique=True)
+    original_filename: Mapped[str | None] = mapped_column(String(255))
+    mime_type: Mapped[str | None] = mapped_column(String(64))
+    size_bytes: Mapped[int | None]
+    sha256: Mapped[str | None] = mapped_column(String(64))
+    width: Mapped[int | None]
+    height: Mapped[int | None]
+    alt_en: Mapped[str | None] = mapped_column(String(320))
+    alt_ar: Mapped[str | None] = mapped_column(String(320))
+    provenance_url: Mapped[str] = mapped_column(Text, nullable=False)
+    rights_status: Mapped[MediaRightsStatus] = mapped_column(
+        Enum(MediaRightsStatus, name="media_rights_status"),
+        default=MediaRightsStatus.PENDING,
+        nullable=False,
+    )
+    display_position: Mapped[int] = mapped_column(default=0, nullable=False)
+    uploaded_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id")
+    )
+
+
+class TrustProfile(TimestampMixin, Base):
+    __tablename__ = "trust_profiles"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    display_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    phone: Mapped[str] = mapped_column(String(40), nullable=False)
+    google_business_url: Mapped[str] = mapped_column(Text, nullable=False)
+    google_rating: Mapped[Decimal] = mapped_column(Numeric(2, 1), nullable=False)
+    google_review_count: Mapped[int] = mapped_column(nullable=False)
+    snapshot_verified_at: Mapped[date] = mapped_column(Date, nullable=False)
+    office_address: Mapped[str] = mapped_column(String(320), nullable=False)
+    status: Mapped[PublicationStatus] = mapped_column(
+        Enum(PublicationStatus, name="publication_status", create_type=False), nullable=False
+    )
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
 
 
 class InsightPost(TimestampMixin, Base):

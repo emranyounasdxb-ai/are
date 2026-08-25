@@ -16,7 +16,15 @@ from pydantic import (
     model_validator,
 )
 
-from app.models import ApplicationStatus, EnquiryStatus, JobStatus, PublicationStatus, Purpose
+from app.models import (
+    ApplicationStatus,
+    AvailabilityStatus,
+    EnquiryStatus,
+    JobStatus,
+    MediaRightsStatus,
+    PublicationStatus,
+    Purpose,
+)
 
 SLUG_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
@@ -68,6 +76,8 @@ class PropertyInput(StrictModel):
     featured: bool = False
     provenance_note: str = Field(min_length=3, max_length=2000)
     external_reference_url: HttpUrl | None = None
+    source_verified_at: date | None = None
+    availability_status: AvailabilityStatus = AvailabilityStatus.UNVERIFIED
     status: PublicationStatus = PublicationStatus.DRAFT
     translations: dict[Literal["en", "ar"], TranslationInput]
 
@@ -85,6 +95,24 @@ class PropertyInput(StrictModel):
         if not self.price_on_request and self.price is None:
             raise ValueError("Provide a price or use price on request")
         return self
+
+
+class PropertyMediaMetadataInput(StrictModel):
+    alt_en: str | None = Field(default=None, max_length=320)
+    alt_ar: str | None = Field(default=None, max_length=320)
+    provenance_url: HttpUrl
+    rights_status: MediaRightsStatus = MediaRightsStatus.PENDING
+
+
+class TrustProfileInput(StrictModel):
+    display_name: str = Field(min_length=2, max_length=160)
+    phone: str = Field(min_length=7, max_length=40)
+    google_business_url: HttpUrl
+    google_rating: Decimal = Field(ge=0, le=5)
+    google_review_count: int = Field(ge=0)
+    snapshot_verified_at: date
+    office_address: str = Field(min_length=5, max_length=320)
+    status: PublicationStatus = PublicationStatus.DRAFT
 
 
 class PropertyResponse(PropertyInput):

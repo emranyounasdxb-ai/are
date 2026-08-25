@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import io
 from copy import deepcopy
 
 import pytest
 from httpx import AsyncClient
+from PIL import Image
 
 
 async def authenticate(client: AsyncClient, email: str, password: str) -> dict[str, object]:
@@ -140,12 +142,38 @@ async def test_property_draft_archive_and_publication_boundaries(
     email, password = await create_user("super-admin")
     session = await authenticate(client, email, password)
     csrf = str(session["csrf_token"])
+    direct_publish = await client.post(
+        "/api/v1/admin/properties",
+        json=property_payload("published"),
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert direct_publish.status_code == 422
+    assert direct_publish.json()["error"]["code"] == "property_media_incomplete"
     created = await client.post(
         "/api/v1/admin/properties", json=property_payload(), headers={"X-CSRF-Token": csrf}
     )
     assert created.status_code == 201, created.text
     record_id = created.json()["id"]
     assert (await client.get("/api/v1/public/properties?locale=en")).json()["meta"]["total"] == 0
+    image = io.BytesIO()
+    Image.new("RGB", (640, 360), "#745238").save(image, "WEBP")
+    uploaded = await client.post(
+        f"/api/v1/admin/properties/{record_id}/cover",
+        files={"image": ("cover.webp", image.getvalue(), "image/webp")},
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert uploaded.status_code == 200, uploaded.text
+    reviewed = await client.put(
+        f"/api/v1/admin/properties/{record_id}/cover",
+        json={
+            "alt_en": "Disposable property cover",
+            "alt_ar": "غلاف عقار مؤقت",
+            "provenance_url": "https://example.com/property-cover.webp",
+            "rights_status": "approved",
+        },
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert reviewed.status_code == 200, reviewed.text
     published_payload = property_payload("published")
     published = await client.put(
         f"/api/v1/admin/properties/{record_id}",
@@ -157,6 +185,22 @@ async def test_property_draft_archive_and_publication_boundaries(
     public_ar = await client.get("/api/v1/public/properties/qa-source-verified-home?locale=ar")
     assert public_en.json()["title"] == "QA verified home"
     assert public_ar.json()["title"] == "منزل اختبار موثق"
+    assert public_en.json()["cover_media"]["alt"] == "Disposable property cover"
+    assert (
+        await client.get("/api/v1/public/properties/qa-source-verified-home/cover")
+    ).status_code == 200
+    weakened_media = await client.put(
+        f"/api/v1/admin/properties/{record_id}/cover",
+        json={
+            "alt_en": "Disposable property cover",
+            "alt_ar": "غلاف عقار مؤقت",
+            "provenance_url": "https://example.com/property-cover.webp",
+            "rights_status": "pending",
+        },
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert weakened_media.status_code == 422
+    assert weakened_media.json()["error"]["code"] == "property_media_incomplete"
     archived_payload = deepcopy(published_payload)
     archived_payload["status"] = "archived"
     assert (

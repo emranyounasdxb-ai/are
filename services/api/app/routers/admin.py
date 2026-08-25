@@ -5,13 +5,24 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    UploadFile,
+    status,
+)
 from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.audit import request_correlation_id, write_audit
+from app.config import Settings, get_settings
 from app.db import get_db
 from app.dependencies import (
     AuthContext,
@@ -31,11 +42,27 @@ from app.models import (
     JobOpeningTranslation,
     JobStatus,
     Property,
+    PropertyCoverMedia,
     PropertyTranslation,
     PublicationStatus,
+    TrustProfile,
 )
-from app.schemas import DeveloperInput, InsightInput, JobInput, PropertyInput
-from app.serializers import developer_dict, insight_dict, job_dict, property_dict
+from app.schemas import (
+    DeveloperInput,
+    InsightInput,
+    JobInput,
+    PropertyInput,
+    PropertyMediaMetadataInput,
+    TrustProfileInput,
+)
+from app.serializers import (
+    developer_dict,
+    insight_dict,
+    job_dict,
+    property_dict,
+    trust_profile_dict,
+)
+from app.storage import PrivateStorage
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -367,7 +394,7 @@ async def list_properties(
     statement = (
         select(Property)
         .where(*filters)
-        .options(selectinload(Property.translations))
+        .options(selectinload(Property.translations), selectinload(Property.cover_media))
         .order_by(column.asc() if direction == "asc" else column.desc(), Property.id)
         .offset((page - 1) * page_size)
         .limit(page_size)
@@ -388,7 +415,7 @@ async def get_property(
     record = await db.scalar(
         select(Property)
         .where(Property.id == record_id)
-        .options(selectinload(Property.translations))
+        .options(selectinload(Property.translations), selectinload(Property.cover_media))
     )
     if not record:
         raise HTTPException(
@@ -408,6 +435,16 @@ async def create_property(
     ensure_publish_permission(
         context, "property.publish", payload.status == PublicationStatus.PUBLISHED
     )
+    if payload.status == PublicationStatus.PUBLISHED:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={
+                "code": "property_media_incomplete",
+                "message": (
+                    "Save the property as Draft and add an approved cover before publishing."
+                ),
+            },
+        )
     record = Property(
         **payload.model_dump(exclude={"translations", "external_reference_url"}),
         external_reference_url=str(payload.external_reference_url)
@@ -415,7 +452,7 @@ async def create_property(
         else None,
         created_by=context.user.id,
         updated_by=context.user.id,
-        published_at=datetime.now(UTC) if payload.status == PublicationStatus.PUBLISHED else None,
+        published_at=None,
     )
     record.translations = [
         PropertyTranslation(locale=locale, **translation.model_dump())
@@ -425,9 +462,7 @@ async def create_property(
     await db.flush()
     await write_audit(
         db,
-        action="property.create"
-        if payload.status != PublicationStatus.PUBLISHED
-        else "property.publish",
+        action="property.create",
         entity_type="property",
         entity_id=record.id,
         actor_user_id=context.user.id,
@@ -436,6 +471,7 @@ async def create_property(
     )
     await commit_or_conflict(db)
     await db.refresh(record, attribute_names=["updated_at"])
+    await db.refresh(record, attribute_names=["cover_media"])
     return property_dict(record)
 
 
@@ -450,7 +486,7 @@ async def update_property(
     record = await db.scalar(
         select(Property)
         .where(Property.id == record_id)
-        .options(selectinload(Property.translations))
+        .options(selectinload(Property.translations), selectinload(Property.cover_media))
     )
     if not record:
         raise HTTPException(
@@ -462,6 +498,26 @@ async def update_property(
         and record.status != PublicationStatus.PUBLISHED
     )
     ensure_publish_permission(context, "property.publish", publishing)
+    if publishing:
+        media = record.cover_media
+        if (
+            not media
+            or not media.storage_key
+            or media.rights_status.value != "approved"
+            or not media.provenance_url
+            or not media.alt_en
+            or not media.alt_ar
+        ):
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail={
+                    "code": "property_media_incomplete",
+                    "message": (
+                        "Publishing requires an uploaded cover with approved rights, provenance, "
+                        "and English/Arabic alternative text."
+                    ),
+                },
+            )
     before = {"slug": record.slug, "status": record.status.value}
     for key, value in payload.model_dump(
         exclude={"translations", "external_reference_url"}
@@ -502,6 +558,182 @@ async def update_property(
     await commit_or_conflict(db)
     await db.refresh(record, attribute_names=["updated_at"])
     return property_dict(record)
+
+
+async def _property_with_media(record_id: uuid.UUID, db: AsyncSession) -> Property:
+    record = await db.scalar(
+        select(Property)
+        .where(Property.id == record_id)
+        .options(selectinload(Property.translations), selectinload(Property.cover_media))
+    )
+    if not record:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            detail={"code": "not_found", "message": "Property not found."},
+        )
+    return record
+
+
+@router.post("/properties/{record_id}/cover")
+async def upload_property_cover(
+    record_id: uuid.UUID,
+    request: Request,
+    image: UploadFile = File(),
+    context: AuthContext = Depends(require_mutation_permission("property.update")),
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    record = await _property_with_media(record_id, db)
+    stored = await PrivateStorage(settings).save_property_image(image)
+    media = record.cover_media or PropertyCoverMedia(
+        property_id=record.id, provenance_url="", uploaded_by=context.user.id
+    )
+    previous_key = media.storage_key
+    media.storage_key = stored.storage_key
+    media.original_filename = stored.original_filename
+    media.mime_type = stored.declared_mime_type
+    media.size_bytes = stored.size_bytes
+    media.sha256 = stored.sha256
+    media.width = stored.width
+    media.height = stored.height
+    media.uploaded_by = context.user.id
+    if not record.cover_media:
+        db.add(media)
+    await write_audit(
+        db,
+        action="property.cover.upload",
+        entity_type="property",
+        entity_id=record.id,
+        actor_user_id=context.user.id,
+        correlation_id=request_correlation_id(request),
+        after={"format": stored.verified_format, "size_bytes": stored.size_bytes},
+    )
+    await db.commit()
+    if previous_key:
+        PrivateStorage(settings).delete(previous_key)
+    refreshed = await _property_with_media(record_id, db)
+    return property_dict(refreshed)
+
+
+@router.put("/properties/{record_id}/cover")
+async def update_property_cover_metadata(
+    record_id: uuid.UUID,
+    payload: PropertyMediaMetadataInput,
+    request: Request,
+    context: AuthContext = Depends(require_mutation_permission("property.update")),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    record = await _property_with_media(record_id, db)
+    if record.status == PublicationStatus.PUBLISHED and (
+        payload.rights_status.value != "approved" or not payload.alt_en or not payload.alt_ar
+    ):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={
+                "code": "property_media_incomplete",
+                "message": (
+                    "Published property media must retain approved rights, provenance, and "
+                    "English/Arabic alternative text."
+                ),
+            },
+        )
+    media = record.cover_media or PropertyCoverMedia(
+        property_id=record.id, uploaded_by=context.user.id
+    )
+    before = {
+        "rights_status": media.rights_status.value if record.cover_media else None,
+        "provenance_url": media.provenance_url if record.cover_media else None,
+    }
+    media.alt_en = payload.alt_en or None
+    media.alt_ar = payload.alt_ar or None
+    media.provenance_url = str(payload.provenance_url)
+    media.rights_status = payload.rights_status
+    if not record.cover_media:
+        db.add(media)
+    await write_audit(
+        db,
+        action="property.cover.update",
+        entity_type="property",
+        entity_id=record.id,
+        actor_user_id=context.user.id,
+        correlation_id=request_correlation_id(request),
+        before=before,
+        after={"rights_status": media.rights_status.value, "provenance_url": media.provenance_url},
+    )
+    await db.commit()
+    refreshed = await _property_with_media(record_id, db)
+    return property_dict(refreshed)
+
+
+@router.get("/properties/{record_id}/cover")
+async def admin_property_cover(
+    record_id: uuid.UUID,
+    _: AuthContext = Depends(require_permission("property.read")),
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    record = await _property_with_media(record_id, db)
+    if (
+        not record.cover_media
+        or not record.cover_media.storage_key
+        or not record.cover_media.mime_type
+    ):
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            detail={"code": "not_found", "message": "Cover image not found."},
+        )
+    return Response(
+        PrivateStorage(settings).read(record.cover_media.storage_key),
+        media_type=record.cover_media.mime_type,
+        headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
+    )
+
+
+@router.get("/trust-profile")
+async def get_trust_profile(
+    _: AuthContext = Depends(require_permission("property.read")),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    record = await db.scalar(select(TrustProfile).limit(1))
+    if not record:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            detail={"code": "not_found", "message": "Trust profile not found."},
+        )
+    return trust_profile_dict(record)
+
+
+@router.put("/trust-profile")
+async def update_trust_profile(
+    payload: TrustProfileInput,
+    request: Request,
+    context: AuthContext = Depends(require_mutation_permission("property.update")),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    record = await db.scalar(select(TrustProfile).limit(1))
+    if not record:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            detail={"code": "not_found", "message": "Trust profile not found."},
+        )
+    before = trust_profile_dict(record)
+    for key, value in payload.model_dump(exclude={"google_business_url"}).items():
+        setattr(record, key, value)
+    record.google_business_url = str(payload.google_business_url)
+    record.updated_by = context.user.id
+    await write_audit(
+        db,
+        action="trust_profile.update",
+        entity_type="trust_profile",
+        entity_id=record.id,
+        actor_user_id=context.user.id,
+        correlation_id=request_correlation_id(request),
+        before=before,
+        after=trust_profile_dict(record),
+    )
+    await db.commit()
+    await db.refresh(record)
+    return trust_profile_dict(record)
 
 
 @router.get("/insights")

@@ -1,6 +1,6 @@
 "use client";
 
-import { BriefcaseBusiness, Building2, Factory, FileText, Gauge, Inbox, LogOut, Menu, ScrollText, Users, X } from "lucide-react";
+import { BriefcaseBusiness, Building2, Factory, FileText, Gauge, Inbox, LogOut, Menu, ScrollText, ShieldCheck, Users, X } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
@@ -14,6 +14,7 @@ const links = [
   ["/insights", "Insights", FileText], ["/careers/jobs", "Career jobs", BriefcaseBusiness],
   ["/enquiries", "Enquiries", Inbox], ["/careers/applications", "Applications", Users],
   ["/audit", "Audit log", ScrollText],
+  ["/trust-profile", "Trust profile", ShieldCheck],
 ] as const;
 
 export function AdminShell({ children }: Readonly<{ children: ReactNode }>) {
