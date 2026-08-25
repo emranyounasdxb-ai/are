@@ -2,13 +2,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { Breadcrumbs, Checklist, EditorialCards, FaqSection, FinalCta, RelatedPages } from "../../../../../components/content/editorial-content";
+import { Checklist, EditorialCards, FaqSection, FinalCta, RelatedPages } from "../../../../../components/content/editorial-content";
 import { SiteFooter } from "../../../../../components/navigation/site-footer";
 import { Reveal } from "../../../../../components/motion/reveal";
 import { homeCopy, isLocale, type Locale } from "../../../../../lib/home-copy";
 import { calculateReadingTime, type InsightArticle } from "../../../../../lib/insights-data";
 import { getInsight } from "../../../../../lib/api";
-import { richCopy } from "../../../../../lib/rich-copy";
 
 type Props = Readonly<{ params: Promise<{ locale: string; slug: string }> }>;
 export const dynamic = "force-dynamic";
@@ -19,7 +18,7 @@ function LocalizedArticle({ locale, article }: Readonly<{ locale: Locale; articl
   const copy = article.content[locale]; const ar = locale === "ar"; const minutes = calculateReadingTime(article, locale);
   return <div className="article-page" id="top"><main id="main-content">
     <article>
-      <header className="article-hero"><div className="article-hero__inner"><Breadcrumbs items={[{ href: `/${locale}`, label: richCopy[locale].homeLabel }, { href: `/${locale}/insights`, label: homeCopy[locale].header.insights }, { label: copy.title }]} label={richCopy[locale].breadcrumb} /><Reveal className="article-hero__reveal" distance={18}><p>{copy.categoryLabel}</p><h1>{copy.title}</h1><div className="article-meta"><span>{ar ? "نُشر" : "Published"}: <time dateTime={article.published}>{article.published}</time></span><span>{ar ? "حُدث" : "Updated"}: <time dateTime={article.updated}>{article.updated}</time></span><span>{minutes} {ar ? "دقائق قراءة" : "min read"}</span></div></Reveal></div></header>
+      <header className="article-hero"><div className="article-hero__inner"><Reveal className="article-hero__reveal" distance={18}><p>{copy.categoryLabel} / {ar ? "دليل تحريري واعٍ بالمصادر" : "SOURCE-AWARE EDITORIAL GUIDE"}</p><h1>{copy.title}</h1><span className="article-hero__excerpt">{copy.metaDescription}</span><div className="article-meta"><span>{ar ? "نُشر" : "Published"}: <time dateTime={article.published}>{article.published}</time></span><span>{ar ? "حُدث" : "Updated"}: <time dateTime={article.updated}>{article.updated}</time></span><span>{minutes} {ar ? "دقائق قراءة" : "min read"}</span></div></Reveal></div></header>
       <div className="article-layout"><aside className="article-toc"><strong>{ar ? "في هذا الدليل" : "In this guide"}</strong><nav aria-label={ar ? "محتويات المقال" : "Article contents"}>{copy.sections.map((section, index) => <a href={`#section-${index + 1}`} key={section.heading}>{section.heading}</a>)}<a href="#checklist">{copy.checklistTitle}</a><a href="#sources">{copy.sourcesTitle}</a></nav></aside><div className="article-body">
         <p className="article-lead">{copy.introduction}</p>
         {copy.sections.map((section, index) => <section id={`section-${index + 1}`} key={section.heading}><span aria-hidden="true">{String(index + 1).padStart(2, "0")}</span><h2>{section.heading}</h2>{section.paragraphs.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}</section>)}

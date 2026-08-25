@@ -84,9 +84,9 @@ export function isPurpose(value: string | undefined): value is Purpose {
 export const homeCopy: Readonly<Record<Locale, HomeCopy>> = {
   en: {
     meta: {
-      title: "ALIYAS Real Estate | UAE Property Discovery",
+      title: "UAE Property Discovery | ALIYAS Real Estate",
       description:
-        "Explore properties, communities and opportunities across the UAE with ALIYAS Real Estate.",
+        "Explore published UAE properties, community guidance, developers and source-aware insights with ALIYAS Real Estate in English and Arabic.",
     },
     header: {
       about: "About",
@@ -110,15 +110,15 @@ export const homeCopy: Readonly<Record<Locale, HomeCopy>> = {
     },
     hero: {
       description:
-        "Explore properties, communities and opportunities designed around the way you want to live and invest.",
-      eyebrow: "UAE REAL ESTATE, REIMAGINED",
-      localReview: "Local review",
-      primaryAction: "Explore Properties",
-      previewLabel: "English preview",
-      secondaryAction: "Discover How It Works",
-      title: "Discover Exceptional Living Across the UAE",
-      visualLabel: "Conceptual architectural study",
-      visualNote: "Replaceable preview composition — no property is represented.",
+        "Explore published properties, understand the available pathways and organise the questions that matter before you enquire.",
+      eyebrow: "A CONSIDERED ROUTE INTO UAE PROPERTY",
+      localReview: "Dubai, United Arab Emirates",
+      primaryAction: "Start an enquiry",
+      previewLabel: "Bilingual property guidance",
+      secondaryAction: "Explore properties",
+      title: "Find the place that fits the life you are building.",
+      visualLabel: "Residential life in Dubai",
+      visualNote: "Residential architecture and landscaped surroundings in Dubai",
     },
     searchHeading: {
       eyebrow: "Property discovery",
@@ -132,7 +132,7 @@ export const homeCopy: Readonly<Record<Locale, HomeCopy>> = {
         { label: "Dubai", value: "dubai" },
         { label: "Ajman", value: "ajman" },
       ],
-      previewNote: "Preview only — no live inventory is queried.",
+      previewNote: "Filters open the published property directory. Reconfirm current availability and details before acting.",
       propertyTypeLabel: "Property type",
       propertyTypePlaceholder: "Choose a property type",
       propertyTypes: [
@@ -144,49 +144,48 @@ export const homeCopy: Readonly<Record<Locale, HomeCopy>> = {
       purposeLabel: "Purpose",
       purposes: { buy: "Buy", rent: "Rent", "off-plan": "Off-Plan" },
       searchButton: "Search",
-      successMessage:
-        "Search preview ready. Live property search will be connected with approved property data.",
-      validationMessage: "Choose a location and property type before continuing the preview.",
+      successMessage: "Opening published property results.",
+      validationMessage: "Choose a location and property type before viewing published results.",
     },
     discovery: {
       description:
-        "Choose the journey that matches your intent. Live results will follow only when approved property data is connected.",
+        "Choose a permanent discovery route. Property records appear only when they are Published through the Admin-managed data source.",
       eyebrow: "Three ways to begin",
       label: "ALIYAS discovery",
-      title: "A clearer first step into UAE real estate.",
+      title: "Three clear ways to begin your UAE property search.",
     },
     journeys: [
       {
         className: "discovery-card--buy",
         eyebrow: "01 / Buy",
-        linkLabel: "Choose buying",
+        linkLabel: "Explore buying",
         purpose: "buy",
-        text: "Explore a considered path to finding your next home or investment.",
+        text: "Shape a search around intended use, preferred places, home type and the information you need to verify.",
         title: "Buy",
       },
       {
         className: "discovery-card--rent",
         eyebrow: "02 / Rent",
-        linkLabel: "Choose renting",
+        linkLabel: "Explore renting",
         purpose: "rent",
-        text: "Find a place that fits the way you want to live across the UAE.",
+        text: "Consider daily routine, household needs, location priorities and the practical terms of a future tenancy.",
         title: "Rent",
       },
       {
         className: "discovery-card--off-plan",
         eyebrow: "03 / Off-Plan",
-        linkLabel: "Choose off-plan",
+        linkLabel: "Understand off-plan",
         purpose: "off-plan",
-        text: "Discover the questions that matter before exploring a new project.",
+        text: "Review the route, source documents and questions to clarify before evaluating a specific project.",
         title: "Off-Plan",
       },
     ],
   },
   ar: {
     meta: {
-      title: "ALIYAS Real Estate | اكتشاف العقارات في الإمارات",
+      title: "اكتشاف العقارات في الإمارات | ALIYAS Real Estate",
       description:
-        "استكشف العقارات والمجتمعات والفرص في جميع أنحاء دولة الإمارات مع ALIYAS Real Estate.",
+        "استكشف العقارات المنشورة وإرشادات المجتمعات والمطورين والرؤى الواعية بالمصادر في الإمارات مع ALIYAS Real Estate.",
     },
     header: {
       about: "من نحن",
@@ -210,15 +209,15 @@ export const homeCopy: Readonly<Record<Locale, HomeCopy>> = {
     },
     hero: {
       description:
-        "استكشف العقارات والمجتمعات والفرص المصممة لتناسب أسلوب حياتك واستثمارك.",
-      eyebrow: "عقارات الإمارات، برؤية جديدة",
-      localReview: "مراجعة محلية",
-      primaryAction: "استكشف العقارات",
-      previewLabel: "معاينة عربية",
-      secondaryAction: "اكتشف كيف تعمل التجربة",
-      title: "اكتشف أسلوب حياة استثنائياً في جميع أنحاء الإمارات",
-      visualLabel: "دراسة معمارية تصوّرية",
-      visualNote: "تكوين تجريبي قابل للاستبدال — لا يمثّل أي عقار.",
+        "استكشف العقارات المنشورة وافهم المسارات المتاحة ونظّم الأسئلة المهمة قبل إرسال استفسارك.",
+      eyebrow: "مسار مدروس إلى عقارات الإمارات",
+      localReview: "دبي، الإمارات العربية المتحدة",
+      primaryAction: "ابدأ استفساراً",
+      previewLabel: "إرشادات عقارية ثنائية اللغة",
+      secondaryAction: "استكشف العقارات",
+      title: "اعثر على المكان الذي يناسب الحياة التي تبنيها.",
+      visualLabel: "الحياة السكنية في دبي",
+      visualNote: "عمارة سكنية ومساحات منسقة في دبي",
     },
     searchHeading: {
       eyebrow: "اكتشاف العقارات",
@@ -232,7 +231,7 @@ export const homeCopy: Readonly<Record<Locale, HomeCopy>> = {
         { label: "دبي", value: "dubai" },
         { label: "عجمان", value: "ajman" },
       ],
-      previewNote: "معاينة فقط — لا يتم الاستعلام عن مخزون عقاري مباشر.",
+      previewNote: "تنقلك عوامل التصفية إلى دليل العقارات المنشورة. تحقق مجدداً من التوفر والتفاصيل الحالية قبل اتخاذ قرار.",
       propertyTypeLabel: "نوع العقار",
       propertyTypePlaceholder: "اختر نوع العقار",
       propertyTypes: [
@@ -244,40 +243,39 @@ export const homeCopy: Readonly<Record<Locale, HomeCopy>> = {
       purposeLabel: "الغرض",
       purposes: { buy: "شراء", rent: "إيجار", "off-plan": "على المخطط" },
       searchButton: "بحث",
-      successMessage:
-        "معاينة البحث جاهزة. سيتم ربط البحث المباشر بعد اعتماد بيانات العقارات.",
-      validationMessage: "يرجى اختيار الموقع ونوع العقار قبل متابعة المعاينة.",
+      successMessage: "جارٍ فتح نتائج العقارات المنشورة.",
+      validationMessage: "يرجى اختيار الموقع ونوع العقار قبل عرض النتائج المنشورة.",
     },
     discovery: {
       description:
-        "اختر المسار الذي يطابق هدفك. ستظهر النتائج المباشرة فقط بعد ربط بيانات عقارية معتمدة.",
+        "اختر مسار استكشاف دائم. لا تظهر سجلات العقارات إلا بعد نشرها عبر مصدر البيانات الذي تديره لوحة الإدارة.",
       eyebrow: "ثلاث طرق للبدء",
       label: "اكتشاف ALIYAS",
-      title: "خطوة أولى أكثر وضوحاً في عقارات الإمارات.",
+      title: "ثلاث طرق واضحة لبدء بحثك العقاري في الإمارات.",
     },
     journeys: [
       {
         className: "discovery-card--buy",
         eyebrow: "01 / شراء",
-        linkLabel: "اختر الشراء",
+        linkLabel: "استكشف الشراء",
         purpose: "buy",
-        text: "استكشف مساراً مدروساً للعثور على منزلك أو استثمارك القادم.",
+        text: "نظّم البحث حول الغرض والمناطق ونوع المنزل والمعلومات التي تحتاج إلى التحقق منها.",
         title: "شراء",
       },
       {
         className: "discovery-card--rent",
         eyebrow: "02 / إيجار",
-        linkLabel: "اختر الإيجار",
+        linkLabel: "استكشف الإيجار",
         purpose: "rent",
-        text: "اعثر على مكان يناسب أسلوب حياتك في دولة الإمارات.",
+        text: "فكّر في روتينك اليومي واحتياجات الأسرة وأولويات الموقع والشروط العملية للإيجار.",
         title: "إيجار",
       },
       {
         className: "discovery-card--off-plan",
         eyebrow: "03 / على المخطط",
-        linkLabel: "اختر على المخطط",
+        linkLabel: "افهم مسار على المخطط",
         purpose: "off-plan",
-        text: "تعرّف إلى الأسئلة المهمة قبل استكشاف مشروع جديد.",
+        text: "راجع المسار والوثائق والأسئلة التي يلزم توضيحها قبل تقييم مشروع بعينه.",
         title: "على المخطط",
       },
     ],
