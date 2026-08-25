@@ -127,24 +127,23 @@ async function LocalizedHome({ locale, initialPurpose }: Readonly<{ locale: Loca
         </section>
 
         <section aria-labelledby="guidance-title" className="premium-home__section home-guidance-v2">
-          <div className="premium-home__heading">
-            <p>{content.guidance.eyebrow}</p>
-            <h2 id="guidance-title">{content.guidance.title}</h2>
-            <span>{content.guidance.text}</span>
-          </div>
           <div className="home-guidance-v2__composition">
             <figure className="home-guidance-v2__media home-guidance-v2__media--primary">
               <Image alt={content.guidance.communityImageAlt} height={1086} sizes="(max-width: 800px) 100vw, 56vw" src="/images/home-premium/uae-community.webp" width={1448} />
               <figcaption>{content.guidance.imageNote}</figcaption>
             </figure>
-            <figure className="home-guidance-v2__media home-guidance-v2__media--detail">
-              <Image alt={content.guidance.detailImageAlt} height={1086} sizes="(max-width: 800px) 100vw, 30vw" src="/images/home-premium/architecture-detail.webp" width={1448} />
-            </figure>
-            <div className="home-guidance-v2__links">
-              {content.guidance.items.slice(0, 3).map((item, index) => {
-                const href = index === 0 ? `/${locale}/communities` : index === 1 ? `/${locale}/off-plan` : `/${locale}/properties`;
-                return <Link href={href} key={item.title}><span>{String(index + 1).padStart(2, "0")}</span><div><h3>{item.title}</h3><p>{item.text}</p></div></Link>;
-              })}
+            <div className="home-guidance-v2__editorial">
+              <div className="premium-home__heading">
+                <p>{content.guidance.eyebrow}</p>
+                <h2 id="guidance-title">{content.guidance.title}</h2>
+                <span>{content.guidance.text}</span>
+              </div>
+              <div className="home-guidance-v2__links">
+                {content.guidance.items.slice(0, 3).map((item, index) => {
+                  const href = index === 0 ? `/${locale}/communities` : index === 1 ? `/${locale}/off-plan` : `/${locale}/properties`;
+                  return <Link href={href} key={item.title}><span>{String(index + 1).padStart(2, "0")}</span><div><h3>{item.title}</h3><p>{item.text}</p></div></Link>;
+                })}
+              </div>
             </div>
           </div>
         </section>
@@ -155,6 +154,10 @@ async function LocalizedHome({ locale, initialPurpose }: Readonly<{ locale: Loca
               <p>{content.developer.eyebrow}</p>
               <h2 id="developer-spotlight-title">{content.developer.title}</h2>
             </div>
+            <figure className="home-developer-spotlight__media">
+              <Image alt={content.developer.imageAlt} height={1086} sizes="(max-width: 1100px) 100vw, 32vw" src="/images/home-premium/architecture-detail.webp" width={1448} />
+              <figcaption>{content.developer.imageNote}</figcaption>
+            </figure>
             <article>
               <div className="home-developer-spotlight__monogram" aria-hidden="true">01</div>
               <div className="home-developer-spotlight__content">
@@ -184,7 +187,7 @@ async function LocalizedHome({ locale, initialPurpose }: Readonly<{ locale: Loca
             </div>
             <article className="home-insight-spotlight__article">
               <div className="home-insight-spotlight__media">
-                <Image alt={content.insight.imageAlt} height={1086} sizes="(max-width: 1100px) 100vw, 52vw" src="/images/home-premium/uae-community.webp" width={1448} />
+                <Image alt={content.insight.imageAlt} height={1086} sizes="(max-width: 1100px) 100vw, 58vw" src="/images/home-premium/insight-community.webp" width={1448} />
               </div>
               <div className="home-insight-spotlight__copy">
               <p>{insightCopy.categoryLabel} · <time dateTime={featuredInsight.updated}>{featuredInsight.updated}</time></p>

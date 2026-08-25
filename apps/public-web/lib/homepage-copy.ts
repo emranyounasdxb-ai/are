@@ -13,7 +13,6 @@ type HomepageCopy = Readonly<{
     title: string;
     text: string;
     communityImageAlt: string;
-    detailImageAlt: string;
     imageNote: string;
     items: ReadonlyArray<Readonly<{ title: string; text: string }>>;
   }>;
@@ -26,6 +25,8 @@ type HomepageCopy = Readonly<{
     source: string;
     details: string;
     enquire: string;
+    imageAlt: string;
+    imageNote: string;
   }>;
   insight: Readonly<{
     eyebrow: string;
@@ -75,7 +76,6 @@ export const homepageCopy: Readonly<Record<Locale, HomepageCopy>> = {
       title: "Ask better questions before narrowing the search.",
       text: "Evergreen guidance helps you understand the route before evaluating a specific home, project or developer.",
       communityImageAlt: "Aerial view of a contemporary UAE residential community",
-      detailImageAlt: "Architectural detail of a contemporary waterfront residence at dusk",
       imageNote: "Illustrative UAE residential imagery",
       items: [
         { title: "Choose the community", text: "Consider daily routine, household priorities, access and the character of the place." },
@@ -93,13 +93,15 @@ export const homepageCopy: Readonly<Record<Locale, HomepageCopy>> = {
       source: "Source note",
       details: "View developer profile",
       enquire: "Enquire about this developer",
+      imageAlt: "Architectural detail of a contemporary waterfront residence at dusk",
+      imageNote: "Illustrative architectural imagery — not a project listing",
     },
     insight: {
       eyebrow: "FEATURED INSIGHT",
       title: "A practical guide for a more considered search.",
       read: "Read the complete guide",
       editorial: "Source-aware editorial guide",
-      imageAlt: "Aerial view of a contemporary residential community illustrating the editorial guide",
+      imageAlt: "Landscaped pedestrian setting in a contemporary UAE residential community",
     },
     process: {
       eyebrow: "A SIMPLE DISCOVERY PROCESS",
@@ -150,7 +152,6 @@ export const homepageCopy: Readonly<Record<Locale, HomepageCopy>> = {
       title: "اطرح أسئلة أدق قبل تضييق نطاق البحث.",
       text: "تساعدك الإرشادات الدائمة على فهم المسار قبل تقييم منزل أو مشروع أو مطور بعينه.",
       communityImageAlt: "مشهد علوي لمجتمع سكني عصري في الإمارات",
-      detailImageAlt: "تفصيل معماري لمسكن عصري على الواجهة المائية عند الغروب",
       imageNote: "صور توضيحية للحياة السكنية في الإمارات",
       items: [
         { title: "اختيار المجتمع", text: "فكّر في روتينك اليومي وأولويات الأسرة وسهولة الوصول وطابع المكان." },
@@ -168,13 +169,15 @@ export const homepageCopy: Readonly<Record<Locale, HomepageCopy>> = {
       source: "ملاحظة المصدر",
       details: "عرض ملف المطور",
       enquire: "استفسر عن هذا المطور",
+      imageAlt: "تفصيل معماري لمسكن عصري على الواجهة المائية عند الغروب",
+      imageNote: "صورة معمارية توضيحية — لا تمثل مشروعاً معروضاً",
     },
     insight: {
       eyebrow: "رؤية مختارة",
       title: "دليل عملي لبحث أكثر تأنياً.",
       read: "اقرأ الدليل كاملاً",
       editorial: "دليل تحريري واعٍ بالمصادر",
-      imageAlt: "مشهد علوي لمجتمع سكني عصري يوضح موضوع الدليل التحريري",
+      imageAlt: "ممشى منسق داخل مجتمع سكني عصري في الإمارات",
     },
     process: {
       eyebrow: "عملية استكشاف بسيطة",
