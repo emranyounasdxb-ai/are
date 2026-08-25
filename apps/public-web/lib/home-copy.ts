@@ -118,7 +118,7 @@ export const homeCopy: Readonly<Record<Locale, HomeCopy>> = {
       secondaryAction: "Explore properties",
       title: "Find the place that fits the life you are building.",
       visualLabel: "Residential life in Dubai",
-      visualNote: "Residential architecture and landscaped surroundings in Dubai",
+      visualNote: "Illustrative contemporary waterfront residence in the UAE",
     },
     searchHeading: {
       eyebrow: "Property discovery",
@@ -217,7 +217,7 @@ export const homeCopy: Readonly<Record<Locale, HomeCopy>> = {
       secondaryAction: "استكشف العقارات",
       title: "اعثر على المكان الذي يناسب الحياة التي تبنيها.",
       visualLabel: "الحياة السكنية في دبي",
-      visualNote: "عمارة سكنية ومساحات منسقة في دبي",
+      visualNote: "صورة توضيحية لمسكن عصري على الواجهة المائية في الإمارات",
     },
     searchHeading: {
       eyebrow: "اكتشاف العقارات",

@@ -11,6 +11,12 @@ import { getDeveloper, getInsight } from "../../../lib/api";
 import { homeCopy, isLocale, isPurpose, type Locale } from "../../../lib/home-copy";
 import { homepageCopy } from "../../../lib/homepage-copy";
 
+const journeyImages = {
+  buy: "/images/home-premium/journey-buy.webp",
+  rent: "/images/home-premium/journey-rent.webp",
+  "off-plan": "/images/home-premium/journey-offplan.webp",
+} as const;
+
 type HomePageProps = Readonly<{
   params: Promise<{ locale: string }>;
   searchParams: Promise<{ purpose?: string | string[] }>;
@@ -46,11 +52,11 @@ async function LocalizedHome({ locale, initialPurpose }: Readonly<{ locale: Loca
           <Image
             alt={copy.hero.visualNote}
             className="premium-home__hero-image"
-            height={1200}
+            height={941}
             priority
             sizes="100vw"
-            src="/images/homepage/dubai-residential-hero.webp"
-            width={1800}
+            src="/images/home-premium/hero-residence.webp"
+            width={1672}
           />
           <div aria-hidden="true" className="premium-home__hero-shade" />
           <div className="premium-home__hero-inner">
@@ -83,14 +89,24 @@ async function LocalizedHome({ locale, initialPurpose }: Readonly<{ locale: Loca
             <h2 id="pathways-title">{copy.discovery.title}</h2>
             <span>{copy.discovery.description}</span>
           </div>
-          <div className="home-pathways-v2__grid">
+          <div className="home-pathways-v2__grid home-pathways-v2__grid--image-led">
             {copy.journeys.map((journey, index) => (
               <Link href={journey.purpose === "off-plan" ? `/${locale}/off-plan` : `/${locale}/properties?purpose=${journey.purpose}`} key={journey.purpose}>
-                <span>{String(index + 1).padStart(2, "0")}</span>
-                <p>{journey.eyebrow}</p>
-                <h3>{journey.title}</h3>
-                <small>{journey.text}</small>
-                <strong>{journey.linkLabel} <i aria-hidden="true">→</i></strong>
+                <Image
+                  alt={locale === "ar" ? `صورة توضيحية لمسار ${journey.title}` : `Illustrative residence for the ${journey.title} journey`}
+                  height={1086}
+                  sizes="(max-width: 800px) 100vw, 33vw"
+                  src={journeyImages[journey.purpose]}
+                  width={1448}
+                />
+                <span className="home-pathways-v2__shade" aria-hidden="true" />
+                <span className="home-pathways-v2__number">{String(index + 1).padStart(2, "0")}</span>
+                <div>
+                  <p>{journey.eyebrow}</p>
+                  <h3>{journey.title}</h3>
+                  <small>{journey.text}</small>
+                  <strong>{journey.linkLabel} <i aria-hidden="true">→</i></strong>
+                </div>
               </Link>
             ))}
           </div>
@@ -98,7 +114,7 @@ async function LocalizedHome({ locale, initialPurpose }: Readonly<{ locale: Loca
 
         <section aria-labelledby="approach-title" className="premium-home__section home-approach-v2">
           <div className="home-approach-v2__media">
-            <Image alt={content.approach.imageAlt} height={1000} loading="lazy" sizes="(max-width: 900px) 100vw, 50vw" src="/images/homepage/dubai-community-aerial.webp" width={1400} />
+            <Image alt={content.approach.imageAlt} height={1086} sizes="(max-width: 900px) 100vw, 55vw" src="/images/home-premium/aliyas-approach.webp" width={1448} />
             <span>{locale === "ar" ? "صورة تحريرية عامة — لا تمثل عقاراً بعينه" : "Generic editorial image — no specific property represented"}</span>
           </div>
           <div className="home-approach-v2__copy">
@@ -106,6 +122,7 @@ async function LocalizedHome({ locale, initialPurpose }: Readonly<{ locale: Loca
             <h2 id="approach-title">{content.approach.title}</h2>
             <span>{content.approach.text}</span>
             <ul>{content.approach.points.map((point, index) => <li key={point}><small>{String(index + 1).padStart(2, "0")}</small>{point}</li>)}</ul>
+            <Link className="text-link" href={`/${locale}/about`}>{locale === "ar" ? "تعرّف إلى ALIYAS" : "Discover the ALIYAS approach"}</Link>
           </div>
         </section>
 
@@ -115,8 +132,20 @@ async function LocalizedHome({ locale, initialPurpose }: Readonly<{ locale: Loca
             <h2 id="guidance-title">{content.guidance.title}</h2>
             <span>{content.guidance.text}</span>
           </div>
-          <div className="home-guidance-v2__grid">
-            {content.guidance.items.map((item, index) => <article key={item.title}><span>{String(index + 1).padStart(2, "0")}</span><h3>{item.title}</h3><p>{item.text}</p></article>)}
+          <div className="home-guidance-v2__composition">
+            <figure className="home-guidance-v2__media home-guidance-v2__media--primary">
+              <Image alt={content.guidance.communityImageAlt} height={1086} sizes="(max-width: 800px) 100vw, 56vw" src="/images/home-premium/uae-community.webp" width={1448} />
+              <figcaption>{content.guidance.imageNote}</figcaption>
+            </figure>
+            <figure className="home-guidance-v2__media home-guidance-v2__media--detail">
+              <Image alt={content.guidance.detailImageAlt} height={1086} sizes="(max-width: 800px) 100vw, 30vw" src="/images/home-premium/architecture-detail.webp" width={1448} />
+            </figure>
+            <div className="home-guidance-v2__links">
+              {content.guidance.items.slice(0, 3).map((item, index) => {
+                const href = index === 0 ? `/${locale}/communities` : index === 1 ? `/${locale}/off-plan` : `/${locale}/properties`;
+                return <Link href={href} key={item.title}><span>{String(index + 1).padStart(2, "0")}</span><div><h3>{item.title}</h3><p>{item.text}</p></div></Link>;
+              })}
+            </div>
           </div>
         </section>
 
@@ -153,11 +182,16 @@ async function LocalizedHome({ locale, initialPurpose }: Readonly<{ locale: Loca
               <h2 id="insight-spotlight-title">{content.insight.title}</h2>
               <span>{content.insight.editorial}</span>
             </div>
-            <article>
+            <article className="home-insight-spotlight__article">
+              <div className="home-insight-spotlight__media">
+                <Image alt={content.insight.imageAlt} height={1086} sizes="(max-width: 1100px) 100vw, 52vw" src="/images/home-premium/uae-community.webp" width={1448} />
+              </div>
+              <div className="home-insight-spotlight__copy">
               <p>{insightCopy.categoryLabel} · <time dateTime={featuredInsight.updated}>{featuredInsight.updated}</time></p>
               <h3>{insightCopy.title}</h3>
               <span>{insightCopy.metaDescription}</span>
               <Link className="text-link" href={`/${locale}/insights/${featuredInsight.slug}`}>{content.insight.read}</Link>
+              </div>
             </article>
           </section>
         ) : null}
@@ -173,9 +207,11 @@ async function LocalizedHome({ locale, initialPurpose }: Readonly<{ locale: Loca
 
         <FaqSection eyebrow={content.faq.eyebrow} heading={content.faq.title} items={content.faq.items} />
 
-        <section aria-labelledby="home-closing-title" className="home-closing-v2">
-          <div><p>{content.cta.eyebrow}</p><h2 id="home-closing-title">{content.cta.title}</h2><span>{content.cta.text}</span></div>
-          <div className="premium-home__actions">
+        <section aria-labelledby="home-closing-title" className="home-closing-v2 home-closing-v2--image-led">
+          <Image alt={content.cta.imageAlt} className="home-closing-v2__image" height={841} sizes="(max-width: 800px) 100vw, 1200px" src="/images/home-premium/enquiry-cta.webp" width={1870} />
+          <span className="home-closing-v2__shade" aria-hidden="true" />
+          <div className="home-closing-v2__content"><p>{content.cta.eyebrow}</p><h2 id="home-closing-title">{content.cta.title}</h2><span>{content.cta.text}</span></div>
+          <div className="premium-home__actions home-closing-v2__actions">
             <Link className="button button--primary" href={`/${locale}/contact`}>{content.cta.enquire}</Link>
             <a className="button button--secondary" href="https://wa.me/971569157576" rel="noreferrer" target="_blank">{content.cta.whatsapp}</a>
           </div>

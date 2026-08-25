@@ -12,6 +12,9 @@ type HomepageCopy = Readonly<{
     eyebrow: string;
     title: string;
     text: string;
+    communityImageAlt: string;
+    detailImageAlt: string;
+    imageNote: string;
     items: ReadonlyArray<Readonly<{ title: string; text: string }>>;
   }>;
   developer: Readonly<{
@@ -29,6 +32,7 @@ type HomepageCopy = Readonly<{
     title: string;
     read: string;
     editorial: string;
+    imageAlt: string;
   }>;
   process: Readonly<{
     eyebrow: string;
@@ -47,6 +51,7 @@ type HomepageCopy = Readonly<{
     text: string;
     enquire: string;
     whatsapp: string;
+    imageAlt: string;
   }>;
 }>;
 
@@ -56,7 +61,7 @@ export const homepageCopy: Readonly<Record<Locale, HomepageCopy>> = {
       eyebrow: "THE ALIYAS APPROACH",
       title: "A clear property conversation begins with your requirements.",
       text: "We organise the journey around what you need to understand, compare and verify. The aim is a useful enquiry shaped by current information—not assumptions.",
-      imageAlt: "Residential neighbourhood and landscaped streets in Dubai viewed from above",
+      imageAlt: "Architectural plans and material samples arranged for a considered property conversation",
       points: [
         "Begin with client requirements",
         "Compare information carefully",
@@ -69,6 +74,9 @@ export const homepageCopy: Readonly<Record<Locale, HomepageCopy>> = {
       eyebrow: "UAE DISCOVERY GUIDANCE",
       title: "Ask better questions before narrowing the search.",
       text: "Evergreen guidance helps you understand the route before evaluating a specific home, project or developer.",
+      communityImageAlt: "Aerial view of a contemporary UAE residential community",
+      detailImageAlt: "Architectural detail of a contemporary waterfront residence at dusk",
+      imageNote: "Illustrative UAE residential imagery",
       items: [
         { title: "Choose the community", text: "Consider daily routine, household priorities, access and the character of the place." },
         { title: "Understand off-plan", text: "Review the developer identity, project information, milestones and documents through current sources." },
@@ -91,6 +99,7 @@ export const homepageCopy: Readonly<Record<Locale, HomepageCopy>> = {
       title: "A practical guide for a more considered search.",
       read: "Read the complete guide",
       editorial: "Source-aware editorial guide",
+      imageAlt: "Aerial view of a contemporary residential community illustrating the editorial guide",
     },
     process: {
       eyebrow: "A SIMPLE DISCOVERY PROCESS",
@@ -119,6 +128,7 @@ export const homepageCopy: Readonly<Record<Locale, HomepageCopy>> = {
       text: "Tell us what you are considering and what you need to verify. You can use the enquiry form or begin a WhatsApp conversation.",
       enquire: "Start an enquiry",
       whatsapp: "WhatsApp +971 56 915 7576",
+      imageAlt: "Contemporary waterfront residence illuminated at night",
     },
   },
   ar: {
@@ -126,7 +136,7 @@ export const homepageCopy: Readonly<Record<Locale, HomepageCopy>> = {
       eyebrow: "منهج ALIYAS",
       title: "تبدأ المحادثة العقارية الواضحة من متطلباتك.",
       text: "ننظم رحلة البحث حول ما تحتاج إلى فهمه ومقارنته والتحقق منه، بهدف إعداد استفسار مفيد يستند إلى معلومات حالية لا إلى افتراضات.",
-      imageAlt: "مشهد علوي لمجتمع سكني وشوارع منسقة في دبي",
+      imageAlt: "مخططات معمارية وعينات مواد مرتبة لمحادثة عقارية مدروسة",
       points: [
         "البدء بمتطلبات العميل",
         "مقارنة المعلومات بعناية",
@@ -139,6 +149,9 @@ export const homepageCopy: Readonly<Record<Locale, HomepageCopy>> = {
       eyebrow: "إرشادات الاستكشاف في الإمارات",
       title: "اطرح أسئلة أدق قبل تضييق نطاق البحث.",
       text: "تساعدك الإرشادات الدائمة على فهم المسار قبل تقييم منزل أو مشروع أو مطور بعينه.",
+      communityImageAlt: "مشهد علوي لمجتمع سكني عصري في الإمارات",
+      detailImageAlt: "تفصيل معماري لمسكن عصري على الواجهة المائية عند الغروب",
+      imageNote: "صور توضيحية للحياة السكنية في الإمارات",
       items: [
         { title: "اختيار المجتمع", text: "فكّر في روتينك اليومي وأولويات الأسرة وسهولة الوصول وطابع المكان." },
         { title: "فهم الشراء على المخطط", text: "راجع هوية المطور ومعلومات المشروع والمراحل والوثائق عبر مصادر حديثة." },
@@ -161,6 +174,7 @@ export const homepageCopy: Readonly<Record<Locale, HomepageCopy>> = {
       title: "دليل عملي لبحث أكثر تأنياً.",
       read: "اقرأ الدليل كاملاً",
       editorial: "دليل تحريري واعٍ بالمصادر",
+      imageAlt: "مشهد علوي لمجتمع سكني عصري يوضح موضوع الدليل التحريري",
     },
     process: {
       eyebrow: "عملية استكشاف بسيطة",
@@ -189,6 +203,7 @@ export const homepageCopy: Readonly<Record<Locale, HomepageCopy>> = {
       text: "أخبرنا بما تفكر فيه وما تحتاج إلى التحقق منه عبر نموذج الاستفسار أو محادثة واتساب.",
       enquire: "ابدأ استفساراً",
       whatsapp: "واتساب +971 56 915 7576",
+      imageAlt: "مسكن عصري على الواجهة المائية مضاء ليلاً",
     },
   },
 };
