@@ -598,7 +598,17 @@ async def import_batch_detail(
     batch = await db.scalar(
         select(ProjectImportBatch)
         .where(ProjectImportBatch.id == batch_id)
-        .options(selectinload(ProjectImportBatch.candidates))
+        .options(
+            selectinload(ProjectImportBatch.candidates).selectinload(
+                ProjectImportCandidate.evidence
+            ),
+            selectinload(ProjectImportBatch.candidates).selectinload(
+                ProjectImportCandidate.staged_media
+            ),
+            selectinload(ProjectImportBatch.candidates).selectinload(
+                ProjectImportCandidate.changes
+            ),
+        )
     )
     if not batch:
         raise HTTPException(

@@ -26,6 +26,11 @@
     "backend:test": "docker compose run --rm api pytest",
     "admin:create-super-user": "docker compose run --rm api are-create-super-admin",
     "content:seed-insights": "docker compose run --rm api are-seed-insights",
+    "projects:import:load": "docker compose run --rm api python -m app.project_acquisition_cli load",
+    "projects:acquire": "docker compose run --rm api python -m app.project_acquisition_cli acquire",
+    "projects:refresh": "docker compose run --rm api python -m app.project_acquisition_cli refresh",
+    "projects:retry-failed": "docker compose run --rm api python -m app.project_acquisition_cli retry-failed",
+    "projects:import:status": "docker compose run --rm api python -m app.project_acquisition_cli status",
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "build": "npm run build --workspaces --if-present"

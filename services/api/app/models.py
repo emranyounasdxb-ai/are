@@ -577,6 +577,8 @@ class ProjectImportBatch(TimestampMixin, Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(240), nullable=False)
     source_reference: Mapped[str] = mapped_column(Text, nullable=False)
+    manifest_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    adapter_version: Mapped[str] = mapped_column(String(32), nullable=False)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     total_count: Mapped[int] = mapped_column(default=0, nullable=False)
@@ -590,6 +592,7 @@ class ProjectImportBatch(TimestampMixin, Base):
 
 class ProjectImportCandidate(TimestampMixin, Base):
     __tablename__ = "project_import_candidates"
+    __table_args__ = (UniqueConstraint("batch_id", "manifest_row_id"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     batch_id: Mapped[uuid.UUID] = mapped_column(
@@ -597,6 +600,7 @@ class ProjectImportCandidate(TimestampMixin, Base):
         ForeignKey("project_import_batches.id", ondelete="CASCADE"),
         nullable=False,
     )
+    manifest_row_id: Mapped[int] = mapped_column(nullable=False)
     raw_source_payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     normalized_payload: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     owner_manifest_values: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
@@ -608,6 +612,11 @@ class ProjectImportCandidate(TimestampMixin, Base):
         UUID(as_uuid=True), ForeignKey("area_communities.id")
     )
     official_source_url: Mapped[str | None] = mapped_column(Text)
+    adapter_key: Mapped[str | None] = mapped_column(String(80))
+    adapter_version: Mapped[str | None] = mapped_column(String(32))
+    last_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    arabic_review_required: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    acquisition_summary: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     source_urls: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     extracted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -625,6 +634,93 @@ class ProjectImportCandidate(TimestampMixin, Base):
     reviewed_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id")
     )
+    evidence: Mapped[list[ProjectSourceSnapshot]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin"
+    )
+    staged_media: Mapped[list[ProjectImportMedia]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin"
+    )
+    changes: Mapped[list[ProjectImportChange]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin"
+    )
+
+
+class ProjectSourceSnapshot(TimestampMixin, Base):
+    __tablename__ = "project_source_snapshots"
+    __table_args__ = (UniqueConstraint("candidate_id", "source_url", "content_hash"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    candidate_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("project_import_candidates.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    source_url: Mapped[str] = mapped_column(Text, nullable=False)
+    source_type: Mapped[ProjectSourceType] = mapped_column(
+        Enum(ProjectSourceType, name="project_source_type", create_type=False), nullable=False
+    )
+    http_status: Mapped[int | None]
+    retrieved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    adapter_key: Mapped[str] = mapped_column(String(80), nullable=False)
+    adapter_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    content_type: Mapped[str | None] = mapped_column(String(160))
+    etag: Mapped[str | None] = mapped_column(String(320))
+    last_modified: Mapped[str | None] = mapped_column(String(320))
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    storage_key: Mapped[str | None] = mapped_column(String(180), unique=True)
+    outcome: Mapped[str] = mapped_column(String(40), nullable=False)
+    error_code: Mapped[str | None] = mapped_column(String(80))
+    error_message: Mapped[str | None] = mapped_column(String(500))
+
+
+class ProjectImportMedia(TimestampMixin, Base):
+    __tablename__ = "project_import_media"
+    __table_args__ = (UniqueConstraint("candidate_id", "source_url"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    candidate_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("project_import_candidates.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    snapshot_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("project_source_snapshots.id", ondelete="SET NULL")
+    )
+    category: Mapped[ProjectMediaCategory] = mapped_column(
+        Enum(ProjectMediaCategory, name="project_media_category", create_type=False),
+        nullable=False,
+    )
+    source_url: Mapped[str] = mapped_column(Text, nullable=False)
+    rights_status: Mapped[MediaRightsStatus] = mapped_column(
+        Enum(MediaRightsStatus, name="media_rights_status", create_type=False), nullable=False
+    )
+    stage_status: Mapped[str] = mapped_column(String(40), nullable=False)
+    storage_key: Mapped[str | None] = mapped_column(String(180), unique=True)
+    mime_type: Mapped[str | None] = mapped_column(String(80))
+    size_bytes: Mapped[int | None]
+    sha256: Mapped[str | None] = mapped_column(String(64))
+    width: Mapped[int | None]
+    height: Mapped[int | None]
+    duplicate_of_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("project_import_media.id")
+    )
+
+
+class ProjectImportChange(TimestampMixin, Base):
+    __tablename__ = "project_import_changes"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    candidate_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("project_import_candidates.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    classification: Mapped[str] = mapped_column(String(40), nullable=False)
+    existing_value: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    new_value: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    source_url: Mapped[str | None] = mapped_column(Text)
+    detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    content_hash: Mapped[str | None] = mapped_column(String(64))
 
 
 class InsightPost(TimestampMixin, Base):
@@ -863,6 +959,9 @@ Index(
     ProjectImportCandidate.proposed_developer_id,
     ProjectImportCandidate.proposed_area_id,
 )
+Index("ix_project_source_snapshots_candidate", ProjectSourceSnapshot.candidate_id)
+Index("ix_project_import_media_candidate", ProjectImportMedia.candidate_id)
+Index("ix_project_import_changes_candidate", ProjectImportChange.candidate_id)
 Index("ix_job_openings_search", JobOpening.slug, JobOpening.department)
 Index("ix_contact_enquiries_status_created", ContactEnquiry.status, ContactEnquiry.created_at)
 Index(

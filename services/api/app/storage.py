@@ -15,6 +15,7 @@ from app.config import Settings
 
 MAX_CV_BYTES = 5 * 1024 * 1024
 MAX_PROPERTY_IMAGE_BYTES = 10 * 1024 * 1024
+MAX_ACQUISITION_SNAPSHOT_BYTES = 8 * 1024 * 1024
 IMAGE_MIME_TYPES = {
     "jpg": "image/jpeg",
     "jpeg": "image/jpeg",
@@ -95,6 +96,34 @@ class PrivateStorage:
 
     async def save_project_image(self, upload: UploadFile) -> StoredImage:
         return await self._save_image(upload, "project")
+
+    async def save_acquisition_snapshot(
+        self, content: bytes, content_type: str | None
+    ) -> StoredFile:
+        if not content or len(content) > MAX_ACQUISITION_SNAPSHOT_BYTES:
+            raise ValueError("Acquisition snapshot is empty or exceeds the private-storage limit.")
+        extensions = {
+            "application/json": "json",
+            "application/ld+json": "json",
+            "application/pdf": "pdf",
+            "application/xhtml+xml": "html",
+            "application/xml": "xml",
+            "text/html": "html",
+            "text/xml": "xml",
+        }
+        extension = extensions.get(content_type or "")
+        if not extension:
+            raise ValueError("Acquisition snapshot content type is not supported.")
+        storage_key = f"acquisition-{uuid.uuid4().hex}.{extension}"
+        await asyncio.to_thread(self._path(storage_key).write_bytes, content)
+        return StoredFile(
+            storage_key=storage_key,
+            original_filename=f"official-source.{extension}",
+            declared_mime_type=content_type or "application/octet-stream",
+            verified_format=extension,
+            size_bytes=len(content),
+            sha256=hashlib.sha256(content).hexdigest(),
+        )
 
     async def _save_image(self, upload: UploadFile, prefix: str) -> StoredImage:
         filename = upload.filename or ""

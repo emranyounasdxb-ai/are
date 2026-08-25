@@ -221,12 +221,15 @@ async def test_import_candidate_review_is_admin_only_and_audited(
             id=batch_id,
             name="QA Project Import",
             source_reference="data-intake/qa.csv",
+            manifest_hash=uuid.uuid4().hex + uuid.uuid4().hex,
+            adapter_version="test",
             total_count=1,
             needs_review_count=1,
         )
         batch.candidates = [
             ProjectImportCandidate(
                 id=candidate_id,
+                manifest_row_id=1,
                 raw_source_payload={"owner_project_name": "Unverified QA candidate"},
                 owner_manifest_values={"owner_project_name": "Unverified QA candidate"},
                 source_urls=[],

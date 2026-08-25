@@ -332,6 +332,8 @@ def import_batch_dict(record: ProjectImportBatch) -> dict[str, Any]:
         "id": record.id,
         "name": record.name,
         "source_reference": record.source_reference,
+        "manifest_hash": record.manifest_hash,
+        "adapter_version": record.adapter_version,
         "started_at": record.started_at,
         "completed_at": record.completed_at,
         "total_count": record.total_count,
@@ -347,6 +349,7 @@ def import_candidate_dict(record: ProjectImportCandidate) -> dict[str, Any]:
     return {
         "id": record.id,
         "batch_id": record.batch_id,
+        "manifest_row_id": record.manifest_row_id,
         "raw_source_payload": record.raw_source_payload,
         "normalized_payload": record.normalized_payload,
         "owner_manifest_values": record.owner_manifest_values,
@@ -354,6 +357,11 @@ def import_candidate_dict(record: ProjectImportCandidate) -> dict[str, Any]:
         "proposed_developer_id": record.proposed_developer_id,
         "proposed_area_id": record.proposed_area_id,
         "official_source_url": record.official_source_url,
+        "adapter_key": record.adapter_key,
+        "adapter_version": record.adapter_version,
+        "last_verified_at": record.last_verified_at,
+        "arabic_review_required": record.arabic_review_required,
+        "acquisition_summary": record.acquisition_summary,
         "source_urls": record.source_urls,
         "extracted_at": record.extracted_at,
         "content_hash": record.content_hash,
@@ -362,6 +370,46 @@ def import_candidate_dict(record: ProjectImportCandidate) -> dict[str, Any]:
         "conflict_reasons": record.conflict_reasons,
         "review_status": record.review_status.value,
         "linked_project_id": record.linked_project_id,
+        "evidence": [
+            {
+                "source_url": item.source_url,
+                "source_type": item.source_type.value,
+                "http_status": item.http_status,
+                "retrieved_at": item.retrieved_at,
+                "adapter": f"{item.adapter_key}@{item.adapter_version}",
+                "content_type": item.content_type,
+                "etag": item.etag,
+                "last_modified": item.last_modified,
+                "content_hash": item.content_hash,
+                "private_snapshot_reference": item.storage_key,
+                "outcome": item.outcome,
+                "error_code": item.error_code,
+            }
+            for item in record.evidence
+        ],
+        "staged_media": [
+            {
+                "category": item.category.value,
+                "source_url": item.source_url,
+                "rights_status": item.rights_status.value,
+                "stage_status": item.stage_status,
+                "sha256": item.sha256,
+                "width": item.width,
+                "height": item.height,
+            }
+            for item in record.staged_media
+        ],
+        "changes": [
+            {
+                "classification": item.classification,
+                "existing_value": item.existing_value,
+                "new_value": item.new_value,
+                "source_url": item.source_url,
+                "detected_at": item.detected_at,
+                "content_hash": item.content_hash,
+            }
+            for item in record.changes
+        ],
         "created_at": record.created_at,
         "updated_at": record.updated_at,
     }
