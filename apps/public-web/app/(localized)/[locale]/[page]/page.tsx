@@ -13,13 +13,11 @@ import {
   RelatedPages,
 } from "../../../../components/content/editorial-content";
 import { SiteFooter } from "../../../../components/navigation/site-footer";
-import { SiteHeader } from "../../../../components/navigation/site-header";
 import { DiscoverySearch } from "../../../../components/search/discovery-search";
 import { homeCopy, isLocale, locales, type Locale, type Purpose } from "../../../../lib/home-copy";
 import { isPageSlug, pageSlugs, siteCopy, type PageSlug } from "../../../../lib/site-copy";
 import { richCopy } from "../../../../lib/rich-copy";
-import { getDeveloper, getDeveloperEnquiryLabel } from "../../../../lib/developers-data";
-import { getProperties } from "../../../../lib/api";
+import { getDeveloper, getProjects, getProperties } from "../../../../lib/api";
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
@@ -70,7 +68,6 @@ async function LocalizedInnerPage({
 
   return (
     <div className={`inner-page inner-page--${page}`} id="top">
-      <SiteHeader copy={home.header} locale={locale} />
       <main id="main-content">
         <section aria-labelledby="page-title" className="inner-hero">
           <div className="inner-hero__orbit" aria-hidden="true" />
@@ -242,10 +239,12 @@ function CommunitiesContent({ locale }: Readonly<{ locale: Locale }>) {
   );
 }
 
-function OffPlanContent({ locale }: Readonly<{ locale: Locale }>) {
+async function OffPlanContent({ locale }: Readonly<{ locale: Locale }>) {
   const copy = siteCopy[locale].offPlan;
+  const projects = await getProjects(locale);
 
   return (
+    <>
     <section aria-labelledby="off-plan-title" className="inner-section off-plan-pathway">
       <div className="off-plan-pathway__heading">
         <p>ARE / PATHWAY</p>
@@ -264,6 +263,14 @@ function OffPlanContent({ locale }: Readonly<{ locale: Locale }>) {
         <Link className="text-link" href={`/${locale}/properties`}>{copy.searchAction}</Link>
       </div>
     </section>
+    <section aria-labelledby="published-projects-title" className="inner-section">
+      <div className="inner-section__heading">
+        <p>ARE / {locale === "ar" ? "المشاريع المنشورة" : "PUBLISHED PROJECTS"}</p>
+        <h2 id="published-projects-title">{locale === "ar" ? "مشاريع على المخطط معتمدة" : "Approved Off-Plan projects"}</h2>
+      </div>
+      {projects.length ? <div className="cms-property-grid">{projects.map((project) => <article key={project.id}><div className="cms-media-neutral" aria-hidden="true">ARE</div><div><span>{project.emirate} · {project.area.name_ar && locale === "ar" ? project.area.name_ar : project.area.name_en}</span><h3>{project.official_name}</h3><p>{project.short_summary}</p><Link className="text-link" href={`/${locale}/off-plan/${project.slug}`}>{locale === "ar" ? "عرض المشروع" : "View project"}</Link></div></article>)}</div> : <div className="career-opportunities__empty"><span aria-hidden="true">00</span><div><h3>{locale === "ar" ? "لا توجد مشاريع منشورة حالياً" : "No published projects yet"}</h3><p>{locale === "ar" ? "لن تظهر هنا إلا المشاريع المعتمدة والمنشورة." : "Only approved, published Project records will appear here."}</p></div></div>}
+    </section>
+    </>
   );
 }
 
@@ -286,10 +293,15 @@ function AboutContent({ locale }: Readonly<{ locale: Locale }>) {
   );
 }
 
-function ContactContent({ locale, query }: Readonly<{ locale: Locale; query: SearchParams }>) {
+async function ContactContent({ locale, query }: Readonly<{ locale: Locale; query: SearchParams }>) {
   const copy = siteCopy[locale].contact;
-  const developer = firstValue(query.topic) === "developer" ? getDeveloper(firstValue(query.developer)) : undefined;
-  const enquiryType = developer ? getDeveloperEnquiryLabel(developer.enquiryTypes[0], locale) : undefined;
+  const slug = firstValue(query.topic) === "developer" ? firstValue(query.developer) : undefined;
+  const developer = slug ? await getDeveloper(locale, slug) : null;
+  const enquiryType = developer ? ({
+    "new-booking": { en: "New booking enquiry", ar: "استفسار عن حجز جديد" },
+    "primary-sale": { en: "Primary-sale enquiry", ar: "استفسار عن بيع أولي" },
+    resale: { en: "Resale enquiry", ar: "استفسار عن إعادة البيع" },
+  } as const)[developer.enquiry_types[0] ?? "new-booking"][locale] : undefined;
 
   return (
     <section aria-labelledby="contact-form-title" className="inner-section contact-experience">
@@ -299,9 +311,9 @@ function ContactContent({ locale, query }: Readonly<{ locale: Locale; query: Sea
         <span>{copy.intro}</span>
       </div>
       <ContactPreviewForm
-        initialEnquiryType={developer?.enquiryTypes[0]}
+        initialEnquiryType={developer?.enquiry_types[0]}
         locale={locale}
-        selectedDeveloper={developer?.officialName}
+        selectedDeveloper={developer?.name}
         selectedEnquiryLabel={enquiryType}
       />
     </section>

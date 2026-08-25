@@ -15,7 +15,7 @@ from sqlalchemy import text
 from app.config import get_settings
 from app.db import SessionLocal, engine
 from app.middleware import RequestContextMiddleware, configure_logging
-from app.routers import admin, auth, public, submissions
+from app.routers import admin, auth, projects, public, submissions
 
 configure_logging()
 settings = get_settings()
@@ -44,7 +44,9 @@ app.add_middleware(
 )
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")
+app.include_router(projects.admin_router, prefix="/api/v1")
 app.include_router(public.router, prefix="/api/v1")
+app.include_router(projects.public_router, prefix="/api/v1")
 app.include_router(submissions.router, prefix="/api/v1")
 
 

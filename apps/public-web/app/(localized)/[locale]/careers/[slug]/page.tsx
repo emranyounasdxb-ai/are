@@ -4,7 +4,6 @@ import { notFound } from "next/navigation";
 
 import { Breadcrumbs, Checklist, FinalCta } from "../../../../../components/content/editorial-content";
 import { SiteFooter } from "../../../../../components/navigation/site-footer";
-import { SiteHeader } from "../../../../../components/navigation/site-header";
 import { getJob } from "../../../../../lib/api";
 import { homeCopy, isLocale } from "../../../../../lib/home-copy";
 import { richCopy } from "../../../../../lib/rich-copy";
@@ -26,7 +25,6 @@ export default async function JobDetail({ params }: Props) {
   if (!job) notFound();
   const ar = locale === "ar";
   return <div className="career-detail-page" id="top">
-    <SiteHeader copy={homeCopy[locale].header} locale={locale}/>
     <main id="main-content">
       <section className="article-hero"><div className="article-hero__inner">
         <Breadcrumbs items={[{ href: `/${locale}`, label: richCopy[locale].homeLabel }, { href: `/${locale}/careers`, label: homeCopy[locale].header.careers }, { label: job.title }]} label={richCopy[locale].breadcrumb}/>

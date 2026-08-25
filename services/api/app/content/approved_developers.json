@@ -1,0 +1,672 @@
+[
+  {
+    "slug": "emaar-properties",
+    "officialName": "Emaar Properties PJSC",
+    "primaryEmirate": "Dubai",
+    "otherPresence": [
+      "Abu Dhabi"
+    ],
+    "description": {
+      "en": "A UAE developer of master-planned communities and mixed-use destinations.",
+      "ar": "مطور إماراتي للمجتمعات المخططة والوجهات متعددة الاستخدامات."
+    },
+    "focus": {
+      "en": "Master communities, residential and mixed-use development",
+      "ar": "المجتمعات الرئيسية والمشاريع السكنية ومتعددة الاستخدامات"
+    },
+    "selectedProjects": [
+      "Dubai Hills Estate",
+      "Emaar South"
+    ],
+    "officialWebsite": "https://www.emaar.com/",
+    "governmentSourceUrl": "https://dubailand.gov.ae/en/eservices/approved-real-estate-developers/",
+    "additionalOfficialSourceUrls": [
+      "https://dubailand.gov.ae/en/news-media/dubai-land-department-enhances-developer-registration-with-seven-strategic-agreements/",
+      "https://www.emaar.com/en/our-communities/dubai-hills-estate"
+    ],
+    "lastVerified": "2026-08-24",
+    "enquiryTypes": [
+      "new-booking",
+      "primary-sale",
+      "resale"
+    ],
+    "note": {
+      "en": "Project names are identity references only; current inventory, pricing, eligibility and availability require fresh verification.",
+      "ar": "تُذكر أسماء المشاريع للتعريف فقط؛ أما المخزون والأسعار والأهلية والتوفر فتتطلب تحققاً حديثاً."
+    }
+  },
+  {
+    "slug": "damac-properties",
+    "officialName": "DAMAC Properties Dubai Co PJSC",
+    "primaryEmirate": "Dubai",
+    "otherPresence": [
+      "Abu Dhabi"
+    ],
+    "description": {
+      "en": "A Dubai-based developer with residential and master-community activity in the UAE.",
+      "ar": "مطور مقره دبي وله نشاط في المشاريع السكنية والمجتمعات الرئيسية داخل الإمارات."
+    },
+    "focus": {
+      "en": "Residential communities and branded residences",
+      "ar": "المجتمعات السكنية والمساكن ذات العلامات التجارية"
+    },
+    "selectedProjects": [
+      "DAMAC Hills",
+      "DAMAC Lagoons"
+    ],
+    "officialWebsite": "https://www.damacproperties.com/",
+    "governmentSourceUrl": "https://dubailand.gov.ae/en/eservices/approved-real-estate-developers/",
+    "additionalOfficialSourceUrls": [
+      "https://dubailand.gov.ae/en/news-media/dubai-land-department-enhances-developer-registration-with-seven-strategic-agreements/"
+    ],
+    "lastVerified": "2026-08-24",
+    "enquiryTypes": [
+      "new-booking",
+      "primary-sale",
+      "resale"
+    ],
+    "note": {
+      "en": "Project names are identity references only; current inventory, pricing, eligibility and availability require fresh verification.",
+      "ar": "تُذكر أسماء المشاريع للتعريف فقط؛ أما المخزون والأسعار والأهلية والتوفر فتتطلب تحققاً حديثاً."
+    }
+  },
+  {
+    "slug": "binghatti",
+    "officialName": "Binghatti Properties",
+    "primaryEmirate": "Dubai",
+    "otherPresence": [],
+    "description": {
+      "en": "A Dubai developer with residential and branded-residence projects.",
+      "ar": "مطور في دبي يقدّم مشاريع سكنية ومساكن ذات علامات تجارية."
+    },
+    "focus": {
+      "en": "Residential towers and branded residences",
+      "ar": "الأبراج السكنية والمساكن ذات العلامات التجارية"
+    },
+    "selectedProjects": [
+      "Bugatti Residences by Binghatti",
+      "Mercedes-Benz Places"
+    ],
+    "officialWebsite": "https://www.binghatti.com/",
+    "governmentSourceUrl": "https://dubailand.gov.ae/en/eservices/approved-real-estate-developers/",
+    "additionalOfficialSourceUrls": [
+      "https://dubailand.gov.ae/en/news-media/dubai-land-department-enhances-developer-registration-with-seven-strategic-agreements/",
+      "https://www.binghatti.com/en/projects"
+    ],
+    "lastVerified": "2026-08-24",
+    "enquiryTypes": [
+      "new-booking",
+      "primary-sale",
+      "resale"
+    ],
+    "note": {
+      "en": "Project names are identity references only; current inventory, pricing, eligibility and availability require fresh verification.",
+      "ar": "تُذكر أسماء المشاريع للتعريف فقط؛ أما المخزون والأسعار والأهلية والتوفر فتتطلب تحققاً حديثاً."
+    }
+  },
+  {
+    "slug": "sobha-realty",
+    "officialName": "Sobha Realty",
+    "primaryEmirate": "Dubai",
+    "otherPresence": [
+      "Abu Dhabi"
+    ],
+    "description": {
+      "en": "A UAE residential developer active in Dubai and represented in official Abu Dhabi project records.",
+      "ar": "مطور سكني في الإمارات، ينشط في دبي ويظهر ضمن السجلات الرسمية لمشاريع أبوظبي."
+    },
+    "focus": {
+      "en": "Residential communities and towers",
+      "ar": "المجتمعات والأبراج السكنية"
+    },
+    "selectedProjects": [
+      "Sobha Hartland II",
+      "Sobha City Abu Dhabi"
+    ],
+    "officialWebsite": "https://sobharealty.com/",
+    "governmentSourceUrl": "https://dubailand.gov.ae/en/eservices/approved-real-estate-developers/",
+    "additionalOfficialSourceUrls": [
+      "https://dubailand.gov.ae/en/news-media/dubai-land-department-enhances-developer-registration-with-seven-strategic-agreements/",
+      "https://adrec.gov.ae/en/directory"
+    ],
+    "lastVerified": "2026-08-24",
+    "enquiryTypes": [
+      "new-booking",
+      "primary-sale",
+      "resale"
+    ],
+    "note": {
+      "en": "Project names are identity references only; current inventory, pricing, eligibility and availability require fresh verification.",
+      "ar": "تُذكر أسماء المشاريع للتعريف فقط؛ أما المخزون والأسعار والأهلية والتوفر فتتطلب تحققاً حديثاً."
+    }
+  },
+  {
+    "slug": "azizi-developments",
+    "officialName": "Azizi Developments",
+    "primaryEmirate": "Dubai",
+    "otherPresence": [],
+    "description": {
+      "en": "A Dubai developer with residential and mixed-use projects across multiple districts.",
+      "ar": "مطور في دبي لديه مشاريع سكنية ومتعددة الاستخدامات في مناطق مختلفة."
+    },
+    "focus": {
+      "en": "Residential and mixed-use development",
+      "ar": "التطوير السكني ومتعدد الاستخدامات"
+    },
+    "selectedProjects": [
+      "Azizi Riviera",
+      "Azizi Venice"
+    ],
+    "officialWebsite": "https://www.azizidevelopments.com/",
+    "governmentSourceUrl": "https://dubailand.gov.ae/en/eservices/approved-real-estate-developers/",
+    "additionalOfficialSourceUrls": [
+      "https://dubailand.gov.ae/en/news-media/dubai-land-department-enhances-developer-registration-with-seven-strategic-agreements/"
+    ],
+    "lastVerified": "2026-08-24",
+    "enquiryTypes": [
+      "new-booking",
+      "primary-sale",
+      "resale"
+    ],
+    "note": {
+      "en": "Project names are identity references only; current inventory, pricing, eligibility and availability require fresh verification.",
+      "ar": "تُذكر أسماء المشاريع للتعريف فقط؛ أما المخزون والأسعار والأهلية والتوفر فتتطلب تحققاً حديثاً."
+    }
+  },
+  {
+    "slug": "danube-properties",
+    "officialName": "Danube Properties",
+    "primaryEmirate": "Dubai",
+    "otherPresence": [],
+    "description": {
+      "en": "A Dubai residential developer operating under the Danube Group brand.",
+      "ar": "مطور سكني في دبي يعمل ضمن علامة مجموعة دانوب."
+    },
+    "focus": {
+      "en": "Residential apartment development",
+      "ar": "تطوير الشقق السكنية"
+    },
+    "selectedProjects": [
+      "Oceanz",
+      "Bayz 102"
+    ],
+    "officialWebsite": "https://danubeproperties.com/",
+    "governmentSourceUrl": "https://dubailand.gov.ae/en/eservices/approved-real-estate-developers/",
+    "additionalOfficialSourceUrls": [
+      "https://dubailand.gov.ae/en/news-media/dubai-land-department-enhances-developer-registration-with-seven-strategic-agreements/"
+    ],
+    "lastVerified": "2026-08-24",
+    "enquiryTypes": [
+      "new-booking",
+      "primary-sale",
+      "resale"
+    ],
+    "note": {
+      "en": "Project names are identity references only; current inventory, pricing, eligibility and availability require fresh verification.",
+      "ar": "تُذكر أسماء المشاريع للتعريف فقط؛ أما المخزون والأسعار والأهلية والتوفر فتتطلب تحققاً حديثاً."
+    }
+  },
+  {
+    "slug": "nakheel",
+    "officialName": "Nakheel",
+    "primaryEmirate": "Dubai",
+    "otherPresence": [],
+    "description": {
+      "en": "A Dubai Holding Real Estate company associated with large-scale waterfront and master-planned destinations.",
+      "ar": "شركة تابعة لدبي القابضة للعقارات ومرتبطة بوجهات ساحلية ومجتمعات رئيسية واسعة النطاق."
+    },
+    "focus": {
+      "en": "Waterfront destinations and master communities",
+      "ar": "الوجهات الساحلية والمجتمعات الرئيسية"
+    },
+    "selectedProjects": [
+      "Palm Jebel Ali",
+      "Dubai Islands"
+    ],
+    "officialWebsite": "https://www.nakheel.com/",
+    "governmentSourceUrl": "https://dubailand.gov.ae/en/eservices/approved-real-estate-developers/",
+    "additionalOfficialSourceUrls": [
+      "https://www.dubaiholding.com/en/our-companies/dubai-holding-real-estate/"
+    ],
+    "lastVerified": "2026-08-24",
+    "enquiryTypes": [
+      "new-booking",
+      "primary-sale",
+      "resale"
+    ],
+    "note": {
+      "en": "Project names are identity references only; current inventory, pricing, eligibility and availability require fresh verification.",
+      "ar": "تُذكر أسماء المشاريع للتعريف فقط؛ أما المخزون والأسعار والأهلية والتوفر فتتطلب تحققاً حديثاً."
+    }
+  },
+  {
+    "slug": "meraas",
+    "officialName": "Meraas",
+    "primaryEmirate": "Dubai",
+    "otherPresence": [],
+    "description": {
+      "en": "A Dubai Holding Real Estate brand focused on residential and mixed-use destinations.",
+      "ar": "علامة ضمن دبي القابضة للعقارات تركز على الوجهات السكنية ومتعددة الاستخدامات."
+    },
+    "focus": {
+      "en": "Urban destinations and residential communities",
+      "ar": "الوجهات الحضرية والمجتمعات السكنية"
+    },
+    "selectedProjects": [
+      "City Walk",
+      "Bluewaters Residences"
+    ],
+    "officialWebsite": "https://meraas.com/",
+    "governmentSourceUrl": "https://dubailand.gov.ae/en/eservices/approved-real-estate-developers/",
+    "additionalOfficialSourceUrls": [
+      "https://www.dubaiholding.com/en/our-companies/dubai-holding-real-estate/"
+    ],
+    "lastVerified": "2026-08-24",
+    "enquiryTypes": [
+      "new-booking",
+      "primary-sale",
+      "resale"
+    ],
+    "note": {
+      "en": "Project names are identity references only; current inventory, pricing, eligibility and availability require fresh verification.",
+      "ar": "تُذكر أسماء المشاريع للتعريف فقط؛ أما المخزون والأسعار والأهلية والتوفر فتتطلب تحققاً حديثاً."
+    }
+  },
+  {
+    "slug": "dubai-properties",
+    "officialName": "Dubai Properties",
+    "primaryEmirate": "Dubai",
+    "otherPresence": [],
+    "description": {
+      "en": "A Dubai Holding Real Estate brand with established residential communities in Dubai.",
+      "ar": "علامة ضمن دبي القابضة للعقارات ولديها مجتمعات سكنية قائمة في دبي."
+    },
+    "focus": {
+      "en": "Residential communities and mixed-use districts",
+      "ar": "المجتمعات السكنية والمناطق متعددة الاستخدامات"
+    },
+    "selectedProjects": [
+      "Jumeirah Beach Residence",
+      "Mudon"
+    ],
+    "officialWebsite": "https://www.dp.ae/",
+    "governmentSourceUrl": "https://dubailand.gov.ae/en/eservices/approved-real-estate-developers/",
+    "additionalOfficialSourceUrls": [
+      "https://www.dubaiholding.com/en/our-companies/dubai-holding-real-estate/"
+    ],
+    "lastVerified": "2026-08-24",
+    "enquiryTypes": [
+      "new-booking",
+      "primary-sale",
+      "resale"
+    ],
+    "note": {
+      "en": "Project names are identity references only; current inventory, pricing, eligibility and availability require fresh verification.",
+      "ar": "تُذكر أسماء المشاريع للتعريف فقط؛ أما المخزون والأسعار والأهلية والتوفر فتتطلب تحققاً حديثاً."
+    }
+  },
+  {
+    "slug": "omniyat",
+    "officialName": "OMNIYAT",
+    "primaryEmirate": "Dubai",
+    "otherPresence": [],
+    "description": {
+      "en": "A Dubai developer focused on design-led residential and mixed-use properties.",
+      "ar": "مطور في دبي يركز على العقارات السكنية ومتعددة الاستخدامات القائمة على التصميم."
+    },
+    "focus": {
+      "en": "Design-led residences and mixed-use buildings",
+      "ar": "المساكن والمباني متعددة الاستخدامات ذات التوجه التصميمي"
+    },
+    "selectedProjects": [
+      "The Opus",
+      "One at Palm Jumeirah"
+    ],
+    "officialWebsite": "https://www.omniyat.com/",
+    "governmentSourceUrl": "https://dubailand.gov.ae/en/eservices/approved-real-estate-developers/",
+    "additionalOfficialSourceUrls": [],
+    "lastVerified": "2026-08-24",
+    "enquiryTypes": [
+      "new-booking",
+      "primary-sale",
+      "resale"
+    ],
+    "note": {
+      "en": "Project names are identity references only; current inventory, pricing, eligibility and availability require fresh verification.",
+      "ar": "تُذكر أسماء المشاريع للتعريف فقط؛ أما المخزون والأسعار والأهلية والتوفر فتتطلب تحققاً حديثاً."
+    }
+  },
+  {
+    "slug": "aldar-properties",
+    "officialName": "Aldar Properties PJSC",
+    "primaryEmirate": "Abu Dhabi",
+    "otherPresence": [
+      "Dubai",
+      "Ras Al Khaimah"
+    ],
+    "description": {
+      "en": "An Abu Dhabi-headquartered developer and real-estate manager with activity across the UAE.",
+      "ar": "مطور ومدير عقاري مقره أبوظبي وله نشاط في أنحاء الإمارات."
+    },
+    "focus": {
+      "en": "Master communities, residential and mixed-use development",
+      "ar": "المجتمعات الرئيسية والتطوير السكني ومتعدد الاستخدامات"
+    },
+    "selectedProjects": [
+      "Yas Acres",
+      "Saadiyat Lagoons"
+    ],
+    "officialWebsite": "https://www.aldar.com/",
+    "governmentSourceUrl": "https://www.adrec.gov.ae/en/real_estate_providers",
+    "additionalOfficialSourceUrls": [
+      "https://adrec.gov.ae/en/directory",
+      "https://dubailand.gov.ae/en/news-media/dubai-land-department-enhances-developer-registration-with-seven-strategic-agreements/"
+    ],
+    "lastVerified": "2026-08-24",
+    "enquiryTypes": [
+      "new-booking",
+      "primary-sale",
+      "resale"
+    ],
+    "note": {
+      "en": "Project names are identity references only; current inventory, pricing, eligibility and availability require fresh verification.",
+      "ar": "تُذكر أسماء المشاريع للتعريف فقط؛ أما المخزون والأسعار والأهلية والتوفر فتتطلب تحققاً حديثاً."
+    }
+  },
+  {
+    "slug": "bloom-holding",
+    "officialName": "Bloom Holding",
+    "primaryEmirate": "Abu Dhabi",
+    "otherPresence": [
+      "Dubai"
+    ],
+    "description": {
+      "en": "An Abu Dhabi developer with residential, hospitality and education-related activity.",
+      "ar": "مطور في أبوظبي وله نشاط في القطاعات السكنية والضيافة والتعليم."
+    },
+    "focus": {
+      "en": "Residential communities and mixed-use development",
+      "ar": "المجتمعات السكنية والتطوير متعدد الاستخدامات"
+    },
+    "selectedProjects": [
+      "Bloom Living",
+      "Bloom Gardens"
+    ],
+    "officialWebsite": "https://bloomholding.com/",
+    "governmentSourceUrl": "https://www.adrec.gov.ae/en/real_estate_providers",
+    "additionalOfficialSourceUrls": [
+      "https://adrec.gov.ae/en/directory"
+    ],
+    "lastVerified": "2026-08-24",
+    "enquiryTypes": [
+      "new-booking",
+      "primary-sale",
+      "resale"
+    ],
+    "note": {
+      "en": "Project names are identity references only; current inventory, pricing, eligibility and availability require fresh verification.",
+      "ar": "تُذكر أسماء المشاريع للتعريف فقط؛ أما المخزون والأسعار والأهلية والتوفر فتتطلب تحققاً حديثاً."
+    }
+  },
+  {
+    "slug": "imkan",
+    "officialName": "IMKAN Properties",
+    "primaryEmirate": "Abu Dhabi",
+    "otherPresence": [],
+    "description": {
+      "en": "An Abu Dhabi developer of residential communities and mixed-use destinations.",
+      "ar": "مطور في أبوظبي للمجتمعات السكنية والوجهات متعددة الاستخدامات."
+    },
+    "focus": {
+      "en": "Residential communities and placemaking",
+      "ar": "المجتمعات السكنية وصناعة المكان"
+    },
+    "selectedProjects": [
+      "Makers District",
+      "AlJurf"
+    ],
+    "officialWebsite": "https://www.imkan.ae/",
+    "governmentSourceUrl": "https://www.adrec.gov.ae/en/real_estate_providers",
+    "additionalOfficialSourceUrls": [
+      "https://adrec.gov.ae/en/directory"
+    ],
+    "lastVerified": "2026-08-24",
+    "enquiryTypes": [
+      "new-booking",
+      "primary-sale",
+      "resale"
+    ],
+    "note": {
+      "en": "Project names are identity references only; current inventory, pricing, eligibility and availability require fresh verification.",
+      "ar": "تُذكر أسماء المشاريع للتعريف فقط؛ أما المخزون والأسعار والأهلية والتوفر فتتطلب تحققاً حديثاً."
+    }
+  },
+  {
+    "slug": "miral",
+    "officialName": "Miral",
+    "primaryEmirate": "Abu Dhabi",
+    "otherPresence": [],
+    "description": {
+      "en": "An Abu Dhabi creator and manager of destinations, including development activity on Yas Island.",
+      "ar": "جهة في أبوظبي تنشئ وتدير وجهات، ولها نشاط تطويري في جزيرة ياس."
+    },
+    "focus": {
+      "en": "Destination and mixed-use development",
+      "ar": "تطوير الوجهات والمشاريع متعددة الاستخدامات"
+    },
+    "selectedProjects": [
+      "Yas Bay Waterfront"
+    ],
+    "officialWebsite": "https://miral.ae/",
+    "governmentSourceUrl": "https://www.adrec.gov.ae/en/real_estate_providers",
+    "additionalOfficialSourceUrls": [],
+    "lastVerified": "2026-08-24",
+    "enquiryTypes": [
+      "new-booking",
+      "primary-sale",
+      "resale"
+    ],
+    "note": {
+      "en": "Project names are identity references only; current inventory, pricing, eligibility and availability require fresh verification.",
+      "ar": "تُذكر أسماء المشاريع للتعريف فقط؛ أما المخزون والأسعار والأهلية والتوفر فتتطلب تحققاً حديثاً."
+    }
+  },
+  {
+    "slug": "reportage-properties",
+    "officialName": "Reportage Properties",
+    "primaryEmirate": "Abu Dhabi",
+    "otherPresence": [
+      "Dubai"
+    ],
+    "description": {
+      "en": "A UAE residential developer listed among ADREC real-estate providers.",
+      "ar": "مطور سكني إماراتي مدرج ضمن مزودي الخدمات العقارية لدى مركز أبوظبي العقاري."
+    },
+    "focus": {
+      "en": "Residential apartment and townhouse development",
+      "ar": "تطوير الشقق ومنازل التاون هاوس"
+    },
+    "selectedProjects": [
+      "Reportage Village",
+      "Al Maryah Vista"
+    ],
+    "officialWebsite": "https://reportageuae.com/",
+    "governmentSourceUrl": "https://www.adrec.gov.ae/en/real_estate_providers",
+    "additionalOfficialSourceUrls": [
+      "https://adrec.gov.ae/en/directory"
+    ],
+    "lastVerified": "2026-08-24",
+    "enquiryTypes": [
+      "new-booking",
+      "primary-sale",
+      "resale"
+    ],
+    "note": {
+      "en": "Project names are identity references only; current inventory, pricing, eligibility and availability require fresh verification.",
+      "ar": "تُذكر أسماء المشاريع للتعريف فقط؛ أما المخزون والأسعار والأهلية والتوفر فتتطلب تحققاً حديثاً."
+    }
+  },
+  {
+    "slug": "q-properties",
+    "officialName": "Q Properties",
+    "primaryEmirate": "Abu Dhabi",
+    "otherPresence": [],
+    "description": {
+      "en": "An Abu Dhabi residential developer associated with Q Holding and listed by ADREC.",
+      "ar": "مطور سكني في أبوظبي مرتبط بشركة كيو القابضة ومدرج لدى مركز أبوظبي العقاري."
+    },
+    "focus": {
+      "en": "Residential communities and towers",
+      "ar": "المجتمعات والأبراج السكنية"
+    },
+    "selectedProjects": [
+      "Reem Hills"
+    ],
+    "officialWebsite": "https://qproperties.ae/",
+    "governmentSourceUrl": "https://www.adrec.gov.ae/en/real_estate_providers",
+    "additionalOfficialSourceUrls": [
+      "https://adrec.gov.ae/en/directory"
+    ],
+    "lastVerified": "2026-08-24",
+    "enquiryTypes": [
+      "new-booking",
+      "primary-sale",
+      "resale"
+    ],
+    "note": {
+      "en": "Project names are identity references only; current inventory, pricing, eligibility and availability require fresh verification.",
+      "ar": "تُذكر أسماء المشاريع للتعريف فقط؛ أما المخزون والأسعار والأهلية والتوفر فتتطلب تحققاً حديثاً."
+    }
+  },
+  {
+    "slug": "lead-development",
+    "officialName": "LEAD Development",
+    "primaryEmirate": "Abu Dhabi",
+    "otherPresence": [],
+    "description": {
+      "en": "An Abu Dhabi development company listed among ADREC real-estate providers.",
+      "ar": "شركة تطوير في أبوظبي مدرجة ضمن مزودي الخدمات العقارية لدى مركز أبوظبي العقاري."
+    },
+    "focus": {
+      "en": "Residential and mixed-use development",
+      "ar": "التطوير السكني ومتعدد الاستخدامات"
+    },
+    "selectedProjects": [
+      "Jubail Island"
+    ],
+    "officialWebsite": "https://leaddevelopment.ae/",
+    "governmentSourceUrl": "https://www.adrec.gov.ae/en/real_estate_providers",
+    "additionalOfficialSourceUrls": [
+      "https://adrec.gov.ae/en/directory"
+    ],
+    "lastVerified": "2026-08-24",
+    "enquiryTypes": [
+      "new-booking",
+      "primary-sale",
+      "resale"
+    ],
+    "note": {
+      "en": "Project names are identity references only; current inventory, pricing, eligibility and availability require fresh verification.",
+      "ar": "تُذكر أسماء المشاريع للتعريف فقط؛ أما المخزون والأسعار والأهلية والتوفر فتتطلب تحققاً حديثاً."
+    }
+  },
+  {
+    "slug": "rak-properties",
+    "officialName": "RAK Properties PJSC",
+    "primaryEmirate": "Ras Al Khaimah",
+    "otherPresence": [
+      "Abu Dhabi"
+    ],
+    "description": {
+      "en": "A Ras Al Khaimah-headquartered developer with residential, hospitality and mixed-use activity.",
+      "ar": "مطور مقره رأس الخيمة وله نشاط سكني وضيافي ومتعدد الاستخدامات."
+    },
+    "focus": {
+      "en": "Waterfront communities and mixed-use development",
+      "ar": "المجتمعات الساحلية والتطوير متعدد الاستخدامات"
+    },
+    "selectedProjects": [
+      "Mina Al Arab"
+    ],
+    "officialWebsite": "https://www.rakproperties.ae/",
+    "governmentSourceUrl": "https://sanad.mun.rak.ae/docs/en/rera-updated-developers-list",
+    "additionalOfficialSourceUrls": [
+      "https://mun.rak.ae/home/rak-municipality/organizational-structure/lands-properties-sector/real-estate-regulatory-administration/"
+    ],
+    "lastVerified": "2026-08-24",
+    "enquiryTypes": [
+      "new-booking",
+      "primary-sale",
+      "resale"
+    ],
+    "note": {
+      "en": "Project names are identity references only; current inventory, pricing, eligibility and availability require fresh verification.",
+      "ar": "تُذكر أسماء المشاريع للتعريف فقط؛ أما المخزون والأسعار والأهلية والتوفر فتتطلب تحققاً حديثاً."
+    }
+  },
+  {
+    "slug": "al-hamra",
+    "officialName": "Al Hamra Real Estate Development",
+    "primaryEmirate": "Ras Al Khaimah",
+    "otherPresence": [],
+    "description": {
+      "en": "A Ras Al Khaimah developer associated with the Al Hamra destination.",
+      "ar": "مطور في رأس الخيمة مرتبط بوجهة الحمراء."
+    },
+    "focus": {
+      "en": "Residential, hospitality and waterfront development",
+      "ar": "التطوير السكني والضيافي والساحلي"
+    },
+    "selectedProjects": [
+      "Al Hamra Village",
+      "Al Hamra Waterfront"
+    ],
+    "officialWebsite": "https://alhamra.ae/",
+    "governmentSourceUrl": "https://sanad.mun.rak.ae/docs/en/rera-updated-developers-list",
+    "additionalOfficialSourceUrls": [
+      "https://mun.rak.ae/home/rak-municipality/organizational-structure/lands-properties-sector/real-estate-regulatory-administration/"
+    ],
+    "lastVerified": "2026-08-24",
+    "enquiryTypes": [
+      "new-booking",
+      "primary-sale",
+      "resale"
+    ],
+    "note": {
+      "en": "Project names are identity references only; current inventory, pricing, eligibility and availability require fresh verification.",
+      "ar": "تُذكر أسماء المشاريع للتعريف فقط؛ أما المخزون والأسعار والأهلية والتوفر فتتطلب تحققاً حديثاً."
+    }
+  },
+  {
+    "slug": "marjan",
+    "officialName": "Ras Al Khaimah Dredging Company Private JSC (Marjan)",
+    "primaryEmirate": "Ras Al Khaimah",
+    "otherPresence": [],
+    "description": {
+      "en": "The registered master developer identified with Marjan and the Al Marjan Island destination.",
+      "ar": "المطور الرئيسي المسجل والمرتبط بعلامة مرجان ووجهة جزيرة المرجان."
+    },
+    "focus": {
+      "en": "Master-planned waterfront destinations",
+      "ar": "الوجهات الساحلية الرئيسية المخططة"
+    },
+    "selectedProjects": [
+      "Al Marjan Island"
+    ],
+    "officialWebsite": "https://marjan.ae/",
+    "governmentSourceUrl": "https://sanad.mun.rak.ae/docs/en/rera-updated-developers-list",
+    "additionalOfficialSourceUrls": [
+      "https://mun.rak.ae/home/rak-municipality/organizational-structure/lands-properties-sector/real-estate-regulatory-administration/"
+    ],
+    "lastVerified": "2026-08-24",
+    "enquiryTypes": [
+      "new-booking",
+      "primary-sale",
+      "resale"
+    ],
+    "note": {
+      "en": "Project names are identity references only; current inventory, pricing, eligibility and availability require fresh verification.",
+      "ar": "تُذكر أسماء المشاريع للتعريف فقط؛ أما المخزون والأسعار والأهلية والتوفر فتتطلب تحققاً حديثاً."
+    }
+  }
+]

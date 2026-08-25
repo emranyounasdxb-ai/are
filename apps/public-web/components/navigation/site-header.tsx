@@ -3,24 +3,31 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { LogIn, Send } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import type { HeaderCopy, Locale } from "../../lib/home-copy";
+import { isNavigationHrefActive } from "../../lib/navigation";
 
 type SiteHeaderProps = Readonly<{
   copy: HeaderCopy;
   locale: Locale;
 }>;
 
+type NavigationItem = Readonly<{
+  href: string;
+  label: string;
+}>;
+
 export function SiteHeader({ copy, locale }: SiteHeaderProps) {
   const adminUrl = process.env.NEXT_PUBLIC_ARE_ADMIN_URL ?? "http://127.0.0.1:50002";
-  const adminLabel = locale === "ar" ? "دخول الإدارة" : "Admin Login";
+  const adminAccessibleLabel = locale === "ar" ? "تسجيل دخول الإدارة" : "Admin login";
   const [isOpen, setIsOpen] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const menuPanelRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
   const router = useRouter();
-  const directNavigation = [
+  const directNavigation: ReadonlyArray<NavigationItem> = [
     { href: `/${locale}`, label: copy.home },
     { href: `/${locale}/about`, label: copy.about },
     { href: `/${locale}/properties`, label: copy.properties },
@@ -30,14 +37,10 @@ export function SiteHeader({ copy, locale }: SiteHeaderProps) {
     { href: `/${locale}/insights`, label: copy.insights },
     { href: `/${locale}/careers`, label: copy.careers },
   ];
-  const contactNavigationLabel = locale === "ar" ? "التواصل" : "Contact";
-  const mobileNavigation = [
-    ...directNavigation,
-    { href: `/${locale}/contact`, label: contactNavigationLabel },
-  ];
+  const mobileNavigation = directNavigation;
 
   function isActive(href: string) {
-    return pathname === href || (href.endsWith("/insights") && pathname.startsWith(`${href}/`));
+    return isNavigationHrefActive(pathname, href);
   }
 
   useEffect(() => {
@@ -179,15 +182,12 @@ export function SiteHeader({ copy, locale }: SiteHeaderProps) {
                 key={item.href}
                 onClick={(event) => resetCurrentRoute(event, item.href)}
               >
-                {item.label}
+                <span>{item.label}</span>
               </Link>
             ))}
           </nav>
 
           <div className="site-header__actions">
-            <a aria-label={adminLabel} className="admin-login-link" href={adminUrl}>
-              {adminLabel}
-            </a>
             <nav aria-label={copy.language} className="locale-control">
               <Link
                 aria-current={locale === "en" ? "page" : undefined}
@@ -212,11 +212,20 @@ export function SiteHeader({ copy, locale }: SiteHeaderProps) {
                 العربية
               </Link>
             </nav>
+            <a
+              aria-label={adminAccessibleLabel}
+              className="admin-login-link"
+              href={adminUrl}
+              title={adminAccessibleLabel}
+            >
+              <LogIn aria-hidden="true" size={15} strokeWidth={1.75} />
+            </a>
             <Link
-              aria-current={pathname === `/${locale}/contact` ? "page" : undefined}
+              aria-current={isActive(`/${locale}/contact`) ? "page" : undefined}
               className="header-cta"
               href={`/${locale}/contact`}
             >
+              <Send aria-hidden="true" size={15} strokeWidth={1.75} />
               {copy.contact}
             </Link>
             <button
@@ -253,7 +262,7 @@ export function SiteHeader({ copy, locale }: SiteHeaderProps) {
               </button>
             </div>
             <nav aria-label={copy.navigation}>
-              {mobileNavigation.map((item, index) => (
+              {mobileNavigation.map((item) => (
                 <Link
                   aria-current={isActive(item.href) ? "page" : undefined}
                   href={item.href}
@@ -263,17 +272,13 @@ export function SiteHeader({ copy, locale }: SiteHeaderProps) {
                     closeMenu();
                   }}
                 >
-                  <span>{String(index + 1).padStart(2, "0")}</span>
-                  {item.label}
+                  <span>{item.label}</span>
                 </Link>
               ))}
             </nav>
             <div className="mobile-menu__footer">
               <p>{copy.activeLanguage}</p>
               <span>{copy.menuDescription}</span>
-              <a className="mobile-admin-login" href={adminUrl} onClick={closeMenu}>
-                {adminLabel}
-              </a>
               <nav aria-label={copy.language} className="mobile-menu__locales">
                 <Link
                   aria-current={locale === "en" ? "page" : undefined}
@@ -298,6 +303,24 @@ export function SiteHeader({ copy, locale }: SiteHeaderProps) {
                   العربية
                 </Link>
               </nav>
+              <a
+                aria-label={adminAccessibleLabel}
+                className="mobile-admin-login"
+                href={adminUrl}
+                onClick={closeMenu}
+                title={adminAccessibleLabel}
+              >
+                <LogIn aria-hidden="true" size={15} strokeWidth={1.75} />
+              </a>
+              <Link
+                aria-current={isActive(`/${locale}/contact`) ? "page" : undefined}
+                className="mobile-enquire-link"
+                href={`/${locale}/contact`}
+                onClick={closeMenu}
+              >
+                <Send aria-hidden="true" size={15} strokeWidth={1.75} />
+                <span>{copy.contact}</span>
+              </Link>
             </div>
           </div>
         </div>

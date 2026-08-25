@@ -6,7 +6,6 @@ import { Breadcrumbs, FinalCta, RelatedPages } from "../../../../components/cont
 import { InsightsExplorer } from "../../../../components/insights/insights-explorer";
 import { Reveal } from "../../../../components/motion/reveal";
 import { SiteFooter } from "../../../../components/navigation/site-footer";
-import { SiteHeader } from "../../../../components/navigation/site-header";
 import { homeCopy, isLocale, locales, type Locale } from "../../../../lib/home-copy";
 import { verifiedUpdates } from "../../../../lib/insights-data";
 import { getInsights } from "../../../../lib/api";
@@ -31,7 +30,7 @@ async function LocalizedInsights({ locale }: Readonly<{ locale: Locale }>) {
   } : {
     eyebrow: "Evidence-aware knowledge", title: "Insights that help you ask better questions.", intro: "A bilingual library of practical guides, balanced perspectives and updates tied to official sources. The material does not replace current verification or professional advice.", featured: "Featured guide", featuredTitle: "Begin with daily life before choosing a community", featuredText: "A people-first framework that puts routines, journeys and property needs ahead of rankings or unsupported claims.", featuredAction: "Read the guide", library: "Insights library", libraryTitle: "Search and filter for what you need now", standards: "Editorial standards", standardsTitle: "How we handle information", standardsText: "We distinguish general guidance from current information, link news to an official source, show verification dates, and do not invent pricing, inventory, forecasts or personal advice.", contactTitle: "Have a question that needs context?", contactText: "Organise the enquiry clearly, then verify current details and appropriate documents before making a decision.", contactAction: "Prepare an enquiry", relatedTitle: "Continue exploring", ctaTitle: "Turn reading into a clear brief.", ctaText: "Share your priorities and the questions that need fresh verification.", ctaAction: "Start a conversation",
   };
-  return <div className="insights-page" id="top"><SiteHeader copy={homeCopy[locale].header} locale={locale} /><main id="main-content">
+  return <div className="insights-page" id="top"><main id="main-content">
     <section className="editorial-hero"><div className="editorial-hero__inner"><Breadcrumbs items={[{ href: `/${locale}`, label: richCopy[locale].homeLabel }, { label: homeCopy[locale].header.insights }]} label={richCopy[locale].breadcrumb} /><Reveal className="editorial-hero__reveal" distance={18}><p>{copy.eyebrow}</p><h1>{copy.title}</h1><span>{copy.intro}</span></Reveal></div></section>
     <section className="featured-insight"><div><p>{copy.featured}</p><h2>{copy.featuredTitle}</h2><span>{copy.featuredText}</span><Link className="button button--primary" href={`/${locale}/insights/choosing-a-uae-community`}>{copy.featuredAction}</Link></div><div aria-hidden="true" className="featured-insight__monogram"><span>ARE</span><small>01 / GUIDE</small></div></section>
     <section aria-labelledby="insights-library-title" className="content-section insights-library"><div className="content-heading"><p>{copy.library}</p><h2 id="insights-library-title">{copy.libraryTitle}</h2></div><InsightsExplorer articles={insightArticles} locale={locale} updates={verifiedUpdates} /></section>

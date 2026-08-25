@@ -4,6 +4,8 @@ import type { Locale } from "./home-copy";
 const API_URL = process.env.ARE_API_URL ?? process.env.NEXT_PUBLIC_ARE_API_URL ?? "http://127.0.0.1:50003/api/v1";
 export type PublicProperty = { id:string;slug:string;purpose:string;property_type:string;emirate:string;community:string;developer:string|null;bedrooms:number|null;bathrooms:number|null;area:string|null;area_unit:string|null;price:string|null;price_on_request:boolean;currency:string;featured:boolean;published_at:string|null;title:string;description:string };
 export type PublicJob = { id:string;slug:string;department:string;location:string;employment_type:string;closing_date:string|null;status:string;title:string;description:string;responsibilities:string[];requirements:string[];benefits:string[] };
+export type PublicDeveloper = { id:string;slug:string;primary_emirate:string;other_presence:string[];selected_projects:string[];official_website:string;source_url:string;additional_source_urls:string[];verification_date:string;enquiry_types:("new-booking"|"primary-sale"|"resale")[];featured:boolean;display_order:number;status:"published";published_at:string|null;name:string;description:string;focus:string;verification_note:string };
+export type PublicProject = { id:string;slug:string;emirate:string;developer:{slug:string;name:string};area:{slug:string;name_en:string;name_ar:string;emirate:string};availability_status:string;construction_status:string;handover_quarter:string|null;handover_year:number|null;property_types:string[];bedroom_options:string[];official_name:string;short_summary:string;full_description:string;cta:string };
 type PublicInsight = { id:string;slug:string;category:InsightArticle["category"];published_at:string|null;updated_at:string;source_links:InsightArticle["sources"];body:InsightArticle["content"][Locale] };
 type Page<T> = { items:T[]; meta:{total:number} };
 
@@ -13,6 +15,10 @@ async function get<T>(path:string):Promise<T|null>{
 export async function getProperties(locale:Locale,query=""){ return (await get<Page<PublicProperty>>(`/public/properties?locale=${locale}&page_size=100${query}`))?.items ?? []; }
 export async function getProperty(locale:Locale,slug:string){ return get<PublicProperty>(`/public/properties/${encodeURIComponent(slug)}?locale=${locale}`); }
 export async function getJobs(locale:Locale){ return (await get<Page<PublicJob>>(`/public/jobs?locale=${locale}`))?.items ?? []; }
+export async function getDevelopers(locale:Locale){ return (await get<Page<PublicDeveloper>>(`/public/developers?locale=${locale}`))?.items ?? null; }
+export async function getProjects(locale:Locale){ return (await get<Page<PublicProject>>(`/public/projects?locale=${locale}&page_size=100`))?.items ?? []; }
+export async function getProject(locale:Locale,slug:string){ return get<PublicProject>(`/public/projects/${encodeURIComponent(slug)}?locale=${locale}`); }
+export async function getDeveloper(locale:Locale,slug:string){ return get<PublicDeveloper>(`/public/developers/${encodeURIComponent(slug)}?locale=${locale}`); }
 export async function getJob(locale:Locale,slug:string){ return get<PublicJob>(`/public/jobs/${encodeURIComponent(slug)}?locale=${locale}`); }
 export async function getInsights(locale:Locale){
   const items=(await get<Page<PublicInsight>>(`/public/insights?locale=${locale}&page_size=100`))?.items ?? [];

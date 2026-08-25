@@ -1,4 +1,5 @@
 export const API_URL = process.env.NEXT_PUBLIC_ARE_API_URL ?? "http://127.0.0.1:50003/api/v1";
+export const PUBLIC_WEB_URL = process.env.NEXT_PUBLIC_ARE_PUBLIC_URL ?? "http://127.0.0.1:50001";
 
 export type User = { id: string; email: string; display_name: string; roles: string[]; permissions: string[]; csrf_token: string };
 export type PageResponse<T> = { items: T[]; meta: { page: number; page_size: number; total: number; pages: number } };

@@ -45,6 +45,126 @@ class Purpose(StrEnum):
     OFF_PLAN = "off-plan"
 
 
+class AvailabilityStatus(StrEnum):
+    UNVERIFIED = "unverified"
+    VERIFIED_AVAILABLE = "verified-available"
+    VERIFIED_UNAVAILABLE = "verified-unavailable"
+
+
+class MediaRightsStatus(StrEnum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
+class ProjectAvailabilityStatus(StrEnum):
+    AVAILABLE = "available"
+    LIMITED_AVAILABILITY = "limited-availability"
+    SOLD_OUT = "sold-out"
+    COMING_SOON = "coming-soon"
+
+
+class ConstructionStatus(StrEnum):
+    PRE_LAUNCH = "pre-launch"
+    LAUNCHED = "launched"
+    UNDER_CONSTRUCTION = "under-construction"
+    NEAR_COMPLETION = "near-completion"
+    COMPLETED = "completed"
+    ON_HOLD = "on-hold"
+    NOT_CONFIRMED = "not-confirmed"
+
+
+class ProjectPriority(StrEnum):
+    A = "A"
+    B = "B"
+    C = "C"
+
+
+class ProjectWorkflowStatus(StrEnum):
+    DRAFT = "draft"
+    IN_REVIEW = "in-review"
+    APPROVED = "approved"
+
+
+class ProjectSizeUnit(StrEnum):
+    SQFT = "sqft"
+    SQM = "sqm"
+
+
+class UAEEmirate(StrEnum):
+    DUBAI = "Dubai"
+    ABU_DHABI = "Abu Dhabi"
+    SHARJAH = "Sharjah"
+    AJMAN = "Ajman"
+    UMM_AL_QUWAIN = "Umm Al Quwain"
+    RAS_AL_KHAIMAH = "Ras Al Khaimah"
+    FUJAIRAH = "Fujairah"
+
+
+class ProjectPropertyType(StrEnum):
+    APARTMENT = "apartment"
+    VILLA = "villa"
+    TOWNHOUSE = "townhouse"
+    PENTHOUSE = "penthouse"
+    DUPLEX = "duplex"
+    MANSION = "mansion"
+    RESIDENTIAL_PLOT = "residential-plot"
+    OTHER = "other"
+
+
+class ProjectBedroomOption(StrEnum):
+    STUDIO = "studio"
+    ONE = "1"
+    TWO = "2"
+    THREE = "3"
+    FOUR = "4"
+    FIVE = "5"
+    SIX_PLUS = "6+"
+
+
+class PaymentStage(StrEnum):
+    BOOKING = "booking"
+    DURING_CONSTRUCTION = "during-construction"
+    HANDOVER = "handover"
+    POST_HANDOVER = "post-handover"
+    OTHER = "other"
+
+
+class ProjectSourceType(StrEnum):
+    OWNER_MANIFEST = "OWNER_MANIFEST"
+    DLD_PROJECT_STATUS = "DLD_PROJECT_STATUS"
+    OFFICIAL_DEVELOPER_PAGE = "OFFICIAL_DEVELOPER_PAGE"
+    OFFICIAL_DEVELOPER_BROCHURE = "OFFICIAL_DEVELOPER_BROCHURE"
+    OFFICIAL_MASTER_COMMUNITY_PAGE = "OFFICIAL_MASTER_COMMUNITY_PAGE"
+    OWNER_SUPPLIED_DOCUMENT = "OWNER_SUPPLIED_DOCUMENT"
+    OWNER_APPROVED_PARTNER_FEED = "OWNER_APPROVED_PARTNER_FEED"
+    APPROVED_SECONDARY_SOURCE = "APPROVED_SECONDARY_SOURCE"
+
+
+class ProjectMediaCategory(StrEnum):
+    COVER = "cover"
+    GALLERY = "gallery"
+    EXTERIOR = "exterior"
+    INTERIOR = "interior"
+    AMENITIES = "amenities"
+    FLOOR_PLAN = "floor-plan"
+    MASTER_PLAN = "master-plan"
+    LOCATION_MAP = "location-map"
+    CONSTRUCTION = "construction"
+    VIDEO_REFERENCE = "video-reference"
+
+
+class ImportReviewStatus(StrEnum):
+    DISCOVERED = "discovered"
+    EXTRACTED = "extracted"
+    NEEDS_REVIEW = "needs-review"
+    READY_FOR_APPROVAL = "ready-for-approval"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    FAILED = "failed"
+    MERGED = "merged"
+
+
 class EnquiryStatus(StrEnum):
     NEW = "new"
     IN_REVIEW = "in-review"
@@ -168,6 +288,12 @@ class Property(TimestampMixin, Base):
     featured: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     provenance_note: Mapped[str] = mapped_column(Text, nullable=False)
     external_reference_url: Mapped[str | None] = mapped_column(Text)
+    source_verified_at: Mapped[date | None] = mapped_column(Date)
+    availability_status: Mapped[AvailabilityStatus] = mapped_column(
+        Enum(AvailabilityStatus, name="property_availability_status"),
+        default=AvailabilityStatus.UNVERIFIED,
+        nullable=False,
+    )
     status: Mapped[PublicationStatus] = mapped_column(
         Enum(PublicationStatus, name="publication_status"),
         default=PublicationStatus.DRAFT,
@@ -179,6 +305,9 @@ class Property(TimestampMixin, Base):
     updated_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     translations: Mapped[list[PropertyTranslation]] = relationship(
         cascade="all, delete-orphan", lazy="selectin"
+    )
+    cover_media: Mapped[PropertyCoverMedia | None] = relationship(
+        cascade="all, delete-orphan", lazy="selectin", uselist=False
     )
 
 
@@ -193,6 +322,522 @@ class PropertyTranslation(Base):
     locale: Mapped[str] = mapped_column(String(2), nullable=False)
     title: Mapped[str] = mapped_column(String(240), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class PropertyCoverMedia(TimestampMixin, Base):
+    __tablename__ = "property_cover_media"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    property_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("properties.id", ondelete="CASCADE"), unique=True
+    )
+    storage_key: Mapped[str | None] = mapped_column(String(180), unique=True)
+    original_filename: Mapped[str | None] = mapped_column(String(255))
+    mime_type: Mapped[str | None] = mapped_column(String(64))
+    size_bytes: Mapped[int | None]
+    sha256: Mapped[str | None] = mapped_column(String(64))
+    width: Mapped[int | None]
+    height: Mapped[int | None]
+    alt_en: Mapped[str | None] = mapped_column(String(320))
+    alt_ar: Mapped[str | None] = mapped_column(String(320))
+    provenance_url: Mapped[str] = mapped_column(Text, nullable=False)
+    rights_status: Mapped[MediaRightsStatus] = mapped_column(
+        Enum(MediaRightsStatus, name="media_rights_status"),
+        default=MediaRightsStatus.PENDING,
+        nullable=False,
+    )
+    display_position: Mapped[int] = mapped_column(default=0, nullable=False)
+    uploaded_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id")
+    )
+
+
+class TrustProfile(TimestampMixin, Base):
+    __tablename__ = "trust_profiles"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    display_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    phone: Mapped[str] = mapped_column(String(40), nullable=False)
+    google_business_url: Mapped[str] = mapped_column(Text, nullable=False)
+    google_rating: Mapped[Decimal] = mapped_column(Numeric(2, 1), nullable=False)
+    google_review_count: Mapped[int] = mapped_column(nullable=False)
+    snapshot_verified_at: Mapped[date] = mapped_column(Date, nullable=False)
+    office_address: Mapped[str] = mapped_column(String(320), nullable=False)
+    status: Mapped[PublicationStatus] = mapped_column(
+        Enum(PublicationStatus, name="publication_status", create_type=False), nullable=False
+    )
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+
+
+class AreaCommunity(TimestampMixin, Base):
+    __tablename__ = "area_communities"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    slug: Mapped[str] = mapped_column(String(180), unique=True, nullable=False)
+    name_en: Mapped[str] = mapped_column(String(240), nullable=False)
+    name_ar: Mapped[str] = mapped_column(String(240), nullable=False)
+    emirate: Mapped[UAEEmirate] = mapped_column(
+        Enum(UAEEmirate, name="uae_emirate"), nullable=False, index=True
+    )
+    status: Mapped[PublicationStatus] = mapped_column(
+        Enum(PublicationStatus, name="publication_status", create_type=False),
+        default=PublicationStatus.DRAFT,
+        nullable=False,
+        index=True,
+    )
+    aliases: Mapped[list[AreaAlias]] = relationship(cascade="all, delete-orphan", lazy="selectin")
+
+
+class AreaAlias(Base):
+    __tablename__ = "area_aliases"
+    __table_args__ = (UniqueConstraint("normalized_alias"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    area_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("area_communities.id", ondelete="CASCADE"), nullable=False
+    )
+    locale: Mapped[str | None] = mapped_column(String(2))
+    alias: Mapped[str] = mapped_column(String(240), nullable=False)
+    normalized_alias: Mapped[str] = mapped_column(String(240), nullable=False)
+
+
+class Project(TimestampMixin, Base):
+    __tablename__ = "projects"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    slug: Mapped[str] = mapped_column(String(180), unique=True, nullable=False)
+    developer_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("developers.id"), nullable=False, index=True
+    )
+    area_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("area_communities.id"), nullable=False, index=True
+    )
+    emirate: Mapped[UAEEmirate] = mapped_column(
+        Enum(UAEEmirate, name="uae_emirate", create_type=False), nullable=False, index=True
+    )
+    status: Mapped[PublicationStatus] = mapped_column(
+        Enum(PublicationStatus, name="publication_status", create_type=False),
+        default=PublicationStatus.DRAFT,
+        nullable=False,
+        index=True,
+    )
+    workflow_status: Mapped[ProjectWorkflowStatus] = mapped_column(
+        Enum(ProjectWorkflowStatus, name="project_workflow_status"),
+        default=ProjectWorkflowStatus.DRAFT,
+        nullable=False,
+        index=True,
+    )
+    availability_status: Mapped[ProjectAvailabilityStatus] = mapped_column(
+        Enum(ProjectAvailabilityStatus, name="project_availability_status"), nullable=False
+    )
+    construction_status: Mapped[ConstructionStatus] = mapped_column(
+        Enum(ConstructionStatus, name="project_construction_status"),
+        default=ConstructionStatus.NOT_CONFIRMED,
+        nullable=False,
+    )
+    handover_quarter: Mapped[str | None] = mapped_column(String(2))
+    handover_year: Mapped[int | None]
+    original_handover_value: Mapped[str | None] = mapped_column(String(240))
+    size_min: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    size_max: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    size_unit: Mapped[ProjectSizeUnit | None] = mapped_column(
+        Enum(ProjectSizeUnit, name="project_size_unit")
+    )
+    down_payment_percentage: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
+    down_payment_source_value: Mapped[str | None] = mapped_column(String(500))
+    latitude: Mapped[Decimal | None] = mapped_column(Numeric(9, 6))
+    longitude: Mapped[Decimal | None] = mapped_column(Numeric(9, 6))
+    last_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    priority: Mapped[ProjectPriority | None] = mapped_column(
+        Enum(ProjectPriority, name="project_priority"), nullable=True
+    )
+    featured: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    display_order: Mapped[int] = mapped_column(default=0, nullable=False)
+    internal_notes: Mapped[str | None] = mapped_column(Text)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    developer: Mapped[Developer] = relationship(lazy="joined")
+    area: Mapped[AreaCommunity] = relationship(lazy="joined")
+    translations: Mapped[list[ProjectTranslation]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin"
+    )
+    property_types: Mapped[list[ProjectPropertyTypeValue]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin"
+    )
+    bedroom_options: Mapped[list[ProjectBedroomValue]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin"
+    )
+    unit_types: Mapped[list[ProjectUnitType]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin"
+    )
+    amenities: Mapped[list[ProjectAmenity]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin"
+    )
+    nearby_places: Mapped[list[ProjectNearbyPlace]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin"
+    )
+    sources: Mapped[list[ProjectSource]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin"
+    )
+    payment_plan: Mapped[ProjectPaymentPlan | None] = relationship(
+        cascade="all, delete-orphan", lazy="selectin", uselist=False
+    )
+    media: Mapped[list[ProjectMedia]] = relationship(cascade="all, delete-orphan", lazy="selectin")
+
+
+class ProjectTranslation(Base):
+    __tablename__ = "project_translations"
+    __table_args__ = (UniqueConstraint("project_id", "locale"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    locale: Mapped[str] = mapped_column(String(2), nullable=False)
+    official_name: Mapped[str] = mapped_column(String(240), nullable=False)
+    short_summary: Mapped[str] = mapped_column(Text, nullable=False)
+    full_description: Mapped[str] = mapped_column(Text, nullable=False)
+    seo_title: Mapped[str] = mapped_column(String(240), nullable=False)
+    seo_description: Mapped[str] = mapped_column(String(320), nullable=False)
+
+
+class ProjectPropertyTypeValue(Base):
+    __tablename__ = "project_property_types"
+    __table_args__ = (UniqueConstraint("project_id", "property_type"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    property_type: Mapped[ProjectPropertyType] = mapped_column(
+        Enum(ProjectPropertyType, name="project_property_type"), nullable=False
+    )
+
+
+class ProjectBedroomValue(Base):
+    __tablename__ = "project_bedroom_options"
+    __table_args__ = (UniqueConstraint("project_id", "bedroom_option"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    bedroom_option: Mapped[ProjectBedroomOption] = mapped_column(
+        Enum(ProjectBedroomOption, name="project_bedroom_option"), nullable=False
+    )
+
+
+class ProjectUnitType(Base):
+    __tablename__ = "project_unit_types"
+    __table_args__ = (UniqueConstraint("project_id", "label_en"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    label_en: Mapped[str] = mapped_column(String(160), nullable=False)
+    label_ar: Mapped[str | None] = mapped_column(String(160))
+    display_order: Mapped[int] = mapped_column(default=0, nullable=False)
+
+
+class ProjectAmenity(Base):
+    __tablename__ = "project_amenities"
+    __table_args__ = (UniqueConstraint("project_id", "label_en"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    label_en: Mapped[str] = mapped_column(String(160), nullable=False)
+    label_ar: Mapped[str | None] = mapped_column(String(160))
+    display_order: Mapped[int] = mapped_column(default=0, nullable=False)
+
+
+class ProjectNearbyPlace(Base):
+    __tablename__ = "project_nearby_places"
+    __table_args__ = (UniqueConstraint("project_id", "name_en"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    name_en: Mapped[str] = mapped_column(String(200), nullable=False)
+    name_ar: Mapped[str | None] = mapped_column(String(200))
+    distance_value: Mapped[Decimal | None] = mapped_column(Numeric(8, 2))
+    distance_unit: Mapped[str | None] = mapped_column(String(20))
+    travel_time_minutes: Mapped[int | None]
+    display_order: Mapped[int] = mapped_column(default=0, nullable=False)
+
+
+class ProjectSource(TimestampMixin, Base):
+    __tablename__ = "project_sources"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    source_url: Mapped[str] = mapped_column(Text, nullable=False)
+    source_type: Mapped[ProjectSourceType] = mapped_column(
+        Enum(ProjectSourceType, name="project_source_type"), nullable=False
+    )
+    is_official: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    retrieved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_title: Mapped[str | None] = mapped_column(String(320))
+    source_developer_domain: Mapped[str | None] = mapped_column(String(320))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+
+class ProjectPaymentPlan(TimestampMixin, Base):
+    __tablename__ = "project_payment_plans"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        unique=True,
+        nullable=False,
+    )
+    raw_source_text: Mapped[str] = mapped_column(Text, nullable=False)
+    source_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("project_sources.id"), nullable=False
+    )
+    is_complete: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    milestones: Mapped[list[ProjectPaymentMilestone]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin", order_by="ProjectPaymentMilestone.sequence"
+    )
+
+
+class ProjectPaymentMilestone(Base):
+    __tablename__ = "project_payment_milestones"
+    __table_args__ = (UniqueConstraint("payment_plan_id", "sequence"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    payment_plan_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("project_payment_plans.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    sequence: Mapped[int] = mapped_column(nullable=False)
+    stage: Mapped[PaymentStage] = mapped_column(
+        Enum(PaymentStage, name="project_payment_stage"), nullable=False
+    )
+    label_en: Mapped[str] = mapped_column(String(240), nullable=False)
+    label_ar: Mapped[str | None] = mapped_column(String(240))
+    percentage: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
+    due_trigger: Mapped[str | None] = mapped_column(String(320))
+    source_value: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class ProjectMedia(TimestampMixin, Base):
+    __tablename__ = "project_media"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    category: Mapped[ProjectMediaCategory] = mapped_column(
+        Enum(ProjectMediaCategory, name="project_media_category"), nullable=False
+    )
+    source_url: Mapped[str] = mapped_column(Text, nullable=False)
+    rights_status: Mapped[MediaRightsStatus] = mapped_column(
+        Enum(MediaRightsStatus, name="media_rights_status", create_type=False), nullable=False
+    )
+    alt_en: Mapped[str | None] = mapped_column(String(320))
+    alt_ar: Mapped[str | None] = mapped_column(String(320))
+    display_order: Mapped[int] = mapped_column(default=0, nullable=False)
+    storage_key: Mapped[str | None] = mapped_column(String(180), unique=True)
+    original_filename: Mapped[str | None] = mapped_column(String(255))
+    mime_type: Mapped[str | None] = mapped_column(String(64))
+    size_bytes: Mapped[int | None]
+    sha256: Mapped[str | None] = mapped_column(String(64))
+    width: Mapped[int | None]
+    height: Mapped[int | None]
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    uploaded_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id")
+    )
+
+
+class ProjectImportBatch(TimestampMixin, Base):
+    __tablename__ = "project_import_batches"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(240), nullable=False)
+    source_reference: Mapped[str] = mapped_column(Text, nullable=False)
+    manifest_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    adapter_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    total_count: Mapped[int] = mapped_column(default=0, nullable=False)
+    clean_count: Mapped[int] = mapped_column(default=0, nullable=False)
+    needs_review_count: Mapped[int] = mapped_column(default=0, nullable=False)
+    failed_count: Mapped[int] = mapped_column(default=0, nullable=False)
+    candidates: Mapped[list[ProjectImportCandidate]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin"
+    )
+
+
+class ProjectImportCandidate(TimestampMixin, Base):
+    __tablename__ = "project_import_candidates"
+    __table_args__ = (UniqueConstraint("batch_id", "manifest_row_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    batch_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("project_import_batches.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    manifest_row_id: Mapped[int] = mapped_column(nullable=False)
+    raw_source_payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    normalized_payload: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    owner_manifest_values: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    normalized_project_name: Mapped[str | None] = mapped_column(String(240))
+    proposed_developer_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("developers.id")
+    )
+    proposed_area_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("area_communities.id")
+    )
+    official_source_url: Mapped[str | None] = mapped_column(Text)
+    adapter_key: Mapped[str | None] = mapped_column(String(80))
+    adapter_version: Mapped[str | None] = mapped_column(String(32))
+    last_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    arabic_review_required: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    acquisition_summary: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    source_urls: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    extracted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    match_result: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    validation_errors: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSON, default=list, nullable=False
+    )
+    conflict_reasons: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    review_status: Mapped[ImportReviewStatus] = mapped_column(
+        Enum(ImportReviewStatus, name="project_import_review_status"), nullable=False, index=True
+    )
+    linked_project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id")
+    )
+    reviewed_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id")
+    )
+    review_version: Mapped[int] = mapped_column(default=1, nullable=False)
+    human_review_completed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    rejection_reason: Mapped[str | None] = mapped_column(String(1000))
+    evidence: Mapped[list[ProjectSourceSnapshot]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin"
+    )
+    staged_media: Mapped[list[ProjectImportMedia]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin"
+    )
+    changes: Mapped[list[ProjectImportChange]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin"
+    )
+
+
+class ProjectSourceSnapshot(TimestampMixin, Base):
+    __tablename__ = "project_source_snapshots"
+    __table_args__ = (UniqueConstraint("candidate_id", "source_url", "content_hash"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    candidate_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("project_import_candidates.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    source_url: Mapped[str] = mapped_column(Text, nullable=False)
+    source_type: Mapped[ProjectSourceType] = mapped_column(
+        Enum(ProjectSourceType, name="project_source_type", create_type=False), nullable=False
+    )
+    http_status: Mapped[int | None]
+    retrieved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    adapter_key: Mapped[str] = mapped_column(String(80), nullable=False)
+    adapter_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    content_type: Mapped[str | None] = mapped_column(String(160))
+    etag: Mapped[str | None] = mapped_column(String(320))
+    last_modified: Mapped[str | None] = mapped_column(String(320))
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    storage_key: Mapped[str | None] = mapped_column(String(180), unique=True)
+    outcome: Mapped[str] = mapped_column(String(40), nullable=False)
+    error_code: Mapped[str | None] = mapped_column(String(80))
+    error_message: Mapped[str | None] = mapped_column(String(500))
+
+
+class ProjectImportMedia(TimestampMixin, Base):
+    __tablename__ = "project_import_media"
+    __table_args__ = (UniqueConstraint("candidate_id", "source_url"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    candidate_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("project_import_candidates.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    snapshot_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("project_source_snapshots.id", ondelete="SET NULL")
+    )
+    category: Mapped[ProjectMediaCategory] = mapped_column(
+        Enum(ProjectMediaCategory, name="project_media_category", create_type=False),
+        nullable=False,
+    )
+    source_url: Mapped[str] = mapped_column(Text, nullable=False)
+    rights_status: Mapped[MediaRightsStatus] = mapped_column(
+        Enum(MediaRightsStatus, name="media_rights_status", create_type=False), nullable=False
+    )
+    stage_status: Mapped[str] = mapped_column(String(40), nullable=False)
+    storage_key: Mapped[str | None] = mapped_column(String(180), unique=True)
+    thumbnail_storage_key: Mapped[str | None] = mapped_column(String(180), unique=True)
+    mime_type: Mapped[str | None] = mapped_column(String(80))
+    size_bytes: Mapped[int | None]
+    sha256: Mapped[str | None] = mapped_column(String(64))
+    width: Mapped[int | None]
+    height: Mapped[int | None]
+    duplicate_of_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("project_import_media.id")
+    )
+    retrieved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    failure_reason: Mapped[str | None] = mapped_column(String(500))
+
+
+class ProjectImportBulkOperation(TimestampMixin, Base):
+    __tablename__ = "project_import_bulk_operations"
+    __table_args__ = (UniqueConstraint("batch_id", "idempotency_key"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    batch_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("project_import_batches.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    idempotency_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    action: Mapped[str] = mapped_column(String(40), nullable=False)
+    request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    result: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    actor_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
+    )
+
+
+class ProjectImportChange(TimestampMixin, Base):
+    __tablename__ = "project_import_changes"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    candidate_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("project_import_candidates.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    classification: Mapped[str] = mapped_column(String(40), nullable=False)
+    existing_value: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    new_value: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    source_url: Mapped[str | None] = mapped_column(Text)
+    detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    content_hash: Mapped[str | None] = mapped_column(String(64))
 
 
 class InsightPost(TimestampMixin, Base):
@@ -231,6 +876,50 @@ class InsightPostTranslation(Base):
     body: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     seo_title: Mapped[str] = mapped_column(String(240), nullable=False)
     seo_description: Mapped[str] = mapped_column(String(320), nullable=False)
+
+
+class Developer(TimestampMixin, Base):
+    __tablename__ = "developers"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    slug: Mapped[str] = mapped_column(String(180), unique=True, nullable=False)
+    primary_emirate: Mapped[str] = mapped_column(String(120), nullable=False)
+    other_presence: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    selected_projects: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    official_website: Mapped[str] = mapped_column(Text, nullable=False)
+    source_url: Mapped[str] = mapped_column(Text, nullable=False)
+    additional_source_urls: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    verification_date: Mapped[date] = mapped_column(Date, nullable=False)
+    enquiry_types: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    featured: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    display_order: Mapped[int] = mapped_column(default=0, nullable=False)
+    status: Mapped[PublicationStatus] = mapped_column(
+        Enum(PublicationStatus, name="publication_status", create_type=False),
+        default=PublicationStatus.DRAFT,
+        nullable=False,
+        index=True,
+    )
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    translations: Mapped[list[DeveloperTranslation]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin"
+    )
+
+
+class DeveloperTranslation(Base):
+    __tablename__ = "developer_translations"
+    __table_args__ = (UniqueConstraint("developer_id", "locale"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    developer_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("developers.id", ondelete="CASCADE"), nullable=False
+    )
+    locale: Mapped[str] = mapped_column(String(2), nullable=False)
+    name: Mapped[str] = mapped_column(String(240), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    focus: Mapped[str] = mapped_column(Text, nullable=False)
+    verification_note: Mapped[str] = mapped_column(Text, nullable=False)
 
 
 class JobOpening(TimestampMixin, Base):
@@ -368,6 +1057,28 @@ class PrivateFileMetadata(Base):
 
 Index("ix_properties_search", Property.slug, Property.property_type, Property.emirate)
 Index("ix_insight_posts_search", InsightPost.slug, InsightPost.category)
+Index("ix_developers_search", Developer.slug, Developer.primary_emirate, Developer.featured)
+Index(
+    "ix_area_communities_search", AreaCommunity.slug, AreaCommunity.name_en, AreaCommunity.emirate
+)
+Index(
+    "ix_projects_search",
+    Project.slug,
+    Project.status,
+    Project.availability_status,
+    Project.construction_status,
+)
+Index("ix_project_sources_project_type", ProjectSource.project_id, ProjectSource.source_type)
+Index("ix_project_media_project_category", ProjectMedia.project_id, ProjectMedia.category)
+Index(
+    "ix_project_import_candidates_dedupe",
+    ProjectImportCandidate.normalized_project_name,
+    ProjectImportCandidate.proposed_developer_id,
+    ProjectImportCandidate.proposed_area_id,
+)
+Index("ix_project_source_snapshots_candidate", ProjectSourceSnapshot.candidate_id)
+Index("ix_project_import_media_candidate", ProjectImportMedia.candidate_id)
+Index("ix_project_import_changes_candidate", ProjectImportChange.candidate_id)
 Index("ix_job_openings_search", JobOpening.slug, JobOpening.department)
 Index("ix_contact_enquiries_status_created", ContactEnquiry.status, ContactEnquiry.created_at)
 Index(

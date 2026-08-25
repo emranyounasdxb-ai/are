@@ -6,7 +6,6 @@ import { CareersApplicationForm } from "../../../../components/careers/careers-a
 import { Breadcrumbs, Checklist, EditorialCards, FaqSection, FinalCta, ProcessList, RelatedPages } from "../../../../components/content/editorial-content";
 import { Reveal } from "../../../../components/motion/reveal";
 import { SiteFooter } from "../../../../components/navigation/site-footer";
-import { SiteHeader } from "../../../../components/navigation/site-header";
 import { careerInterests, careersCopy } from "../../../../lib/careers-data";
 import { getJobs } from "../../../../lib/api";
 import { homeCopy, isLocale, locales, type Locale } from "../../../../lib/home-copy";
@@ -40,7 +39,6 @@ async function LocalizedCareers({ jobSlug, locale }: Readonly<{ jobSlug?: string
 
   return (
     <div className="careers-page" id="top">
-      <SiteHeader copy={homeCopy[locale].header} locale={locale} />
       <main id="main-content">
         <section aria-labelledby="careers-title" className="careers-hero">
           <div className="careers-hero__grid" aria-hidden="true"><span /><span /><span /></div>

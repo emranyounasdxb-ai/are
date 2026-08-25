@@ -2,7 +2,67 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.models import InsightPost, JobOpening, Property
+from app.models import (
+    AreaCommunity,
+    Developer,
+    ImportReviewStatus,
+    InsightPost,
+    JobOpening,
+    Project,
+    ProjectImportBatch,
+    ProjectImportCandidate,
+    Property,
+    TrustProfile,
+    UAEEmirate,
+)
+
+EMIRATE_LABELS = {
+    "en": {item: item.value for item in UAEEmirate},
+    "ar": {
+        UAEEmirate.DUBAI: "دبي",
+        UAEEmirate.ABU_DHABI: "أبوظبي",
+        UAEEmirate.SHARJAH: "الشارقة",
+        UAEEmirate.AJMAN: "عجمان",
+        UAEEmirate.UMM_AL_QUWAIN: "أم القيوين",
+        UAEEmirate.RAS_AL_KHAIMAH: "رأس الخيمة",
+        UAEEmirate.FUJAIRAH: "الفجيرة",
+    },
+}
+
+
+def developer_dict(record: Developer, locale: str | None = None) -> dict[str, Any]:
+    translations = {
+        item.locale: {
+            "name": item.name,
+            "description": item.description,
+            "focus": item.focus,
+            "verification_note": item.verification_note,
+        }
+        for item in record.translations
+    }
+    data: dict[str, Any] = {
+        "id": record.id,
+        "slug": record.slug,
+        "primary_emirate": record.primary_emirate,
+        "other_presence": record.other_presence,
+        "selected_projects": record.selected_projects,
+        "official_website": record.official_website,
+        "source_url": record.source_url,
+        "additional_source_urls": record.additional_source_urls,
+        "verification_date": record.verification_date,
+        "enquiry_types": record.enquiry_types,
+        "featured": record.featured,
+        "display_order": record.display_order,
+        "status": record.status.value,
+        "published_at": record.published_at,
+        "created_at": record.created_at,
+        "updated_at": record.updated_at,
+    }
+    if locale:
+        data.update(translations.get(locale, {}))
+    else:
+        data["translations"] = translations
+    return data
 
 
 def property_dict(record: Property, locale: str | None = None) -> dict[str, Any]:
@@ -33,15 +93,489 @@ def property_dict(record: Property, locale: str | None = None) -> dict[str, Any]
     }
     if locale:
         data.update(translations.get(locale, {}))
+        media = record.cover_media
+        if (
+            media
+            and media.storage_key
+            and media.rights_status.value == "approved"
+            and media.alt_en
+            and media.alt_ar
+        ):
+            data["cover_media"] = {
+                "url": f"/public/properties/{record.slug}/cover",
+                "alt": media.alt_ar if locale == "ar" else media.alt_en,
+                "width": media.width,
+                "height": media.height,
+            }
+        else:
+            data["cover_media"] = None
     else:
         data.update(
             {
                 "provenance_note": record.provenance_note,
                 "external_reference_url": record.external_reference_url,
+                "source_verified_at": record.source_verified_at,
+                "availability_status": record.availability_status.value,
+                "cover_media": media_dict(record),
                 "translations": translations,
             }
         )
     return data
+
+
+def media_dict(record: Property) -> dict[str, Any] | None:
+    media = record.cover_media
+    if not media:
+        return None
+    return {
+        "id": media.id,
+        "has_upload": bool(media.storage_key),
+        "original_filename": media.original_filename,
+        "mime_type": media.mime_type,
+        "size_bytes": media.size_bytes,
+        "width": media.width,
+        "height": media.height,
+        "alt_en": media.alt_en,
+        "alt_ar": media.alt_ar,
+        "provenance_url": media.provenance_url,
+        "rights_status": media.rights_status.value,
+        "display_position": media.display_position,
+        "preview_url": f"/admin/properties/{record.id}/cover" if media.storage_key else None,
+    }
+
+
+def trust_profile_dict(record: TrustProfile) -> dict[str, Any]:
+    return {
+        "id": record.id,
+        "display_name": record.display_name,
+        "phone": record.phone,
+        "google_business_url": record.google_business_url,
+        "google_rating": record.google_rating,
+        "google_review_count": record.google_review_count,
+        "snapshot_verified_at": record.snapshot_verified_at,
+        "office_address": record.office_address,
+        "status": record.status.value,
+        "created_at": record.created_at,
+        "updated_at": record.updated_at,
+    }
+
+
+def area_dict(record: AreaCommunity) -> dict[str, Any]:
+    return {
+        "id": record.id,
+        "slug": record.slug,
+        "emirate": record.emirate.value,
+        "name_en": record.name_en,
+        "name_ar": record.name_ar,
+        "status": record.status.value,
+        "aliases": [
+            {"alias": item.alias, "locale": item.locale, "normalized_alias": item.normalized_alias}
+            for item in record.aliases
+        ],
+        "created_at": record.created_at,
+        "updated_at": record.updated_at,
+    }
+
+
+def project_dict(record: Project, locale: str | None = None) -> dict[str, Any]:
+    translations = {
+        item.locale: {
+            "official_name": item.official_name,
+            "short_summary": item.short_summary,
+            "full_description": item.full_description,
+            "seo_title": item.seo_title,
+            "seo_description": item.seo_description,
+        }
+        for item in record.translations
+    }
+    sources = [
+        {
+            "id": item.id,
+            "source_url": item.source_url,
+            "source_type": item.source_type.value,
+            "is_official": item.is_official,
+            "retrieved_at": item.retrieved_at,
+            "last_checked_at": item.last_checked_at,
+            "content_hash": item.content_hash,
+            "source_title": item.source_title,
+            "source_developer_domain": item.source_developer_domain,
+            "is_active": item.is_active,
+        }
+        for item in record.sources
+    ]
+    media = [
+        {
+            "id": item.id,
+            "category": item.category.value,
+            "source_url": item.source_url,
+            "rights_status": item.rights_status.value,
+            "alt_en": item.alt_en,
+            "alt_ar": item.alt_ar,
+            "display_order": item.display_order,
+            "has_upload": bool(item.storage_key),
+            "mime_type": item.mime_type,
+            "width": item.width,
+            "height": item.height,
+            "size_bytes": item.size_bytes,
+            "verified_at": item.verified_at,
+        }
+        for item in record.media
+    ]
+    plan = record.payment_plan
+    payment_plan = (
+        {
+            "id": plan.id,
+            "raw_source_text": plan.raw_source_text,
+            "source_id": plan.source_id,
+            "is_complete": plan.is_complete,
+            "verified_at": plan.verified_at,
+            "milestones": [
+                {
+                    "sequence": item.sequence,
+                    "stage": item.stage.value,
+                    "label_en": item.label_en,
+                    "label_ar": item.label_ar,
+                    "percentage": item.percentage,
+                    "due_trigger": item.due_trigger,
+                    "source_value": item.source_value,
+                }
+                for item in plan.milestones
+            ],
+        }
+        if plan
+        else None
+    )
+    data: dict[str, Any] = {
+        "id": record.id,
+        "slug": record.slug,
+        "emirate": record.emirate.value,
+        "developer": {"id": record.developer.id, "slug": record.developer.slug},
+        "area": {
+            "id": record.area.id,
+            "slug": record.area.slug,
+            "name_en": record.area.name_en,
+            "name_ar": record.area.name_ar,
+            "emirate": record.area.emirate.value,
+        },
+        "status": record.status.value,
+        "workflow_status": record.workflow_status.value,
+        "availability_status": record.availability_status.value,
+        "construction_status": record.construction_status.value,
+        "handover_quarter": record.handover_quarter,
+        "handover_year": record.handover_year,
+        "original_handover_value": record.original_handover_value,
+        "size_min": record.size_min,
+        "size_max": record.size_max,
+        "size_unit": record.size_unit.value if record.size_unit else None,
+        "down_payment_percentage": record.down_payment_percentage,
+        "down_payment_source_value": record.down_payment_source_value,
+        "latitude": record.latitude,
+        "longitude": record.longitude,
+        "last_verified_at": record.last_verified_at,
+        "featured": record.featured,
+        "display_order": record.display_order,
+        "property_types": [item.property_type.value for item in record.property_types],
+        "bedroom_options": [item.bedroom_option.value for item in record.bedroom_options],
+        "unit_types": [
+            {
+                "label_en": item.label_en,
+                "label_ar": item.label_ar,
+                "display_order": item.display_order,
+            }
+            for item in sorted(record.unit_types, key=lambda value: value.display_order)
+        ],
+        "amenities": [
+            {
+                "label_en": item.label_en,
+                "label_ar": item.label_ar,
+                "display_order": item.display_order,
+            }
+            for item in sorted(record.amenities, key=lambda value: value.display_order)
+        ],
+        "nearby_places": [
+            {
+                "name_en": item.name_en,
+                "name_ar": item.name_ar,
+                "distance_value": item.distance_value,
+                "distance_unit": item.distance_unit,
+                "travel_time_minutes": item.travel_time_minutes,
+                "display_order": item.display_order,
+            }
+            for item in sorted(record.nearby_places, key=lambda value: value.display_order)
+        ],
+        "sources": sources,
+        "payment_plan": payment_plan,
+        "media": media,
+        "published_at": record.published_at,
+        "archived_at": record.archived_at,
+        "created_at": record.created_at,
+        "updated_at": record.updated_at,
+    }
+    if locale:
+        data.update(translations.get(locale, {}))
+        data["emirate"] = EMIRATE_LABELS[locale][record.emirate]
+        data["area"]["emirate"] = EMIRATE_LABELS[locale][record.area.emirate]
+        data["developer"]["name"] = next(
+            (item.name for item in record.developer.translations if item.locale == locale),
+            record.developer.slug,
+        )
+        data["cta"] = {
+            "available": "enquire-now",
+            "limited-availability": "check-current-availability",
+            "coming-soon": "register-interest",
+            "sold-out": "explore-similar-projects",
+        }[record.availability_status.value]
+        data.pop("sources", None)
+        data.pop("workflow_status", None)
+        data.pop("down_payment_source_value", None)
+        data["unit_types"] = [
+            {
+                "label": item["label_ar"] if locale == "ar" else item["label_en"],
+                "display_order": item["display_order"],
+            }
+            for item in data["unit_types"]
+        ]
+        data["amenities"] = [
+            {
+                "label": item["label_ar"] if locale == "ar" else item["label_en"],
+                "display_order": item["display_order"],
+            }
+            for item in data["amenities"]
+        ]
+        data["nearby_places"] = [
+            {
+                "name": item["name_ar"] if locale == "ar" else item["name_en"],
+                "distance_value": item["distance_value"],
+                "distance_unit": item["distance_unit"],
+                "travel_time_minutes": item["travel_time_minutes"],
+                "display_order": item["display_order"],
+            }
+            for item in data["nearby_places"]
+        ]
+        data["payment_plan"] = (
+            {
+                "is_complete": plan.is_complete,
+                "verified_at": plan.verified_at,
+                "milestones": [
+                    {
+                        "sequence": item.sequence,
+                        "stage": item.stage.value,
+                        "label": item.label_ar if locale == "ar" else item.label_en,
+                        "percentage": item.percentage,
+                        "due_trigger": item.due_trigger,
+                    }
+                    for item in plan.milestones
+                ],
+            }
+            if plan
+            else None
+        )
+        data["media"] = [
+            {
+                "id": item["id"],
+                "category": item["category"],
+                "url": f"/api/v1/public/projects/{record.slug}/media/{item['id']}",
+                "alt": item["alt_ar"] if locale == "ar" else item["alt_en"],
+                "width": item["width"],
+                "height": item["height"],
+            }
+            for item in media
+            if item["rights_status"] == "approved" and item["has_upload"]
+        ]
+        data.pop("status", None)
+        data.pop("archived_at", None)
+        data.pop("created_at", None)
+        data.pop("updated_at", None)
+    else:
+        data["developer_id"] = record.developer_id
+        data["area_id"] = record.area_id
+        data["priority"] = record.priority.value if record.priority else None
+        data["internal_notes"] = record.internal_notes
+        data["translations"] = translations
+    return data
+
+
+def import_batch_dict(record: ProjectImportBatch) -> dict[str, Any]:
+    return {
+        "id": record.id,
+        "name": record.name,
+        "source_reference": record.source_reference,
+        "started_at": record.started_at,
+        "completed_at": record.completed_at,
+        "total_count": record.total_count,
+        "clean_count": record.clean_count,
+        "needs_review_count": record.needs_review_count,
+        "failed_count": record.failed_count,
+        "created_at": record.created_at,
+        "updated_at": record.updated_at,
+    }
+
+
+def import_candidate_dict(record: ProjectImportCandidate) -> dict[str, Any]:
+    return {
+        "id": record.id,
+        "batch_id": record.batch_id,
+        "manifest_row_id": record.manifest_row_id,
+        "raw_source_payload": record.raw_source_payload,
+        "normalized_payload": record.normalized_payload,
+        "owner_manifest_values": record.owner_manifest_values,
+        "normalized_project_name": record.normalized_project_name,
+        "proposed_developer_id": record.proposed_developer_id,
+        "proposed_area_id": record.proposed_area_id,
+        "official_source_url": record.official_source_url,
+        "adapter_key": record.adapter_key,
+        "adapter_version": record.adapter_version,
+        "last_verified_at": record.last_verified_at,
+        "arabic_review_required": record.arabic_review_required,
+        "acquisition_summary": record.acquisition_summary,
+        "source_urls": record.source_urls,
+        "extracted_at": record.extracted_at,
+        "content_hash": record.content_hash,
+        "match_result": record.match_result,
+        "validation_errors": record.validation_errors,
+        "conflict_reasons": record.conflict_reasons,
+        "review_status": record.review_status.value,
+        "review_version": record.review_version,
+        "human_review_completed": record.human_review_completed,
+        "rejection_reason": record.rejection_reason,
+        "linked_project_id": record.linked_project_id,
+        "evidence": [
+            {
+                "source_url": item.source_url,
+                "source_type": item.source_type.value,
+                "http_status": item.http_status,
+                "retrieved_at": item.retrieved_at,
+                "adapter": f"{item.adapter_key}@{item.adapter_version}",
+                "content_type": item.content_type,
+                "etag": item.etag,
+                "last_modified": item.last_modified,
+                "content_hash": item.content_hash,
+                "private_snapshot_reference": item.storage_key,
+                "outcome": item.outcome,
+                "error_code": item.error_code,
+            }
+            for item in record.evidence
+        ],
+        "staged_media": [
+            {
+                "category": item.category.value,
+                "source_url": item.source_url,
+                "rights_status": item.rights_status.value,
+                "stage_status": item.stage_status,
+                "id": item.id,
+                "has_thumbnail": bool(item.thumbnail_storage_key),
+                "retrieved_at": item.retrieved_at,
+                "size_bytes": item.size_bytes,
+                "duplicate_of_id": item.duplicate_of_id,
+                "failure_reason": item.failure_reason,
+                "sha256": item.sha256,
+                "width": item.width,
+                "height": item.height,
+            }
+            for item in record.staged_media
+        ],
+        "changes": [
+            {
+                "classification": item.classification,
+                "existing_value": item.existing_value,
+                "new_value": item.new_value,
+                "source_url": item.source_url,
+                "detected_at": item.detected_at,
+                "content_hash": item.content_hash,
+            }
+            for item in record.changes
+        ],
+        "created_at": record.created_at,
+        "updated_at": record.updated_at,
+    }
+
+
+def import_candidate_summary_dict(record: ProjectImportCandidate) -> dict[str, Any]:
+    missing = [
+        str(item.get("field", "Unknown"))
+        for item in record.validation_errors
+        if isinstance(item, dict)
+    ]
+    media_statuses = [item.stage_status for item in record.staged_media]
+    blockers = [_review_message(item) for item in record.validation_errors]
+    blockers.extend(str(item) for item in record.conflict_reasons)
+    if not record.proposed_developer_id:
+        blockers.append("Select the canonical Developer.")
+    if not record.proposed_area_id:
+        blockers.append("Select the canonical Area.")
+    if not record.official_source_url:
+        blockers.append("Official evidence is incomplete.")
+    proposal = record.normalized_payload or {}
+    for key in ("property_types", "bedrooms", "availability_status", "construction_status"):
+        if proposal.get(key) in (None, [], {}):
+            blockers.append(f"Review the source-grounded {key.replace('_', ' ')}.")
+    if record.arabic_review_required:
+        blockers.append("Arabic evidence requires human review.")
+    if not record.human_review_completed:
+        blockers.append("Complete the human field review.")
+    ready = not blockers and bool(record.official_source_url)
+    status = record.review_status
+    eligibility = {
+        "retry-acquisition": status == ImportReviewStatus.FAILED,
+        "assign-developer": status == ImportReviewStatus.NEEDS_REVIEW,
+        "assign-area": status == ImportReviewStatus.NEEDS_REVIEW,
+        "reject": status
+        in {
+            ImportReviewStatus.FAILED,
+            ImportReviewStatus.NEEDS_REVIEW,
+            ImportReviewStatus.READY_FOR_APPROVAL,
+        },
+        "mark-ready": status == ImportReviewStatus.NEEDS_REVIEW and ready,
+        "create-drafts": status == ImportReviewStatus.READY_FOR_APPROVAL,
+    }
+    return {
+        "id": record.id,
+        "manifest_row_id": record.manifest_row_id,
+        "project_name": record.normalized_project_name
+        or record.owner_manifest_values.get("owner_project_name")
+        or "Unnamed candidate",
+        "owner_developer": record.owner_manifest_values.get("owner_developer"),
+        "owner_area": record.owner_manifest_values.get("owner_area"),
+        "proposed_developer_id": record.proposed_developer_id,
+        "proposed_area_id": record.proposed_area_id,
+        "official_source_url": record.official_source_url,
+        "review_status": record.review_status.value,
+        "missing_fields": missing,
+        "blockers": blockers,
+        "warnings": [
+            "Private media rights remain Pending."
+            for item in record.staged_media
+            if item.rights_status.value == "pending"
+        ][:1],
+        "conflict_count": len(record.conflict_reasons),
+        "media_count": len(record.staged_media),
+        "media_downloaded_count": sum(value == "downloaded" for value in media_statuses),
+        "media_failed_count": sum(value == "failed" for value in media_statuses),
+        "last_verified_at": record.last_verified_at,
+        "review_version": record.review_version,
+        "human_review_completed": record.human_review_completed,
+        "arabic_review_state": ("review-required" if record.arabic_review_required else "reviewed"),
+        "rights_status": (
+            "pending"
+            if any(item.rights_status.value == "pending" for item in record.staged_media)
+            else "none"
+        ),
+        "eligibility": eligibility,
+        "updated_at": record.updated_at,
+    }
+
+
+def _review_message(value: dict[str, Any]) -> str:
+    code = str(value.get("code", ""))
+    field = str(value.get("field", "evidence")).replace("_", " ")
+    messages = {
+        "official_source_not_found": "No matching public official Project page was found.",
+        "missing_official_evidence": f"Official evidence is incomplete for {field}.",
+        "missing_canonical_area": "Select the canonical Area.",
+        "missing_canonical_developer": "Select the canonical Developer.",
+        "name_conflict": "Manifest and official Project names differ.",
+    }
+    return messages.get(code, str(value.get("message") or f"Review {field}."))
 
 
 def insight_dict(record: InsightPost, locale: str | None = None) -> dict[str, Any]:

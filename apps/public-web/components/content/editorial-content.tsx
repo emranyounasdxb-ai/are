@@ -6,21 +6,9 @@ export type ContentItem = Readonly<{ title: string; text: string }>;
 export type FaqItem = Readonly<{ question: string; answer: string }>;
 export type RelatedItem = Readonly<{ href: string; label: string; text: string }>;
 
-export function Breadcrumbs({
-  items,
-  label,
-}: Readonly<{ items: ReadonlyArray<Readonly<{ href?: string; label: string }>>; label: string }>) {
-  return (
-    <nav aria-label={label} className="breadcrumbs">
-      <ol>
-        {items.map((item, index) => (
-          <li key={`${item.label}-${index}`}>
-            {item.href ? <Link href={item.href}>{item.label}</Link> : <span aria-current="page">{item.label}</span>}
-          </li>
-        ))}
-      </ol>
-    </nav>
-  );
+export function Breadcrumbs(properties: Readonly<{ items: ReadonlyArray<Readonly<{ href?: string; label: string }>>; label: string }>) {
+  void properties;
+  return null;
 }
 
 export function EditorialCards({ items }: Readonly<{ items: ReadonlyArray<ContentItem> }>) {
