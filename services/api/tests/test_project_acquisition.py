@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import io
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pytest
@@ -15,6 +15,7 @@ from app.acquisition.contracts import FetchResult, ManifestCandidate
 from app.acquisition.mapping_registry import TANAMI_V1, mapping_contract
 from app.acquisition.media import (
     RasterFetchResult,
+    classify_media_quality,
     duplicate_hash,
     normalized_media_filename,
     responsive_derivatives,
@@ -35,6 +36,8 @@ from app.db import SessionLocal
 from app.models import (
     AreaCommunity,
     Developer,
+    DeveloperTranslation,
+    DeveloperVerificationStatus,
     EditorialApprovalStatus,
     ImportReviewStatus,
     MediaRightsStatus,
@@ -274,6 +277,7 @@ def test_media_derivatives_are_normalized_sanitized_and_responsive() -> None:
         ("webp", 960),
         ("avif", 960),
     }
+    assert all(item.width <= raster.width for item in derivatives)
     for derivative in derivatives:
         assert derivative.size_bytes == len(derivative.content)
         with Image.open(io.BytesIO(derivative.content)) as image:
@@ -405,7 +409,7 @@ async def test_private_media_intake_is_sanitized_pending_and_authenticated(
     client, create_user, test_settings
 ) -> None:
     image = io.BytesIO()
-    Image.new("RGB", (640, 360), "#745238").save(image, "JPEG", exif=b"private-metadata")
+    Image.new("RGB", (1600, 1000), "#745238").save(image, "JPEG", exif=b"private-metadata")
     batch_id = uuid.uuid4()
     media_id = uuid.uuid4()
     async with SessionLocal() as db:
@@ -466,17 +470,156 @@ async def test_private_media_intake_is_sanitized_pending_and_authenticated(
     assert unauthenticated.status_code == 401
     email, password = await create_user("super-admin")
     await client.post("/api/v1/auth/login", json={"email": email, "password": password})
+    blocked_preview = await client.get(
+        f"/api/v1/admin/project-imports/candidates/{candidate.id}/preview-media/"
+        f"{media_id}?size=thumbnail"
+    )
+    assert blocked_preview.status_code == 404
     preview = await client.get(f"/api/v1/admin/project-import-media/{media_id}/thumbnail")
     assert preview.status_code == 200
     assert preview.headers["cache-control"] == "private, no-store, max-age=0"
     assert preview.headers["content-type"].startswith("image/webp")
+    full = await client.get(f"/api/v1/admin/project-import-media/{media_id}/preview")
+    assert full.status_code == 200
+    assert full.headers["cache-control"] == "private, no-store, max-age=0"
+    assert full.headers["content-type"].startswith("image/jpeg")
+    async with SessionLocal() as db:
+        media = await db.get(ProjectImportMedia, media_id)
+        assert media is not None
+        media.rights_status = MediaRightsStatus.APPROVED
+        await db.commit()
+    approved_preview = await client.get(
+        f"/api/v1/admin/project-imports/candidates/{candidate.id}/preview-media/"
+        f"{media_id}?size=thumbnail"
+    )
+    assert approved_preview.status_code == 200
+    assert approved_preview.headers["cache-control"] == "private, no-store, max-age=0"
+    assert approved_preview.headers["content-type"].startswith("image/webp")
+
+
+@pytest.mark.asyncio
+async def test_low_resolution_media_is_private_review_only_and_rerun_is_idempotent(
+    test_settings,
+) -> None:
+    image = io.BytesIO()
+    Image.new("RGB", (800, 450), "#745238").save(image, "JPEG")
+    batch_id = uuid.uuid4()
+    async with SessionLocal() as db:
+        batch = ProjectImportBatch(
+            id=batch_id,
+            name="QA Low Resolution Media",
+            source_reference="qa-low-resolution",
+            manifest_hash=uuid.uuid4().hex + uuid.uuid4().hex,
+            adapter_version="test",
+            total_count=1,
+        )
+        candidate = ProjectImportCandidate(
+            manifest_row_id=1,
+            raw_source_payload={},
+            owner_manifest_values={
+                "owner_project_name": "QA Low Resolution Project",
+                "owner_developer": "Emaar",
+                "owner_area": "Dubai",
+            },
+            normalized_project_name="QA Low Resolution Project",
+            acquisition_summary={"visible_gallery_count": 2, "media_excluded": 3},
+            source_urls=[],
+            content_hash="e" * 64,
+            validation_errors=[],
+            conflict_reasons=[],
+            review_status=ImportReviewStatus.NEEDS_REVIEW,
+        )
+        media = ProjectImportMedia(
+            category=ProjectMediaCategory.GALLERY,
+            source_url="https://properties.emaar.com/media/qa-low.jpg",
+            rights_status=MediaRightsStatus.PENDING,
+            stage_status="reference-only",
+        )
+        candidate.staged_media = [media]
+        batch.candidates = [candidate]
+        db.add(batch)
+        await db.commit()
+        first = await intake_private_media(
+            db,
+            test_settings,
+            batch_id,
+            fetcher=RasterFixtureFetcher(image.getvalue()),
+        )
+        await db.refresh(media)
+        first_keys = (media.raw_storage_key, media.storage_key, media.thumbnail_storage_key)
+        assert first["low_resolution_rejected"] == 1
+        assert media.stage_status == "rejected-low-resolution"
+        assert (
+            media.failure_reason == "Image does not meet the minimum public-readiness dimensions."
+        )
+        assert media.derivative_manifest == []
+        assert all(first_keys)
+        assert "Media coverage incomplete" in candidate.conflict_reasons
+        assert "High-resolution Cover image required" in candidate.conflict_reasons
+
+        second = await intake_private_media(
+            db,
+            test_settings,
+            batch_id,
+            fetcher=RasterFixtureFetcher(image.getvalue()),
+        )
+        await db.refresh(media)
+        assert second["attempted"] == 0
+        assert second["low_resolution_rejected"] == 1
+        assert (media.raw_storage_key, media.storage_key, media.thumbnail_storage_key) == first_keys
+
+
+def test_cover_quality_gate_requires_real_1600_by_900_landscape_master() -> None:
+    low = io.BytesIO()
+    Image.new("RGB", (1400, 600), "#745238").save(low, "JPEG")
+    low_quality = classify_media_quality(validate_raster(low.getvalue(), "image/jpeg"), "cover")
+    assert not low_quality.public_eligible
+    assert low_quality.rejection_reason == "High-resolution Cover image required"
+
+    valid = io.BytesIO()
+    Image.new("RGB", (1600, 900), "#745238").save(valid, "JPEG")
+    valid_quality = classify_media_quality(validate_raster(valid.getvalue(), "image/jpeg"), "cover")
+    assert valid_quality.public_eligible
+    assert valid_quality.cover_eligible
 
 
 @pytest.mark.asyncio
 async def test_retry_preserves_human_mapping_and_never_auto_marks_ready(test_settings) -> None:
     async with SessionLocal() as db:
-        developer = await db.scalar(select(Developer).where(Developer.slug == "emaar-properties"))
-        assert developer is not None
+        developer = Developer(
+            slug="qa-retry-developer",
+            legal_name="QA Retry Developer LLC",
+            source_name="QA Retry Developer",
+            internal_aliases=["QA Retry Dev"],
+            primary_emirate="Dubai",
+            other_presence=[],
+            selected_projects=[],
+            official_website="https://example.com/qa-retry-developer",
+            source_url="https://example.com/qa-retry-developer/source",
+            additional_source_urls=[],
+            verification_date=date(2026, 8, 26),
+            verification_status=DeveloperVerificationStatus.VERIFIED,
+            enquiry_types=[],
+            status=PublicationStatus.DRAFT,
+            translations=[
+                DeveloperTranslation(
+                    locale="en",
+                    name="QA Retry Developer",
+                    description="Disposable Developer fixture.",
+                    focus="Disposable Project fixtures.",
+                    verification_note="Synthetic QA evidence only.",
+                ),
+                DeveloperTranslation(
+                    locale="ar",
+                    name="مطور اختبار إعادة المحاولة",
+                    description="بيانات مطور مؤقتة للاختبار.",
+                    focus="مشاريع اختبار مؤقتة.",
+                    verification_note="أدلة اختبار اصطناعية فقط.",
+                ),
+            ],
+        )
+        db.add(developer)
+        await db.flush()
         area = AreaCommunity(
             slug="qa-retry-area",
             name_en="QA Retry Area",

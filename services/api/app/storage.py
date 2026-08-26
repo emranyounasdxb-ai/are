@@ -146,6 +146,22 @@ class PrivateStorage:
         await asyncio.to_thread(self._path(storage_key).write_bytes, content)
         return storage_key
 
+    async def save_private_json(self, content: bytes, *, prefix: str) -> StoredFile:
+        if not content or len(content) > 5 * 1024 * 1024:
+            raise ValueError("Private JSON is empty or exceeds the private-storage limit.")
+        if not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", prefix):
+            raise ValueError("Unsafe private JSON prefix.")
+        storage_key = f"{prefix}-{uuid.uuid4().hex}.json"
+        await asyncio.to_thread(self._path(storage_key).write_bytes, content)
+        return StoredFile(
+            storage_key=storage_key,
+            original_filename=f"{prefix}.json",
+            declared_mime_type="application/json",
+            verified_format="json",
+            size_bytes=len(content),
+            sha256=hashlib.sha256(content).hexdigest(),
+        )
+
     async def _save_image(self, upload: UploadFile, prefix: str) -> StoredImage:
         filename = upload.filename or ""
         if (

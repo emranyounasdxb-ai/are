@@ -24,6 +24,7 @@ from app.models import (
     Project,
     ProjectImportBatch,
     ProjectImportCandidate,
+    ProjectOverviewPack,
     Property,
     Role,
     Session,
@@ -76,6 +77,13 @@ async def clean_disposable_records(test_settings: Settings) -> AsyncIterator[Non
             )
         ).all()
         for batch in import_batches:
+            packs = (
+                await db.scalars(
+                    select(ProjectOverviewPack).where(ProjectOverviewPack.batch_id == batch.id)
+                )
+            ).all()
+            for pack in packs:
+                storage.delete(pack.storage_key)
             for candidate in batch.candidates:
                 for evidence in candidate.evidence:
                     if evidence.storage_key:

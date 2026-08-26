@@ -115,18 +115,28 @@ async def test_developer_rbac_csrf_duplicate_slug_and_url_validation(
 
 
 @pytest.mark.asyncio
-async def test_seeded_public_developers_are_complete_and_published(client: AsyncClient) -> None:
+async def test_public_developers_use_isolated_published_fixture(
+    client: AsyncClient, create_user
+) -> None:
+    email, password = await create_user("super-admin")
+    session = await authenticate(client, email, password)
+    headers = {"X-CSRF-Token": str(session["csrf_token"])}
+    created = await client.post(
+        "/api/v1/admin/developers",
+        json=developer_payload(slug="qa-public-developer"),
+        headers=headers,
+    )
+    assert created.status_code == 201, created.text
+    published = await client.post(
+        f"/api/v1/admin/developers/{created.json()['id']}/publish", headers=headers
+    )
+    assert published.status_code == 200, published.text
     response = await client.get("/api/v1/public/developers?locale=en")
     assert response.status_code == 200
     items = response.json()["items"]
-    assert len(items) == 20
-    assert all(item["status"] == "published" for item in items)
-    assert {item["slug"] for item in items} >= {
-        "emaar-properties",
-        "aldar-properties",
-        "al-hamra",
-        "marjan",
-    }
+    fixture = next(item for item in items if item["slug"] == "qa-public-developer")
+    assert fixture["status"] == "published"
+    assert fixture["name"] == "QA Developer"
 
 
 @pytest.mark.asyncio

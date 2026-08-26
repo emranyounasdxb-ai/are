@@ -18,21 +18,30 @@ from app.config import Settings
 from app.dependencies import AuthContext
 from app.models import (
     AreaCommunity,
+    ConstructionStatus,
     Developer,
+    EditorialApprovalStatus,
     ImportReviewStatus,
     Project,
+    ProjectAmenity,
     ProjectAvailabilityStatus,
     ProjectBedroomOption,
     ProjectBedroomValue,
     ProjectImportBatch,
     ProjectImportBulkOperation,
     ProjectImportCandidate,
+    ProjectMedia,
+    ProjectMediaCategory,
+    ProjectNearbyPlace,
     ProjectPaymentMilestone,
     ProjectPaymentPlan,
     ProjectPropertyType,
     ProjectPropertyTypeValue,
+    ProjectSizeUnit,
     ProjectSource,
     ProjectSourceType,
+    ProjectTranslation,
+    ProjectUnitType,
     PublicationStatus,
 )
 from app.schemas import ImportBulkActionInput
@@ -60,6 +69,66 @@ def eligibility_errors(candidate: ProjectImportCandidate) -> list[str]:
     for key in ("property_types", "bedrooms", "availability_status", "construction_status"):
         if proposal.get(key) in (None, [], {}):
             errors.append(f"{key.replace('_', ' ').title()} is required.")
+    return errors
+
+
+def draft_eligibility_errors(candidate: ProjectImportCandidate) -> list[str]:
+    """Validate a private Draft without treating publication facts as Draft blockers."""
+    errors: list[str] = []
+    proposal = candidate.normalized_payload or {}
+    if not candidate.proposed_developer_id:
+        errors.append("Canonical Developer is required.")
+    if not candidate.proposed_area_id:
+        errors.append("Canonical Area is required.")
+    if not candidate.official_source_url:
+        errors.append("An official source is required.")
+    if not candidate.normalized_project_name:
+        errors.append("A source-grounded project name is required.")
+    if not candidate.human_review_completed:
+        errors.append("Human review must be completed.")
+    overview = candidate.editorial_draft
+    if (
+        not overview
+        or overview.approval_status != EditorialApprovalStatus.APPROVED
+        or not overview.overview_en
+        or not overview.overview_ar
+    ):
+        errors.append("An approved bilingual Overview is required.")
+    for key in ("property_types", "bedrooms"):
+        if proposal.get(key) in (None, [], {}):
+            errors.append(f"{key.replace('_', ' ').title()} is required.")
+    blocking_validation = [
+        value
+        for value in candidate.validation_errors
+        if not (
+            value.get("field") in {"availability_status", "construction_status"}
+            and value.get("code") == "missing_official_evidence"
+        )
+        and value.get("field") not in {"overview", "media_rights"}
+    ]
+    if blocking_validation:
+        errors.append("Blocking source validation issues must be resolved.")
+    allowed_conflicts = {
+        (
+            "Community-level handover is supported by the approved secondary source but is "
+            "not stated on the official Sobha community page; owner review is required."
+        ),
+        (
+            "Current availability is unresolved; an active page or displayed price was not "
+            "treated as availability evidence."
+        ),
+        "Construction status is not confirmed by the retained source set.",
+    }
+    if any(value not in allowed_conflicts for value in candidate.conflict_reasons):
+        errors.append("Blocking source conflicts must be resolved.")
+    if not any(
+        item.category == ProjectMediaCategory.COVER
+        and item.stage_status == "downloaded"
+        and item.rights_status.value == "approved"
+        and item.storage_key
+        for item in candidate.staged_media
+    ):
+        errors.append("An approved, eligible Cover image is required for the Draft preview.")
     return errors
 
 
@@ -104,6 +173,7 @@ async def apply_bulk_action(
                 .options(
                     selectinload(ProjectImportCandidate.evidence),
                     selectinload(ProjectImportCandidate.staged_media),
+                    selectinload(ProjectImportCandidate.editorial_draft),
                 )
             )
         )
@@ -204,8 +274,47 @@ async def apply_bulk_action(
             item.review_status = ImportReviewStatus.READY_FOR_APPROVAL
             item.reviewed_by = context.user.id
     elif payload.action == "create-drafts":
-        if any(item.review_status != ImportReviewStatus.READY_FOR_APPROVAL for item in candidates):
-            raise _invalid("Only Ready candidates can create Draft Projects.")
+        ineligible = {
+            item.manifest_row_id: (
+                (
+                    ["Candidate is not in a Draft-eligible review state."]
+                    if item.review_status
+                    not in {
+                        ImportReviewStatus.NEEDS_REVIEW,
+                        ImportReviewStatus.READY_FOR_APPROVAL,
+                    }
+                    else []
+                )
+                + draft_eligibility_errors(item)
+            )
+            for item in candidates
+            if item.review_status
+            not in {ImportReviewStatus.NEEDS_REVIEW, ImportReviewStatus.READY_FOR_APPROVAL}
+            or draft_eligibility_errors(item)
+        }
+        if ineligible:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail={
+                    "code": "candidate_draft_ineligible",
+                    "message": "One or more selected candidates cannot create a safe Draft.",
+                    "results": [
+                        {
+                            "candidate_id": str(item.id),
+                            "manifest_row": item.manifest_row_id,
+                            "outcome": "blocked",
+                            "reason": "; ".join(
+                                ineligible.get(
+                                    item.manifest_row_id,
+                                    ["Candidate is not in a Draft-eligible review state."],
+                                )
+                            ),
+                        }
+                        for item in candidates
+                        if item.manifest_row_id in ineligible
+                    ],
+                },
+            )
         for item in candidates:
             item.linked_project_id = (await _create_draft(db, item, context.user.id)).id
             item.review_status = ImportReviewStatus.MERGED
@@ -277,7 +386,7 @@ async def apply_bulk_action(
 async def _create_draft(
     db: AsyncSession, candidate: ProjectImportCandidate, actor_id: uuid.UUID
 ) -> Project:
-    problems = eligibility_errors(candidate)
+    problems = draft_eligibility_errors(candidate)
     if problems:
         raise _invalid(f"Candidate {candidate.manifest_row_id} is not eligible: {problems}")
     proposal = candidate.normalized_payload or {}
@@ -303,11 +412,18 @@ async def _create_draft(
         area_id=candidate.proposed_area_id,
         emirate=area.emirate,
         status=PublicationStatus.DRAFT,
-        availability_status=ProjectAvailabilityStatus(str(proposal["availability_status"])),
-        construction_status=str(proposal["construction_status"]),
+        availability_status=ProjectAvailabilityStatus.NOT_CONFIRMED,
+        construction_status=ConstructionStatus.NOT_CONFIRMED,
         handover_quarter=proposal.get("handover_quarter"),
         handover_year=proposal.get("handover_year"),
         original_handover_value=proposal.get("original_handover_value"),
+        size_min=proposal.get("size_min"),
+        size_max=proposal.get("size_max"),
+        size_unit=(
+            ProjectSizeUnit(str(proposal["size_unit"])) if proposal.get("size_unit") else None
+        ),
+        down_payment_percentage=proposal.get("down_payment_percentage"),
+        down_payment_source_value=proposal.get("down_payment_source_value"),
         last_verified_at=candidate.last_verified_at,
         priority=None,
         featured=False,
@@ -323,6 +439,56 @@ async def _create_draft(
         ProjectBedroomValue(bedroom_option=ProjectBedroomOption(str(value)))
         for value in proposal.get("bedrooms", [])
     ]
+    overview = candidate.editorial_draft
+    if not overview or not overview.overview_en or not overview.overview_ar:
+        raise _invalid("An approved bilingual Overview is required.")
+    project_name_ar = str(proposal.get("project_name_ar") or project_name)
+    record.translations = [
+        ProjectTranslation(
+            locale="en",
+            official_name=project_name,
+            short_summary=overview.overview_en,
+            full_description=overview.overview_en,
+            seo_title=project_name,
+            seo_description=overview.overview_en[:320],
+        ),
+        ProjectTranslation(
+            locale="ar",
+            official_name=project_name_ar,
+            short_summary=overview.overview_ar,
+            full_description=overview.overview_ar,
+            seo_title=project_name_ar,
+            seo_description=overview.overview_ar[:320],
+        ),
+    ]
+    record.unit_types = [
+        ProjectUnitType(
+            label_en=str(value["label_en"]),
+            label_ar=str(value["label_ar"]),
+            display_order=index,
+        )
+        for index, value in enumerate(proposal.get("localized_unit_types", []))
+        if isinstance(value, dict) and value.get("label_en") and value.get("label_ar")
+    ]
+    record.amenities = [
+        ProjectAmenity(
+            label_en=str(value["label_en"]),
+            label_ar=str(value["label_ar"]),
+            display_order=index,
+        )
+        for index, value in enumerate(proposal.get("localized_amenities", []))
+        if isinstance(value, dict) and value.get("label_en") and value.get("label_ar")
+    ]
+    record.nearby_places = [
+        ProjectNearbyPlace(
+            name_en=str(value["name_en"]),
+            name_ar=str(value["name_ar"]),
+            travel_time_minutes=value.get("travel_time_minutes"),
+            display_order=index,
+        )
+        for index, value in enumerate(proposal.get("localized_nearby_places", []))
+        if isinstance(value, dict) and value.get("name_en") and value.get("name_ar")
+    ]
     record.sources = [
         ProjectSource(
             source_url=candidate.official_source_url,
@@ -334,26 +500,51 @@ async def _create_draft(
             is_active=True,
         )
     ]
+    record.media = [
+        ProjectMedia(
+            category=item.category,
+            source_url=item.source_url,
+            rights_status=item.rights_status,
+            alt_en=item.alt_en_draft,
+            alt_ar=item.alt_ar_draft,
+            display_order=item.display_order,
+            storage_key=item.storage_key,
+            original_filename=item.normalized_filename,
+            mime_type=item.mime_type,
+            size_bytes=item.size_bytes,
+            sha256=item.sha256,
+            width=item.width,
+            height=item.height,
+            verified_at=item.rights_confirmed_at,
+            uploaded_by=item.rights_confirmed_by,
+        )
+        for item in candidate.staged_media
+        if item.stage_status == "downloaded"
+        and item.rights_status.value == "approved"
+        and item.storage_key
+    ]
     db.add(record)
     await db.flush()
     payment = proposal.get("payment_plan")
-    if isinstance(payment, dict) and payment.get("raw_source_text"):
+    milestones = proposal.get("payment_milestones", [])
+    if isinstance(payment, str) and payment:
         plan = ProjectPaymentPlan(
             project_id=record.id,
-            raw_source_text=str(payment["raw_source_text"]),
+            raw_source_text=payment,
             source_id=record.sources[0].id,
-            is_complete=bool(payment.get("is_complete")),
+            is_complete=False,
             verified_at=candidate.last_verified_at,
         )
         plan.milestones = [
             ProjectPaymentMilestone(
-                sequence=int(value.get("sequence", index)),
+                sequence=int(value.get("sequence", index + 1)),
                 stage=str(value.get("stage", "other")),
                 label_en=str(value.get("source_value", "Source milestone"))[:240],
+                label_ar=(str(value["label_ar"]) if value.get("label_ar") else None),
                 percentage=value.get("percentage"),
                 source_value=str(value.get("source_value", "")),
             )
-            for index, value in enumerate(payment.get("milestones", []))
+            for index, value in enumerate(milestones)
             if isinstance(value, dict) and value.get("source_value")
         ]
         record.payment_plan = plan

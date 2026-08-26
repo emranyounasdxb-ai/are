@@ -29,6 +29,7 @@ class OfficialSiteAdapter:
     canonical_developer_slug: str | None = None
     catalog_paths: tuple[str, ...] = ()
     version: str = ADAPTER_VERSION
+    aliases: tuple[str, ...] = ()
 
     def discover(self, candidate: ManifestCandidate, fetcher: SourceFetcher) -> DiscoveryResult:
         failures: list[str] = []
@@ -54,7 +55,12 @@ class OfficialSiteAdapter:
                 failures.append(f"{path}:{result.error_code}")
         exact, suggested = _best_url(candidate.project_name, urls)
         if exact:
-            return DiscoveryResult(exact, "deterministic", failures=tuple(failures))
+            return DiscoveryResult(
+                exact,
+                "deterministic",
+                failures=tuple(failures),
+                localized_urls=_localized_exact_urls(candidate.project_name, urls, exact),
+            )
         if suggested:
             return DiscoveryResult(
                 suggested,
@@ -144,135 +150,169 @@ def _best_url(project_name: str, urls: set[str]) -> tuple[str | None, str | None
     return None, None
 
 
-ADAPTERS = {
-    item.developer_name.casefold(): item
-    for item in (
-        OfficialSiteAdapter(
-            "emaar",
-            "Emaar",
-            "https://properties.emaar.com/en/",
-            ("emaar.com",),
-            "emaar-properties",
-            ("/en/properties/",),
-        ),
-        OfficialSiteAdapter(
-            "sobha",
-            "Sobha Realty",
-            "https://sobharealty.com/",
-            ("sobharealty.com",),
-            "sobha-realty",
-            ("/properties/",),
-        ),
-        OfficialSiteAdapter(
-            "damac",
-            "DAMAC",
-            "https://www.damacproperties.com/",
-            ("damacproperties.com",),
-            "damac-properties",
-            ("/en/projects/",),
-        ),
-        OfficialSiteAdapter(
-            "binghatti",
-            "Binghatti",
-            "https://www.binghatti.com/",
-            ("binghatti.com",),
-            "binghatti",
-            ("/projects/",),
-        ),
-        OfficialSiteAdapter(
-            "ellington",
-            "Ellington",
-            "https://ellingtonproperties.ae/en/",
-            ("ellingtonproperties.ae",),
-            None,
-            ("/en/properties",),
-        ),
-        OfficialSiteAdapter(
-            "meraas", "Meraas", "https://meraas.com/", ("meraas.com",), "meraas", ("/en/projects",)
-        ),
-        OfficialSiteAdapter(
-            "beyond",
-            "Beyond",
-            "https://beyonddevelopments.ae/",
-            ("beyonddevelopments.ae",),
-            None,
-            ("/projects/",),
-        ),
-        OfficialSiteAdapter(
-            "expo-city",
-            "Expo City Dubai",
-            "https://www.expocitydubai.com/en/expo-living/",
-            ("expocitydubai.com",),
-            None,
-            ("/en/expo-living/",),
-        ),
-        OfficialSiteAdapter(
-            "nakheel",
-            "Nakheel",
-            "https://www.nakheel.com/",
-            ("nakheel.com",),
-            "nakheel",
-            ("/en/our-projects",),
-        ),
-        OfficialSiteAdapter(
-            "danube",
-            "Danube",
-            "https://danubeproperties.com/",
-            ("danubeproperties.com",),
-            "danube-properties",
-            ("/projects/",),
-        ),
-        OfficialSiteAdapter(
-            "azizi",
-            "Azizi",
-            "https://www.azizidevelopments.com/",
-            ("azizidevelopments.com",),
-            "azizi-developments",
-            ("/projects",),
-        ),
-        OfficialSiteAdapter(
-            "bold",
-            "Bold",
-            "https://bolddeveloper.com/",
-            ("bolddeveloper.com",),
-            None,
-            ("/projects/",),
-        ),
-        OfficialSiteAdapter(
-            "zaya",
-            "Zaya",
-            "https://www.zaya.com/projects",
-            ("zaya.com", "lunaya.com"),
-            None,
-            ("/projects",),
-        ),
-        OfficialSiteAdapter(
-            "mr-eight",
-            "Mr Eight",
-            "https://www.mr8uae.com/",
-            ("mr8uae.com", "mr8.ae"),
-            None,
-            ("/projects",),
-        ),
-        OfficialSiteAdapter(
-            "reportage",
-            "Reportage",
-            "https://reportagegroup.com/",
-            ("reportagegroup.com", "reportageuae.com"),
-            "reportage-properties",
-            ("/projects/",),
-        ),
-        OfficialSiteAdapter(
-            "aldar",
-            "Aldar",
-            "https://www.aldar.com/",
-            ("aldar.com",),
-            "aldar-properties",
-            ("/en/explore-aldar/properties",),
-        ),
+def _localized_exact_urls(project_name: str, urls: set[str], primary: str) -> tuple[str, ...]:
+    """Keep at most one exact English and one exact Arabic official Project URL."""
+    target = normalize_name(project_name)
+    important = {value for value in target.split() if value not in STOP_TOKENS and len(value) > 2}
+    matches = []
+    for url in urls:
+        path = normalize_name(urlsplit(url).path.replace("-", " "))
+        if target in path or (important and important <= set(path.split())):
+            matches.append(url)
+    english = sorted(
+        (url for url in matches if "/ar/" not in urlsplit(url).path.casefold()),
+        key=lambda value: (len(urlsplit(value).path), value),
     )
-}
+    arabic = sorted(
+        (url for url in matches if "/ar/" in urlsplit(url).path.casefold()),
+        key=lambda value: (len(urlsplit(value).path), value),
+    )
+    return tuple(dict.fromkeys([primary, *(english[:1]), *(arabic[:1])]))
+
+
+OFFICIAL_ADAPTERS = (
+    OfficialSiteAdapter(
+        "emaar",
+        "Emaar",
+        "https://properties.emaar.com/en/",
+        ("emaar.com",),
+        "emaar-properties",
+        ("/en/properties/",),
+    ),
+    OfficialSiteAdapter(
+        "sobha",
+        "Sobha Realty",
+        "https://sobharealty.com/",
+        ("sobharealty.com",),
+        "sobha-realty",
+        ("/properties/",),
+        aliases=("Sobha Group", "Sobha", "شوبا العقارية", "مجموعة شوبا"),
+    ),
+    OfficialSiteAdapter(
+        "damac",
+        "DAMAC",
+        "https://www.damacproperties.com/",
+        ("damacproperties.com",),
+        "damac-properties",
+        ("/en/projects/",),
+    ),
+    OfficialSiteAdapter(
+        "binghatti",
+        "Binghatti",
+        "https://www.binghatti.com/",
+        ("binghatti.com",),
+        "binghatti",
+        ("/projects/",),
+    ),
+    OfficialSiteAdapter(
+        "ellington",
+        "Ellington",
+        "https://ellingtonproperties.ae/en/",
+        ("ellingtonproperties.ae",),
+        None,
+        ("/en/properties",),
+    ),
+    OfficialSiteAdapter(
+        "meraas", "Meraas", "https://meraas.com/", ("meraas.com",), "meraas", ("/en/projects",)
+    ),
+    OfficialSiteAdapter(
+        "beyond",
+        "Beyond",
+        "https://beyonddevelopments.ae/",
+        ("beyonddevelopments.ae",),
+        None,
+        ("/projects/",),
+    ),
+    OfficialSiteAdapter(
+        "expo-city",
+        "Expo City Dubai",
+        "https://www.expocitydubai.com/en/expo-living/",
+        ("expocitydubai.com",),
+        None,
+        ("/en/expo-living/",),
+    ),
+    OfficialSiteAdapter(
+        "nakheel",
+        "Nakheel",
+        "https://www.nakheel.com/",
+        ("nakheel.com",),
+        "nakheel",
+        ("/en/our-projects",),
+    ),
+    OfficialSiteAdapter(
+        "danube",
+        "Danube",
+        "https://danubeproperties.com/",
+        ("danubeproperties.com",),
+        "danube-properties",
+        ("/projects/",),
+    ),
+    OfficialSiteAdapter(
+        "azizi",
+        "Azizi",
+        "https://www.azizidevelopments.com/",
+        ("azizidevelopments.com",),
+        "azizi-developments",
+        ("/projects",),
+    ),
+    OfficialSiteAdapter(
+        "bold",
+        "Bold",
+        "https://bolddeveloper.com/",
+        ("bolddeveloper.com",),
+        None,
+        ("/projects/",),
+    ),
+    OfficialSiteAdapter(
+        "zaya",
+        "Zaya",
+        "https://www.zaya.com/projects",
+        ("zaya.com", "lunaya.com"),
+        None,
+        ("/projects",),
+    ),
+    OfficialSiteAdapter(
+        "mr-eight",
+        "Mr Eight",
+        "https://www.mr8uae.com/",
+        ("mr8uae.com", "mr8.ae"),
+        None,
+        ("/projects",),
+    ),
+    OfficialSiteAdapter(
+        "reportage",
+        "Reportage",
+        "https://reportagegroup.com/",
+        ("reportagegroup.com", "reportageuae.com"),
+        "reportage-properties",
+        ("/projects/",),
+    ),
+    OfficialSiteAdapter(
+        "aldar",
+        "Aldar",
+        "https://www.aldar.com/",
+        ("aldar.com",),
+        "aldar-properties",
+        ("/en/explore-aldar/properties",),
+    ),
+)
+
+
+def _adapter_registry() -> dict[str, OfficialSiteAdapter]:
+    registry: dict[str, OfficialSiteAdapter] = {}
+    for item in OFFICIAL_ADAPTERS:
+        for identity in (item.developer_name, item.key, *item.aliases):
+            normalized = normalize_name(identity)
+            existing = registry.get(normalized)
+            if existing is not None and existing != item:
+                raise RuntimeError(f"Duplicate official Developer alias: {identity}.")
+            registry[normalized] = item
+    return registry
+
+
+ADAPTERS = _adapter_registry()
 
 
 def adapter_for(developer: str) -> OfficialSiteAdapter | None:
-    return ADAPTERS.get(developer.casefold())
+    """Resolve only an exact approved Developer name or private alias."""
+    return ADAPTERS.get(normalize_name(developer))

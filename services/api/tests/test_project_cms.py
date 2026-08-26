@@ -12,12 +12,18 @@ from sqlalchemy import select
 from app.db import SessionLocal
 from app.models import (
     AuditLog,
+    EditorialApprovalStatus,
     ImportReviewStatus,
+    MediaRightsStatus,
     Project,
     ProjectImportBatch,
     ProjectImportCandidate,
+    ProjectImportEditorialDraft,
+    ProjectImportMedia,
+    ProjectMediaCategory,
 )
 from app.schemas import PaymentPlanInput
+from tests.test_developer_cms import developer_payload
 
 
 async def authenticate(client: AsyncClient, email: str, password: str) -> dict[str, object]:
@@ -153,8 +159,18 @@ async def test_project_rbac_publication_and_public_field_boundaries(
     email, password = await create_user("super-admin")
     session = await authenticate(client, email, password)
     csrf = str(session["csrf_token"])
-    developers = await client.get("/api/v1/admin/developers?page_size=1")
-    developer_id = developers.json()["items"][0]["id"]
+    developer = await client.post(
+        "/api/v1/admin/developers",
+        json=developer_payload(slug="qa-project-developer"),
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert developer.status_code == 201, developer.text
+    developer_id = developer.json()["id"]
+    developer_published = await client.post(
+        f"/api/v1/admin/developers/{developer_id}/publish",
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert developer_published.status_code == 200, developer_published.text
     area = await client.post(
         "/api/v1/admin/areas",
         json={
@@ -191,7 +207,7 @@ async def test_project_rbac_publication_and_public_field_boundaries(
     media_id = created.json()["media"][0]["id"]
     assert (await client.get("/api/v1/public/projects?locale=en")).json()["meta"]["total"] == 0
     image = io.BytesIO()
-    Image.new("RGB", (640, 360), "#745238").save(image, "WEBP")
+    Image.new("RGB", (1600, 900), "#745238").save(image, "WEBP")
     uploaded = await client.post(
         f"/api/v1/admin/projects/{project_id}/media/{media_id}",
         files={"image": ("project.webp", image.getvalue(), "image/webp")},
@@ -207,6 +223,22 @@ async def test_project_rbac_publication_and_public_field_boundaries(
         headers={"X-CSRF-Token": csrf},
     )
     assert saved.status_code == 200, saved.text
+    preview = await client.get(f"/api/v1/admin/projects/{project_id}/preview?locale=en")
+    assert preview.status_code == 200, preview.text
+    preview_record = preview.json()
+    assert preview_record["official_name"] == "QA Off-Plan Project"
+    assert preview_record["media"][0]["url"].endswith(
+        f"/admin/projects/{project_id}/preview-media/{media_id}"
+    )
+    assert "priority" not in preview_record
+    assert "internal_notes" not in preview_record
+    assert "sources" not in preview_record
+    assert "workflow_status" not in preview_record
+    preview_media = await client.get(
+        f"/api/v1/admin/projects/{project_id}/preview-media/{media_id}"
+    )
+    assert preview_media.status_code == 200
+    assert preview_media.headers["cache-control"] == "private, no-store, max-age=0"
     submitted = await client.post(
         f"/api/v1/admin/projects/{project_id}/submit-review",
         headers={"X-CSRF-Token": csrf},
@@ -402,6 +434,30 @@ async def test_import_review_summary_bulk_readiness_and_draft_are_safe(
                 arabic_review_required=False,
                 human_review_completed=True,
                 review_status=ImportReviewStatus.NEEDS_REVIEW,
+                editorial_draft=ProjectImportEditorialDraft(
+                    overview_en=(
+                        "This disposable English Overview is approved only for the isolated "
+                        "Project import integration test and contains no market claim."
+                    ),
+                    overview_ar=(
+                        "هذه نظرة عامة عربية مؤقتة ومعتمدة فقط لاختبار تكامل استيراد المشروع "
+                        "المعزول ولا تتضمن أي ادعاء عن السوق."
+                    ),
+                    source_version="qa-source-version",
+                    approval_status=EditorialApprovalStatus.APPROVED,
+                ),
+                staged_media=[
+                    ProjectImportMedia(
+                        category=ProjectMediaCategory.COVER,
+                        source_url="https://example.com/qa-approved-cover.webp",
+                        rights_status=MediaRightsStatus.APPROVED,
+                        stage_status="downloaded",
+                        storage_key=f"qa-{candidate_id}.webp",
+                        mime_type="image/webp",
+                        width=1600,
+                        height=900,
+                    )
+                ],
             )
         ]
         db.add(batch)
@@ -415,6 +471,34 @@ async def test_import_review_summary_bulk_readiness_and_draft_are_safe(
     detail = await client.get(f"/api/v1/admin/project-imports/{batch_id}/candidates/{candidate_id}")
     assert detail.status_code == 200
     assert detail.json()["raw_source_payload"]
+    assert detail.json()["overview_provider"] == {
+        "state": "configuration-required",
+        "message": "Provider configuration required",
+        "required_environment_variables": [
+            "ARE_OVERVIEW_AI_PROVIDER",
+            "ARE_OVERVIEW_AI_MODEL",
+            "ARE_OVERVIEW_AI_MODEL_VERSION",
+            "ARE_OVERVIEW_AI_API_KEY",
+        ],
+    }
+    preview = await client.get(
+        f"/api/v1/admin/project-imports/{batch_id}/candidates/{candidate_id}/preview?locale=en"
+    )
+    assert preview.status_code == 200, preview.text
+    preview_data = preview.json()
+    assert preview_data["project_name"] == "QA Source-Grounded Project"
+    assert preview_data["availability_status"] == "not-confirmed"
+    assert preview_data["construction_status"] == "not-confirmed"
+    assert len(preview_data["media"]) == 1
+    assert preview_data["media"][0]["category"] == "cover"
+    assert not {
+        "source_urls",
+        "official_source_url",
+        "raw_source_payload",
+        "validation_errors",
+        "conflict_reasons",
+        "priority",
+    } & set(preview_data)
 
     missing_csrf = await client.post(
         f"/api/v1/admin/project-imports/{batch_id}/bulk",

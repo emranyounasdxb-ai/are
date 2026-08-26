@@ -35,6 +35,25 @@ from app.models import (
     ProjectProcessingStatus,
 )
 
+SUPPORTED_LOCATION_NAMES = (
+    "Abu Dhabi",
+    "Ajman",
+    "Dubai",
+    "Fujairah",
+    "Palm Jumeirah",
+    "Ras Al Khaimah",
+    "Sharjah",
+    "Umm Al Quwain",
+    "أبوظبي",
+    "أم القيوين",
+    "إمارة دبي",
+    "الشارقة",
+    "الفجيرة",
+    "دبي",
+    "رأس الخيمة",
+    "عجمان",
+)
+
 PIPELINE_STAGES = (
     "validate-raw-evidence",
     "normalize-facts",
@@ -102,6 +121,10 @@ class OverviewProvider(Protocol):
     async def generate(self, facts: dict[str, object], source_version: str) -> OverviewResult: ...
 
 
+class OverviewGenerationPending(RuntimeError):
+    """An approved provider has not been configured, so no provenance can be recorded."""
+
+
 class DeterministicSyntheticOverviewProvider:
     """Test-only provider; it never performs network or live AI calls."""
 
@@ -121,7 +144,7 @@ class DeterministicSyntheticOverviewProvider:
 class DisabledOverviewProvider:
     async def generate(self, facts: dict[str, object], source_version: str) -> OverviewResult:
         del facts, source_version
-        raise RuntimeError("No approved Overview provider is configured.")
+        raise OverviewGenerationPending("No approved Overview provider is configured.")
 
 
 class ProcessingFailure(Exception):
@@ -148,7 +171,7 @@ class ProcessingFailure(Exception):
 
 def overview_fact_guard(texts: tuple[str, str], facts: dict[str, object]) -> dict[str, object]:
     combined = " ".join(texts)
-    normalized_facts = str(facts).casefold()
+    normalized_facts = _flatten_fact_text(facts).casefold()
     unsupported_numbers = sorted(
         value
         for value in set(re.findall(r"\b\d+(?:\.\d+)?%?\b", combined))
@@ -156,14 +179,59 @@ def overview_fact_guard(texts: tuple[str, str], facts: dict[str, object]) -> dic
     )
     blocked_terms = [
         term
-        for term in ("guaranteed", "guarantee", "return on investment", "tanami")
+        for term in (
+            "guaranteed",
+            "guarantee",
+            "return on investment",
+            "roi",
+            "tanami",
+            "starting price",
+            "current price",
+            "assured return",
+        )
         if term in combined.casefold()
     ]
+    unsupported_locations = sorted(
+        value
+        for value in SUPPORTED_LOCATION_NAMES
+        if value.casefold() in combined.casefold() and value.casefold() not in normalized_facts
+    )
+    named_claims = {
+        clean.group(1).strip(" .,؛،")
+        for clean in re.finditer(
+            r"\b(?:by|from|in|at|located in)\s+([A-Z][\w'-]+(?:\s+[A-Z][\w'-]+){1,4})",
+            combined,
+        )
+    }
+    unsupported_names = sorted(
+        value for value in named_claims if value.casefold() not in normalized_facts
+    )
+    payment_claim_without_facts = bool(
+        re.search(r"\b(?:payment plan|installments?|down payment)\b", combined, re.I)
+        and not any("payment" in key or "down_payment" in key for key in facts)
+    )
     return {
-        "passed": not unsupported_numbers and not blocked_terms,
+        "passed": not (
+            unsupported_numbers
+            or blocked_terms
+            or unsupported_locations
+            or unsupported_names
+            or payment_claim_without_facts
+        ),
         "unsupported_numbers": unsupported_numbers,
         "blocked_terms": blocked_terms,
+        "unsupported_locations": unsupported_locations,
+        "unsupported_names": unsupported_names,
+        "unsupported_payment_claim": payment_claim_without_facts,
     }
+
+
+def _flatten_fact_text(value: object) -> str:
+    if isinstance(value, dict):
+        return " ".join(f"{key} {_flatten_fact_text(item)}" for key, item in value.items())
+    if isinstance(value, (list, tuple, set)):
+        return " ".join(_flatten_fact_text(item) for item in value)
+    return str(value)
 
 
 def public_media_metadata(
@@ -570,6 +638,19 @@ async def _prepare_overview(
     provider: OverviewProvider,
 ) -> None:
     draft = candidate.editorial_draft
+    human_overview_fields = {"overview", "overview_en", "overview_ar"} & set(
+        candidate.human_edited_fields
+    )
+    if draft and human_overview_fields:
+        raise ProcessingFailure(
+            "prepare-overview",
+            "human_edited_conflict",
+            "Human-edited Overview content was preserved and requires an explicit review decision.",
+            affected_reference="overview",
+            suggested_resolution=(
+                "Review source changes without overwriting the human-edited draft."
+            ),
+        )
     if draft and draft.approval_status == EditorialApprovalStatus.APPROVED:
         guard = overview_fact_guard((draft.overview_en or "", draft.overview_ar or ""), facts)
         if guard["passed"]:
@@ -583,6 +664,16 @@ async def _prepare_overview(
         )
     try:
         result = await provider.generate(facts, candidate.content_hash)
+    except OverviewGenerationPending as exc:
+        raise ProcessingFailure(
+            "prepare-overview",
+            "human_approval_required",
+            "Overview generation remains pending because no approved provider is configured.",
+            affected_reference="overview",
+            suggested_resolution=(
+                "Configure an owner-approved provider with accurate provenance before generation."
+            ),
+        ) from exc
     except Exception as exc:
         raise ProcessingFailure(
             "prepare-overview",
@@ -830,6 +921,7 @@ async def resolve_diagnostic(
     if not diagnostic:
         raise ValueError("Processing diagnostic not found.")
     now = datetime.now(UTC)
+    queued = False
     if action == "diagnose-ai":
         diagnostic.resolution_note = (
             f"Provider-neutral diagnosis proposal only: {note}. "
@@ -852,6 +944,53 @@ async def resolve_diagnostic(
         job.status = ProcessingJobStatus.QUEUED
         job.completed_at = None
         job.cancellation_requested = False
+        queued = True
+    elif action in {
+        "retry-acquisition",
+        "retry-official-source",
+        "retry-media",
+        "retry-overview",
+        "resume-failed-stage",
+    }:
+        item = await db.get(ProjectProcessingItem, diagnostic.item_id)
+        if not item:
+            raise RuntimeError("Processing item no longer exists.")
+        candidate = await db.get(ProjectImportCandidate, item.candidate_id)
+        if not candidate:
+            raise RuntimeError("Import candidate no longer exists.")
+        target = {
+            "retry-acquisition": "validate-raw-evidence",
+            "retry-official-source": "resolve-developer",
+            "retry-media": "process-media",
+            "retry-overview": "prepare-overview",
+            "resume-failed-stage": diagnostic.stage,
+        }[action]
+        if target not in PIPELINE_STAGES:
+            raise ValueError("The failed stage is not part of the bounded processing pipeline.")
+        target_index = PIPELINE_STAGES.index(target)
+        item.completed_stages = [
+            stage for stage in item.completed_stages if PIPELINE_STAGES.index(stage) < target_index
+        ]
+        item.current_stage = target
+        item.status = ProcessingItemStatus.QUEUED
+        item.next_retry_at = None
+        item.lease_owner = None
+        item.lease_expires_at = None
+        candidate.processing_status = ProjectProcessingStatus.QUEUED
+        job = await db.get(ProjectProcessingJob, item.job_id)
+        if not job:
+            raise RuntimeError("Processing job no longer exists.")
+        job.status = ProcessingJobStatus.QUEUED
+        job.completed_at = None
+        job.cancellation_requested = False
+        diagnostic.resolution_note = (
+            f"{note}. Queued from {target}; prior verified stages remain preserved."
+        )
+        diagnostic.resolution_status = DiagnosticResolutionStatus.OPEN
+        queued = True
+    elif action == "request-human-input":
+        diagnostic.resolution_note = note
+        diagnostic.resolution_status = DiagnosticResolutionStatus.HUMAN_INPUT_REQUIRED
     elif action == "mark-human-input-required":
         diagnostic.resolution_note = note
         diagnostic.resolution_status = DiagnosticResolutionStatus.HUMAN_INPUT_REQUIRED
@@ -860,10 +999,16 @@ async def resolve_diagnostic(
     elif action == "reject":
         diagnostic.resolution_note = note
         diagnostic.resolution_status = DiagnosticResolutionStatus.REJECTED
+        item = await db.get(ProjectProcessingItem, diagnostic.item_id)
+        if item:
+            candidate = await db.get(ProjectImportCandidate, item.candidate_id)
+            if candidate:
+                candidate.review_status = ImportReviewStatus.REJECTED
+                candidate.processing_status = ProjectProcessingStatus.REJECTED
     else:
         raise ValueError("Unsupported diagnostic action.")
     diagnostic.resolved_by = actor_id
-    diagnostic.resolved_at = now
+    diagnostic.resolved_at = None if queued else now
     await db.commit()
     return diagnostic
 

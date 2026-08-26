@@ -27,6 +27,12 @@ from app.config import Settings, get_settings
 from app.db import get_db
 from app.dependencies import AuthContext, require_mutation_permission, require_permission
 from app.import_review import apply_bulk_action, eligibility_errors
+from app.manual_overviews import (
+    create_overview_pack,
+    import_overview_response,
+    pack_dict,
+    read_pack_content,
+)
 from app.models import (
     AreaAlias,
     AreaCommunity,
@@ -44,11 +50,13 @@ from app.models import (
     ProjectBedroomValue,
     ProjectImportBatch,
     ProjectImportCandidate,
+    ProjectImportEditorialDraft,
     ProjectImportMedia,
     ProjectMedia,
     ProjectMediaCategory,
     ProjectNearbyPlace,
     ProjectOverviewGeneration,
+    ProjectOverviewPack,
     ProjectPaymentMilestone,
     ProjectPaymentPlan,
     ProjectPriority,
@@ -83,8 +91,10 @@ from app.schemas import (
     EditorialApprovalInput,
     ImportBulkActionInput,
     ImportCandidateReviewInput,
+    ManualOverviewResponse,
     MediaApprovalInput,
     MediaPreparationInput,
+    OverviewPackCreateInput,
     ProcessingJobCreateInput,
     ProcessingRetryInput,
     ProjectInput,
@@ -93,10 +103,12 @@ from app.schemas import (
 )
 from app.serializers import (
     area_dict,
+    candidate_public_preview_dict,
     import_batch_dict,
     import_candidate_dict,
     import_candidate_summary_dict,
     project_dict,
+    project_preview_dict,
 )
 from app.storage import PrivateStorage
 
@@ -487,6 +499,48 @@ async def get_project(
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     return project_dict(await project_or_404(record_id, db))
+
+
+@admin_router.get("/projects/{record_id}/preview")
+async def preview_project(
+    record_id: uuid.UUID,
+    locale: Literal["en", "ar"],
+    _: AuthContext = Depends(require_permission("project.read")),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    return project_preview_dict(await project_or_404(record_id, db), locale)
+
+
+@admin_router.get("/projects/{record_id}/preview-media/{media_id}")
+async def preview_project_media(
+    record_id: uuid.UUID,
+    media_id: uuid.UUID,
+    _: AuthContext = Depends(require_permission("project.read")),
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    media = await db.scalar(
+        select(ProjectMedia).where(
+            ProjectMedia.id == media_id,
+            ProjectMedia.project_id == record_id,
+            ProjectMedia.rights_status == MediaRightsStatus.APPROVED,
+        )
+    )
+    if not media or not media.storage_key or not media.mime_type:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            detail={"code": "not_found", "message": "Approved preview media not found."},
+        )
+    content = await asyncio.to_thread(PrivateStorage(settings).read, media.storage_key)
+    return Response(
+        content=content,
+        media_type=media.mime_type,
+        headers={
+            "Cache-Control": "private, no-store, max-age=0",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "default-src 'none'; img-src 'self'; sandbox",
+        },
+    )
 
 
 @admin_router.post("/projects", status_code=status.HTTP_201_CREATED)
@@ -1387,7 +1441,46 @@ async def apply_recovery_action(
     request: Request,
     context: AuthContext = Depends(require_mutation_permission("project-processing.recover")),
     db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ) -> dict[str, object]:
+    if payload.action in {"retry-acquisition", "retry-official-source", "retry-media"}:
+        diagnostic_record = await db.get(ProjectProcessingDiagnostic, diagnostic_id)
+        if not diagnostic_record:
+            raise HTTPException(
+                status.HTTP_404_NOT_FOUND,
+                detail={"code": "not_found", "message": "Processing diagnostic not found."},
+            )
+        processing_item = await db.get(ProjectProcessingItem, diagnostic_record.item_id)
+        if not processing_item:
+            raise HTTPException(
+                status.HTTP_404_NOT_FOUND,
+                detail={"code": "not_found", "message": "Processing item not found."},
+            )
+        candidate = await db.get(ProjectImportCandidate, processing_item.candidate_id)
+        if not candidate:
+            raise HTTPException(
+                status.HTTP_404_NOT_FOUND,
+                detail={"code": "not_found", "message": "Import candidate not found."},
+            )
+        if payload.action in {"retry-acquisition", "retry-official-source"}:
+            from app.acquisition.tanami import TANAMI_ADAPTER_KEY, refresh_explicit_candidate
+
+            if candidate.adapter_key == TANAMI_ADAPTER_KEY:
+                await refresh_explicit_candidate(db, settings, candidate.id)
+            else:
+                from app.acquisition.sobha_siniya_pilot import (
+                    PILOT_ADAPTER_KEY,
+                    run_sobha_siniya_pilot,
+                )
+
+                if candidate.adapter_key == PILOT_ADAPTER_KEY:
+                    await run_sobha_siniya_pilot(db, settings, refresh=True)
+        if payload.action == "retry-media":
+            from app.acquisition.media_intake import intake_private_media
+
+            await intake_private_media(
+                db, settings, candidate.batch_id, candidate_ids=[candidate.id]
+            )
     try:
         diagnostic = await resolve_diagnostic(
             db,
@@ -1420,6 +1513,7 @@ async def import_candidate_detail(
     candidate_id: uuid.UUID,
     _: AuthContext = Depends(require_permission("project-import.manage")),
     db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
     candidate = await db.scalar(
         select(ProjectImportCandidate)
@@ -1439,11 +1533,130 @@ async def import_candidate_detail(
             status.HTTP_404_NOT_FOUND,
             detail={"code": "not_found", "message": "Import candidate not found."},
         )
+    latest_generation = await db.scalar(
+        select(ProjectOverviewGeneration)
+        .where(ProjectOverviewGeneration.candidate_id == candidate.id)
+        .order_by(ProjectOverviewGeneration.generated_at.desc())
+        .limit(1)
+    )
     return {
         **import_candidate_summary_dict(candidate),
         **import_candidate_dict(candidate),
         "eligibility_errors": eligibility_errors(candidate),
+        "overview_provider": {
+            "state": (
+                "configured"
+                if settings.overview_ai_provider
+                and settings.overview_ai_model
+                and settings.overview_ai_model_version
+                and settings.overview_ai_api_key
+                else "configuration-required"
+            ),
+            "message": (
+                "Provider configured; generation remains review-gated."
+                if settings.overview_ai_provider
+                else "Provider configuration required"
+            ),
+            "required_environment_variables": [
+                "ARE_OVERVIEW_AI_PROVIDER",
+                "ARE_OVERVIEW_AI_MODEL",
+                "ARE_OVERVIEW_AI_MODEL_VERSION",
+                "ARE_OVERVIEW_AI_API_KEY",
+            ],
+        },
+        "overview_generation": (
+            {
+                "state": latest_generation.result_status,
+                "fact_guard_result": latest_generation.fact_guard_result,
+                "generated_at": latest_generation.generated_at,
+                "approval_status": latest_generation.approval_status.value,
+            }
+            if latest_generation
+            else None
+        ),
     }
+
+
+@admin_router.get("/project-imports/{batch_id}/candidates/{candidate_id}/preview")
+async def import_candidate_public_preview(
+    batch_id: uuid.UUID,
+    candidate_id: uuid.UUID,
+    locale: Literal["en", "ar"],
+    _: AuthContext = Depends(require_permission("project-import.manage")),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    candidate = await db.scalar(
+        select(ProjectImportCandidate)
+        .where(
+            ProjectImportCandidate.id == candidate_id,
+            ProjectImportCandidate.batch_id == batch_id,
+        )
+        .options(
+            selectinload(ProjectImportCandidate.staged_media),
+            selectinload(ProjectImportCandidate.editorial_draft),
+        )
+    )
+    if not candidate:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            detail={"code": "not_found", "message": "Import candidate not found."},
+        )
+    if not candidate.proposed_developer_id or not candidate.proposed_area_id:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail={"code": "preview_not_ready", "message": "Canonical mappings are required."},
+        )
+    developer = await db.scalar(
+        select(Developer)
+        .where(Developer.id == candidate.proposed_developer_id)
+        .options(selectinload(Developer.translations))
+    )
+    area = await db.get(AreaCommunity, candidate.proposed_area_id)
+    if not developer or not area:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail={"code": "preview_not_ready", "message": "Canonical mappings are unavailable."},
+        )
+    return candidate_public_preview_dict(candidate, developer, area, locale)
+
+
+@admin_router.get("/project-imports/candidates/{candidate_id}/preview-media/{media_id}")
+async def import_candidate_preview_media(
+    candidate_id: uuid.UUID,
+    media_id: uuid.UUID,
+    size: Literal["thumbnail", "full"] = "thumbnail",
+    _: AuthContext = Depends(require_permission("project-import.manage")),
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    media = await db.scalar(
+        select(ProjectImportMedia).where(
+            ProjectImportMedia.id == media_id,
+            ProjectImportMedia.candidate_id == candidate_id,
+            ProjectImportMedia.rights_status == MediaRightsStatus.APPROVED,
+            ProjectImportMedia.stage_status == "downloaded",
+        )
+    )
+    storage_key = (
+        media.thumbnail_storage_key
+        if media and size == "thumbnail"
+        else (media.storage_key if media else None)
+    )
+    if not media or not storage_key:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            detail={"code": "not_found", "message": "Approved preview media not found."},
+        )
+    content = await asyncio.to_thread(PrivateStorage(settings).read, storage_key)
+    return Response(
+        content=content,
+        media_type="image/webp" if size == "thumbnail" else media.mime_type,
+        headers={
+            "Cache-Control": "private, no-store, max-age=0",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "default-src 'none'; img-src 'self'; sandbox",
+        },
+    )
 
 
 @admin_router.post("/project-imports/{batch_id}/bulk")
@@ -1456,6 +1669,183 @@ async def bulk_import_candidates(
     settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
     return await apply_bulk_action(db, batch_id, payload, request, context, settings)
+
+
+@admin_router.get("/project-imports/{batch_id}/overview-packs")
+async def list_overview_packs(
+    batch_id: uuid.UUID,
+    _: AuthContext = Depends(require_permission("project-overview-pack.manage")),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, object]:
+    packs = (
+        await db.scalars(
+            select(ProjectOverviewPack)
+            .where(ProjectOverviewPack.batch_id == batch_id)
+            .options(selectinload(ProjectOverviewPack.items))
+            .order_by(ProjectOverviewPack.created_at.desc())
+        )
+    ).all()
+    return {
+        "items": [pack_dict(pack) for pack in packs],
+        "meta": meta(1, max(1, len(packs)), len(packs)),
+    }
+
+
+@admin_router.post("/project-imports/{batch_id}/overview-packs")
+async def prepare_overview_pack(
+    batch_id: uuid.UUID,
+    payload: OverviewPackCreateInput,
+    request: Request,
+    context: AuthContext = Depends(require_mutation_permission("project-overview-pack.manage")),
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, object]:
+    try:
+        pack = await create_overview_pack(
+            db,
+            settings,
+            batch_id=batch_id,
+            candidate_ids=payload.candidate_ids,
+            expected_versions=payload.expected_versions,
+            selection_mode=payload.selection_mode,
+            actor_id=context.user.id,
+            idempotency_key=payload.idempotency_key,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={"code": "invalid_overview_pack", "message": str(exc)},
+        ) from exc
+    await write_audit(
+        db,
+        action="project-overview-pack.prepare",
+        entity_type="project-overview-pack",
+        entity_id=pack.id,
+        actor_user_id=context.user.id,
+        correlation_id=request_correlation_id(request),
+        after={
+            "pack_version": pack.pack_version,
+            "selected_count": pack.selected_count,
+            "eligible_count": pack.eligible_count,
+            "ineligible_count": pack.ineligible_count,
+        },
+    )
+    await db.commit()
+    return pack_dict(pack)
+
+
+async def _overview_pack_or_404(db: AsyncSession, pack_id: uuid.UUID) -> ProjectOverviewPack:
+    pack = await db.scalar(
+        select(ProjectOverviewPack)
+        .where(ProjectOverviewPack.id == pack_id)
+        .options(selectinload(ProjectOverviewPack.items))
+    )
+    if not pack:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            detail={"code": "not_found", "message": "Overview pack not found."},
+        )
+    return pack
+
+
+@admin_router.get("/project-overview-packs/{pack_id}")
+async def get_overview_pack(
+    pack_id: uuid.UUID,
+    _: AuthContext = Depends(require_permission("project-overview-pack.manage")),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, object]:
+    return pack_dict(await _overview_pack_or_404(db, pack_id))
+
+
+@admin_router.post("/project-overview-packs/{pack_id}/download")
+async def download_overview_pack(
+    pack_id: uuid.UUID,
+    request: Request,
+    context: AuthContext = Depends(require_mutation_permission("project-overview-pack.manage")),
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    pack = await _overview_pack_or_404(db, pack_id)
+    try:
+        content = await asyncio.to_thread(read_pack_content, pack, settings)
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail={"code": "private_pack_unavailable", "message": str(exc)},
+        ) from exc
+    await write_audit(
+        db,
+        action="project-overview-pack.download",
+        entity_type="project-overview-pack",
+        entity_id=pack.id,
+        actor_user_id=context.user.id,
+        correlation_id=request_correlation_id(request),
+        after={"pack_hash": pack.pack_hash},
+    )
+    await db.commit()
+    return Response(
+        content=content,
+        media_type="application/json",
+        headers={
+            "Cache-Control": "private, no-store, max-age=0",
+            "Content-Disposition": f'attachment; filename="overview-pack-{pack.id}.json"',
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+@admin_router.post("/project-overview-packs/{pack_id}/import")
+async def import_manual_overview_pack(
+    pack_id: uuid.UUID,
+    request: Request,
+    response_file: UploadFile = File(),
+    context: AuthContext = Depends(require_mutation_permission("project-overview-pack.manage")),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, object]:
+    if response_file.content_type not in {"application/json", "application/x-ndjson"}:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={"code": "invalid_overview_response", "message": "Upload a JSON response file."},
+        )
+    content = await response_file.read(5 * 1024 * 1024 + 1)
+    await response_file.close()
+    if not content or len(content) > 5 * 1024 * 1024:
+        raise HTTPException(
+            status.HTTP_413_CONTENT_TOO_LARGE,
+            detail={
+                "code": "invalid_overview_response",
+                "message": "Response file is empty or too large.",
+            },
+        )
+    try:
+        response = ManualOverviewResponse.model_validate_json(content)
+    except ValueError as exc:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={"code": "invalid_overview_response", "message": str(exc)},
+        ) from exc
+    pack = await _overview_pack_or_404(db, pack_id)
+    correlation_id = request_correlation_id(request)
+    try:
+        result = await import_overview_response(
+            db, pack=pack, response=response, correlation_id=correlation_id
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail={"code": "overview_response_mismatch", "message": str(exc)},
+        ) from exc
+    await write_audit(
+        db,
+        action="project-overview-pack.import",
+        entity_type="project-overview-pack",
+        entity_id=pack.id,
+        actor_user_id=context.user.id,
+        correlation_id=correlation_id,
+        after={"imported": result["imported"], "failed": result["failed"]},
+    )
+    await db.commit()
+    return result
 
 
 @admin_router.get("/project-import-media/{media_id}/thumbnail")
@@ -1478,6 +1868,31 @@ async def import_media_thumbnail(
         headers={
             "Cache-Control": "private, no-store, max-age=0",
             "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+@admin_router.get("/project-import-media/{media_id}/preview")
+async def import_media_full_preview(
+    media_id: uuid.UUID,
+    _: AuthContext = Depends(require_permission("project-import.manage")),
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    media = await db.get(ProjectImportMedia, media_id)
+    if not media or not media.storage_key or not media.mime_type:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            detail={"code": "not_found", "message": "Private full-size preview not found."},
+        )
+    content = await asyncio.to_thread(PrivateStorage(settings).read, media.storage_key)
+    return Response(
+        content=content,
+        media_type=media.mime_type,
+        headers={
+            "Cache-Control": "private, no-store, max-age=0",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "default-src 'none'; img-src 'self'; sandbox",
         },
     )
 
@@ -1525,6 +1940,11 @@ async def approve_candidate_overview(
         generation.approved_by = context.user.id
         generation.approved_at = draft.approved_at
     if payload.approved:
+        candidate.validation_errors = [
+            item
+            for item in candidate.validation_errors
+            if not (isinstance(item, dict) and item.get("field") == "overview")
+        ]
         items = (
             await db.scalars(
                 select(ProjectProcessingItem).where(
@@ -1578,6 +1998,24 @@ async def approve_import_media_rights(
     media.rights_basis = payload.rights_basis
     media.rights_confirmed_by = context.user.id
     media.rights_confirmed_at = datetime.now(UTC)
+    candidate = await db.get(ProjectImportCandidate, media.candidate_id)
+    if candidate and payload.approved:
+        accepted_media = (
+            await db.scalars(
+                select(ProjectImportMedia).where(
+                    ProjectImportMedia.candidate_id == media.candidate_id,
+                    ProjectImportMedia.stage_status == "downloaded",
+                )
+            )
+        ).all()
+        if accepted_media and all(
+            item.rights_status == MediaRightsStatus.APPROVED for item in accepted_media
+        ):
+            candidate.validation_errors = [
+                item
+                for item in candidate.validation_errors
+                if not (isinstance(item, dict) and item.get("field") == "media_rights")
+            ]
     await write_audit(
         db,
         action="project-processing.media-rights.approve"
@@ -1655,6 +2093,37 @@ async def update_import_media_preparation(
     }
 
 
+async def _reconcile_completed_candidate_gates(
+    candidate: ProjectImportCandidate, db: AsyncSession
+) -> None:
+    resolved_fields: set[str] = set()
+    draft = await db.scalar(
+        select(ProjectImportEditorialDraft).where(
+            ProjectImportEditorialDraft.candidate_id == candidate.id
+        )
+    )
+    if draft and draft.approval_status == EditorialApprovalStatus.APPROVED:
+        resolved_fields.add("overview")
+    accepted_media = (
+        await db.scalars(
+            select(ProjectImportMedia).where(
+                ProjectImportMedia.candidate_id == candidate.id,
+                ProjectImportMedia.stage_status == "downloaded",
+            )
+        )
+    ).all()
+    if accepted_media and all(
+        item.rights_status == MediaRightsStatus.APPROVED for item in accepted_media
+    ):
+        resolved_fields.add("media_rights")
+    if resolved_fields:
+        candidate.validation_errors = [
+            item
+            for item in candidate.validation_errors
+            if not (isinstance(item, dict) and str(item.get("field", "")) in resolved_fields)
+        ]
+
+
 @admin_router.put("/project-imports/candidates/{candidate_id}")
 async def review_import_candidate(
     candidate_id: uuid.UUID,
@@ -1712,6 +2181,7 @@ async def review_import_candidate(
     candidate.arabic_review_required = payload.arabic_review_required
     candidate.reviewed_by = context.user.id
     candidate.review_version += 1
+    await _reconcile_completed_candidate_gates(candidate, db)
     await write_audit(
         db,
         action="project-import.review.update",

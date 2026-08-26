@@ -34,6 +34,7 @@ from app.project_processing import (
     overview_fact_guard,
     process_claimed_item,
     public_media_metadata,
+    resolve_diagnostic,
     retry_failed_items,
 )
 from app.security import hash_password
@@ -339,6 +340,16 @@ def test_fact_guard_and_public_metadata_boundaries() -> None:
         facts,
     )
     assert not blocked["passed"]
+    unsupported_entity = overview_fact_guard(
+        (
+            "Synthetic Project is located in Palm Jumeirah by Imaginary Developer.",
+            "مشروع تجريبي",
+        ),
+        facts,
+    )
+    assert not unsupported_entity["passed"]
+    assert unsupported_entity["unsupported_locations"] == ["Palm Jumeirah"]
+    assert "Imaginary Developer" in unsupported_entity["unsupported_names"]
     metadata = public_media_metadata(
         project_name="Synthetic Project",
         category="Exterior",
@@ -384,6 +395,61 @@ async def test_retry_only_failed_resumes_at_failed_stage() -> None:
         # Human approval is intentionally not a generic retryable failure.
         repeated = await retry_failed_items(db, job.id)
         assert repeated.items[0].status == ProcessingItemStatus.FAILED
+        diagnostic = repeated.items[0].diagnostics[-1]
+        await resolve_diagnostic(
+            db,
+            diagnostic.id,
+            action="retry-overview",
+            note="Retry only the failed Overview stage after operator review",
+            actor_id=actor.id,
+        )
+        resumed = await job_detail(db, job.id)
+        assert resumed.items[0].status == ProcessingItemStatus.QUEUED
+        assert resumed.items[0].current_stage == "prepare-overview"
+        assert "validate-market-status" in resumed.items[0].completed_stages
+
+
+@pytest.mark.asyncio
+async def test_overview_generation_preserves_human_edits_and_raises_conflict() -> None:
+    batch, actor = await synthetic_batch(1)
+    async with SessionLocal() as db:
+        candidate = await db.scalar(
+            select(ProjectImportCandidate)
+            .where(ProjectImportCandidate.id == batch.candidates[0].id)
+            .options(selectinload(ProjectImportCandidate.editorial_draft))
+        )
+        assert candidate is not None
+        candidate.human_edited_fields = ["overview_en", "overview_ar"]
+        candidate.editorial_draft = ProjectImportEditorialDraft(
+            overview_en="Human English Overview",
+            overview_ar="نظرة عامة عربية بشرية",
+            source_version=candidate.content_hash,
+            approval_status=EditorialApprovalStatus.NEEDS_REVIEW,
+        )
+        await db.commit()
+        job = await create_processing_job(
+            db,
+            batch_id=batch.id,
+            candidate_ids=[candidate.id],
+            selection_mode="single",
+            requested_action="clean-and-prepare",
+            actor_id=actor.id,
+            correlation_id=f"qa-{uuid.uuid4()}",
+            idempotency_key=f"qa-{uuid.uuid4()}",
+        )
+        item = await claim_next_item(db, "qa-human-overview-worker")
+        assert item is not None
+        await process_claimed_item(
+            db,
+            item.id,
+            provider=DeterministicSyntheticOverviewProvider(),
+        )
+        loaded = await job_detail(db, job.id)
+        assert loaded.items[0].diagnostics[-1].error_code == "human_edited_conflict"
+        await db.refresh(candidate, attribute_names=["editorial_draft"])
+        assert candidate.editorial_draft is not None
+        assert candidate.editorial_draft.overview_en == "Human English Overview"
+        assert candidate.editorial_draft.overview_ar == "نظرة عامة عربية بشرية"
 
 
 @pytest.mark.asyncio

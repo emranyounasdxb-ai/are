@@ -57,6 +57,39 @@ class ResponsiveDerivative:
     sha256: str
 
 
+@dataclass(frozen=True)
+class MediaQuality:
+    status: str
+    public_eligible: bool
+    cover_eligible: bool
+    rejection_reason: str | None
+
+
+def classify_media_quality(raster: ValidatedRaster, category: str) -> MediaQuality:
+    """Apply public-readiness dimensions without ever upscaling a source master."""
+    return classify_media_dimensions(raster.width, raster.height, category)
+
+
+def classify_media_dimensions(width: int, height: int, category: str) -> MediaQuality:
+    """Classify already-decoded dimensions for API and operator display."""
+    if category == "cover":
+        eligible = width >= 1600 and height >= 900 and width > height
+        return MediaQuality(
+            "cover-ready" if eligible else "low-resolution",
+            eligible,
+            eligible,
+            None if eligible else "High-resolution Cover image required",
+        )
+    minimum_long_edge = 1000 if category in {"floor-plan", "master-plan"} else 1200
+    eligible = max(width, height) >= minimum_long_edge
+    return MediaQuality(
+        "public-ready" if eligible else "low-resolution",
+        eligible,
+        False,
+        None if eligible else "Image does not meet the minimum public-readiness dimensions.",
+    )
+
+
 def normalized_media_filename(
     project_slug: str, category: str, display_order: int, digest: str, extension: str
 ) -> str:
