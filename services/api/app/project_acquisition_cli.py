@@ -33,6 +33,10 @@ def parser() -> argparse.ArgumentParser:
     subcommands.add_parser(
         "sobha-siniya-process", help="Queue or reuse the authorized pilot processing job"
     )
+    subcommands.add_parser(
+        "sobha-siniya-official-media",
+        help="Intake the reviewed exact-project media from the official Sobha page",
+    )
     tanami = subcommands.add_parser(
         "tanami-batch",
         help="Acquire an explicit owner-approved list of exact Tanami Project URLs",
@@ -175,6 +179,12 @@ async def run(args: argparse.Namespace) -> None:
 
             job_id = await queue_sobha_siniya_processing(db)
             print(json.dumps({"processing_job_id": str(job_id)}, indent=2))
+            return
+        if args.command == "sobha-siniya-official-media":
+            from app.acquisition.sobha_siniya_pilot import refresh_sobha_official_media
+
+            result = await refresh_sobha_official_media(db, get_settings())
+            print(json.dumps(result, default=str, indent=2))
             return
         if args.command == "tanami-batch":
             from app.acquisition.tanami import acquire_explicit_batch

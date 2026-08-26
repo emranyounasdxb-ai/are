@@ -12,10 +12,15 @@ from sqlalchemy import select
 from app.db import SessionLocal
 from app.models import (
     AuditLog,
+    EditorialApprovalStatus,
     ImportReviewStatus,
+    MediaRightsStatus,
     Project,
     ProjectImportBatch,
     ProjectImportCandidate,
+    ProjectImportEditorialDraft,
+    ProjectImportMedia,
+    ProjectMediaCategory,
 )
 from app.schemas import PaymentPlanInput
 from tests.test_developer_cms import developer_payload
@@ -429,6 +434,30 @@ async def test_import_review_summary_bulk_readiness_and_draft_are_safe(
                 arabic_review_required=False,
                 human_review_completed=True,
                 review_status=ImportReviewStatus.NEEDS_REVIEW,
+                editorial_draft=ProjectImportEditorialDraft(
+                    overview_en=(
+                        "This disposable English Overview is approved only for the isolated "
+                        "Project import integration test and contains no market claim."
+                    ),
+                    overview_ar=(
+                        "هذه نظرة عامة عربية مؤقتة ومعتمدة فقط لاختبار تكامل استيراد المشروع "
+                        "المعزول ولا تتضمن أي ادعاء عن السوق."
+                    ),
+                    source_version="qa-source-version",
+                    approval_status=EditorialApprovalStatus.APPROVED,
+                ),
+                staged_media=[
+                    ProjectImportMedia(
+                        category=ProjectMediaCategory.COVER,
+                        source_url="https://example.com/qa-approved-cover.webp",
+                        rights_status=MediaRightsStatus.APPROVED,
+                        stage_status="downloaded",
+                        storage_key=f"qa-{candidate_id}.webp",
+                        mime_type="image/webp",
+                        width=1600,
+                        height=900,
+                    )
+                ],
             )
         ]
         db.add(batch)
@@ -460,7 +489,8 @@ async def test_import_review_summary_bulk_readiness_and_draft_are_safe(
     assert preview_data["project_name"] == "QA Source-Grounded Project"
     assert preview_data["availability_status"] == "not-confirmed"
     assert preview_data["construction_status"] == "not-confirmed"
-    assert preview_data["media"] == []
+    assert len(preview_data["media"]) == 1
+    assert preview_data["media"][0]["category"] == "cover"
     assert not {
         "source_urls",
         "official_source_url",

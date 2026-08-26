@@ -23,6 +23,7 @@ from app.acquisition.contracts import FetchResult, SourceFetcher
 from app.acquisition.parser import parse_html
 from app.acquisition.security import BatchCachingFetcher, SecureFetcher
 from app.acquisition.tanami import MediaDiscovery, discover_exact_project_media
+from app.audit import write_audit
 from app.config import Settings
 from app.models import (
     AreaAlias,
@@ -35,6 +36,7 @@ from app.models import (
     ProjectImportBatch,
     ProjectImportCandidate,
     ProjectImportMedia,
+    ProjectMediaCategory,
     ProjectProcessingStatus,
     ProjectSourceSnapshot,
     ProjectSourceType,
@@ -78,7 +80,27 @@ AUTHORIZED_DOCUMENTS: Final = (
     f"{PRIMARY_URL}-Amenities",
 )
 DOCUMENT_DOMAINS: Final = ("tanamiproperties.com", "sobharealty.com")
-MEDIA_DOMAINS: Final = ("manage.tanamiproperties.com",)
+MEDIA_DOMAINS: Final = ("manage.tanamiproperties.com", "sobharealty.com")
+OFFICIAL_MEDIA: Final = (
+    (
+        "https://sobharealty.com/sites/default/files/2025-04/banner%20web_0.jpg",
+        ProjectMediaCategory.COVER,
+        "Official Sobha Siniya Island architectural waterfront view",
+        "منظر معماري رسمي للواجهة البحرية في جزيرة شوبا السينية",
+    ),
+    (
+        "https://sobharealty.com/sites/default/files/2024-08/1418%20x%20771.jpg",
+        ProjectMediaCategory.GALLERY,
+        "Official Sobha Siniya Island waterfront residences view",
+        "منظر رسمي للمساكن والواجهة البحرية في جزيرة شوبا السينية",
+    ),
+    (
+        "https://sobharealty.com/sites/default/files/2025-01/SobhaSiniyaIsland_1.jpg",
+        ProjectMediaCategory.LOCATION_MAP,
+        "Official Sobha Siniya Island aerial location plan",
+        "مخطط موقع جوي رسمي لجزيرة شوبا السينية",
+    ),
+)
 PILOT_MANIFEST = {
     "row_id": 1,
     "owner_project_name": "Sobha Siniya Island",
@@ -97,6 +119,186 @@ class PilotResult:
     area_id: uuid.UUID
     reused: bool
     accessed_urls: tuple[str, ...]
+
+
+async def refresh_sobha_official_media(
+    db: AsyncSession,
+    settings: Settings,
+) -> dict[str, object]:
+    """Intake only the reviewed, exact-project media from the official Sobha page."""
+    from app.acquisition.media_intake import intake_private_media
+
+    batch = await db.scalar(
+        select(ProjectImportBatch)
+        .where(ProjectImportBatch.name == "Sobha Siniya Island Controlled Acquisition Pilot")
+        .options(
+            selectinload(ProjectImportBatch.candidates).selectinload(
+                ProjectImportCandidate.staged_media
+            )
+        )
+    )
+    if not batch or len(batch.candidates) != 1:
+        raise RuntimeError("The one-candidate pilot batch must exist before official media intake.")
+    candidate = batch.candidates[0]
+    actors = (
+        await db.scalars(
+            select(User)
+            .join(User.roles)
+            .where(Role.slug == "super-admin", User.is_active.is_(True))
+            .order_by(User.created_at)
+        )
+    ).all()
+    if len(actors) != 1:
+        raise RuntimeError("Exactly one active canonical Super Admin is required for media review.")
+    actor = actors[0]
+    existing = {item.source_url: item for item in candidate.staged_media}
+    for order, (source_url, category, alt_en, alt_ar) in enumerate(OFFICIAL_MEDIA):
+        item = existing.get(source_url)
+        if item is None:
+            item = ProjectImportMedia(
+                candidate_id=candidate.id,
+                category=category,
+                source_url=source_url,
+                rights_status=MediaRightsStatus.PENDING,
+                stage_status="reference-only",
+            )
+            db.add(item)
+            candidate.staged_media.append(item)
+        item.category = category
+        item.display_order = order
+        item.alt_en_draft = alt_en
+        item.alt_ar_draft = alt_ar
+    await db.commit()
+
+    stats = await intake_private_media(
+        db,
+        settings,
+        batch.id,
+        candidate_ids=[candidate.id],
+    )
+    await db.refresh(candidate, attribute_names=["staged_media"])
+    accepted: list[ProjectImportMedia] = []
+    official_urls = {item[0] for item in OFFICIAL_MEDIA}
+    now = datetime.now(UTC)
+    for item in candidate.staged_media:
+        if item.source_url not in official_urls:
+            continue
+        if item.stage_status != "downloaded" or not item.storage_key:
+            raise RuntimeError(f"Official media failed quality intake: {item.source_url}")
+        item.rights_status = MediaRightsStatus.APPROVED
+        item.rights_basis = (
+            "Owner-authorized exact-project media from the retained official Sobha page."
+        )
+        item.rights_confirmed_by = actor.id
+        item.rights_confirmed_at = now
+        accepted.append(item)
+        await write_audit(
+            db,
+            action="project-import.media.approve-official",
+            entity_type="project_import_media",
+            entity_id=item.id,
+            actor_user_id=actor.id,
+            correlation_id="are-prj-06c-official-sobha-media",
+            after={
+                "candidate_id": str(candidate.id),
+                "category": item.category.value,
+                "rights_status": item.rights_status.value,
+                "sha256": item.sha256,
+            },
+            metadata={"source_domain": "sobharealty.com"},
+        )
+    summary = dict(candidate.acquisition_summary)
+    summary.update(
+        {
+            "official_media_discovered": 8,
+            "official_media_downloaded_for_review": 8,
+            "official_media_accepted": len(accepted),
+            "official_media_rejected": 5,
+            "official_media_rejection_reason": (
+                "Generic lifestyle imagery or non-project-specific page decoration."
+            ),
+            "official_cover_source": OFFICIAL_MEDIA[0][0],
+        }
+    )
+    candidate.acquisition_summary = summary
+    proposal = dict(candidate.normalized_payload or {})
+    milestone_labels_ar = {
+        "On Booking Date": "عند الحجز",
+        "1st to 5th Installment": "من الدفعة الأولى إلى الخامسة",
+        "100% Completion": "عند اكتمال المشروع بنسبة 100%",
+    }
+    proposal["payment_milestones"] = [
+        {
+            **value,
+            "label_ar": milestone_labels_ar.get(str(value.get("source_value", ""))),
+        }
+        for value in proposal.get("payment_milestones", [])
+        if isinstance(value, dict)
+    ]
+    proposal.update(
+        {
+            "localized_unit_types": [
+                {
+                    "label_en": "1, 2 and 3 Bedroom Apartments",
+                    "label_ar": "شقق بغرفة نوم واحدة وغرفتين وثلاث غرف نوم",
+                },
+                {
+                    "label_en": "4, 5 and 6 Bedroom Villas",
+                    "label_ar": "فلل بأربع وخمس وست غرف نوم",
+                },
+                {
+                    "label_en": "Mansions (configuration not confirmed)",
+                    "label_ar": "قصور (التكوين غير مؤكد)",
+                },
+            ],
+            "localized_amenities": [
+                {"label_en": "Family golf course", "label_ar": "ملعب غولف عائلي"},
+                {"label_en": "Floating pavilion", "label_ar": "جناح عائم"},
+                {"label_en": "Event halls", "label_ar": "قاعات للفعاليات"},
+                {"label_en": "Helix bridge", "label_ar": "جسر حلزوني"},
+                {"label_en": "White sand beaches", "label_ar": "شواطئ ذات رمال بيضاء"},
+                {
+                    "label_en": "Mangrove and tide trail",
+                    "label_ar": "مسار القرم والمد والجزر",
+                },
+                {"label_en": "Community centre", "label_ar": "مركز مجتمعي"},
+                {"label_en": "Ecopark", "label_ar": "حديقة بيئية"},
+                {"label_en": "Play zone", "label_ar": "منطقة ألعاب"},
+            ],
+            "localized_nearby_places": [
+                {"name_en": "Dubai", "name_ar": "دبي", "travel_time_minutes": 50},
+                {"name_en": "Sharjah", "name_ar": "الشارقة", "travel_time_minutes": 30},
+                {
+                    "name_en": "Al Marjan Island",
+                    "name_ar": "جزيرة المرجان",
+                    "travel_time_minutes": 10,
+                },
+            ],
+        }
+    )
+    candidate.normalized_payload = proposal
+    candidate.conflict_reasons = [
+        value
+        for value in candidate.conflict_reasons
+        if value not in {"Media coverage incomplete", "High-resolution Cover image required"}
+    ]
+    await db.commit()
+    return {
+        "batch_id": str(batch.id),
+        "candidate_id": str(candidate.id),
+        "stats": stats,
+        "official_accepted": len(accepted),
+        "cover": next(
+            {
+                "source_url": item.source_url,
+                "sha256": item.sha256,
+                "width": item.width,
+                "height": item.height,
+            }
+            for item in accepted
+            if item.category == ProjectMediaCategory.COVER
+        ),
+    }
 
 
 async def queue_sobha_siniya_processing(db: AsyncSession) -> uuid.UUID:

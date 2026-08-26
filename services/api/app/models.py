@@ -58,6 +58,7 @@ class MediaRightsStatus(StrEnum):
 
 
 class ProjectAvailabilityStatus(StrEnum):
+    NOT_CONFIRMED = "not-confirmed"
     AVAILABLE = "available"
     LIMITED_AVAILABILITY = "limited-availability"
     SOLD_OUT = "sold-out"

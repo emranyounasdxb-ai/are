@@ -320,6 +320,11 @@ def project_dict(record: Project, locale: str | None = None) -> dict[str, Any]:
     }
     if locale:
         data.update(translations.get(locale, {}))
+        labels = _PREVIEW_LABELS.get(locale, {})
+        data["property_types"] = [
+            labels.get(str(value), str(value).replace("-", " ").title())
+            for value in data["property_types"]
+        ]
         data["emirate"] = EMIRATE_LABELS[locale][record.emirate]
         data["area"]["emirate"] = EMIRATE_LABELS[locale][record.area.emirate]
         data["developer"]["name"] = next(
@@ -327,6 +332,7 @@ def project_dict(record: Project, locale: str | None = None) -> dict[str, Any]:
             record.developer.slug,
         )
         data["cta"] = {
+            "not-confirmed": "request-current-status",
             "available": "enquire-now",
             "limited-availability": "check-current-availability",
             "coming-soon": "register-interest",
@@ -697,6 +703,8 @@ def candidate_public_preview_dict(
 
 
 def import_candidate_summary_dict(record: ProjectImportCandidate) -> dict[str, Any]:
+    from app.import_review import draft_eligibility_errors
+
     missing = [
         str(item.get("field", "Unknown"))
         for item in record.validation_errors
@@ -733,7 +741,9 @@ def import_candidate_summary_dict(record: ProjectImportCandidate) -> dict[str, A
             ImportReviewStatus.READY_FOR_APPROVAL,
         },
         "mark-ready": status == ImportReviewStatus.NEEDS_REVIEW and ready,
-        "create-drafts": status == ImportReviewStatus.READY_FOR_APPROVAL,
+        "create-drafts": status
+        in {ImportReviewStatus.NEEDS_REVIEW, ImportReviewStatus.READY_FOR_APPROVAL}
+        and not draft_eligibility_errors(record),
     }
     return {
         "id": record.id,
