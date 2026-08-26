@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.acquisition.reconciliation import reconcile_candidate_quality
 from app.acquisition.service import retry_candidates
 from app.audit import request_correlation_id, write_audit
 from app.config import Settings
@@ -20,8 +21,9 @@ from app.models import (
     AreaCommunity,
     ConstructionStatus,
     Developer,
-    EditorialApprovalStatus,
     ImportReviewStatus,
+    MediaRightsStatus,
+    PaymentStage,
     Project,
     ProjectAmenity,
     ProjectAvailabilityStatus,
@@ -31,7 +33,6 @@ from app.models import (
     ProjectImportBulkOperation,
     ProjectImportCandidate,
     ProjectMedia,
-    ProjectMediaCategory,
     ProjectNearbyPlace,
     ProjectPaymentMilestone,
     ProjectPaymentPlan,
@@ -73,62 +74,19 @@ def eligibility_errors(candidate: ProjectImportCandidate) -> list[str]:
 
 
 def draft_eligibility_errors(candidate: ProjectImportCandidate) -> list[str]:
-    """Validate a private Draft without treating publication facts as Draft blockers."""
+    """Validate a private review Draft without applying publication approval gates."""
     errors: list[str] = []
-    proposal = candidate.normalized_payload or {}
     if not candidate.proposed_developer_id:
         errors.append("Canonical Developer is required.")
     if not candidate.proposed_area_id:
         errors.append("Canonical Area is required.")
-    if not candidate.official_source_url:
-        errors.append("An official source is required.")
+    if not candidate.source_urls:
+        errors.append("At least one retained source is required.")
     if not candidate.normalized_project_name:
         errors.append("A source-grounded project name is required.")
-    if not candidate.human_review_completed:
-        errors.append("Human review must be completed.")
     overview = candidate.editorial_draft
-    if (
-        not overview
-        or overview.approval_status != EditorialApprovalStatus.APPROVED
-        or not overview.overview_en
-        or not overview.overview_ar
-    ):
-        errors.append("An approved bilingual Overview is required.")
-    for key in ("property_types", "bedrooms"):
-        if proposal.get(key) in (None, [], {}):
-            errors.append(f"{key.replace('_', ' ').title()} is required.")
-    blocking_validation = [
-        value
-        for value in candidate.validation_errors
-        if not (
-            value.get("field") in {"availability_status", "construction_status"}
-            and value.get("code") == "missing_official_evidence"
-        )
-        and value.get("field") not in {"overview", "media_rights"}
-    ]
-    if blocking_validation:
-        errors.append("Blocking source validation issues must be resolved.")
-    allowed_conflicts = {
-        (
-            "Community-level handover is supported by the approved secondary source but is "
-            "not stated on the official Sobha community page; owner review is required."
-        ),
-        (
-            "Current availability is unresolved; an active page or displayed price was not "
-            "treated as availability evidence."
-        ),
-        "Construction status is not confirmed by the retained source set.",
-    }
-    if any(value not in allowed_conflicts for value in candidate.conflict_reasons):
-        errors.append("Blocking source conflicts must be resolved.")
-    if not any(
-        item.category == ProjectMediaCategory.COVER
-        and item.stage_status == "downloaded"
-        and item.rights_status.value == "approved"
-        and item.storage_key
-        for item in candidate.staged_media
-    ):
-        errors.append("An approved, eligible Cover image is required for the Draft preview.")
+    if not overview or not overview.overview_en or not overview.overview_ar:
+        errors.append("A bilingual Overview draft is required.")
     return errors
 
 
@@ -324,6 +282,7 @@ async def apply_bulk_action(
 
     if payload.action != "retry-acquisition":
         for item in candidates:
+            reconcile_candidate_quality(item)
             item.review_version += 1
         statuses = list(
             await db.scalars(
@@ -412,8 +371,8 @@ async def _create_draft(
         area_id=candidate.proposed_area_id,
         emirate=area.emirate,
         status=PublicationStatus.DRAFT,
-        availability_status=ProjectAvailabilityStatus.NOT_CONFIRMED,
-        construction_status=ConstructionStatus.NOT_CONFIRMED,
+        availability_status=_availability_status(proposal.get("availability_status")),
+        construction_status=_construction_status(proposal.get("construction_status")),
         handover_quarter=proposal.get("handover_quarter"),
         handover_year=proposal.get("handover_year"),
         original_handover_value=proposal.get("original_handover_value"),
@@ -436,12 +395,12 @@ async def _create_draft(
         for value in proposal.get("property_types", [])
     ]
     record.bedroom_options = [
-        ProjectBedroomValue(bedroom_option=ProjectBedroomOption(str(value)))
+        ProjectBedroomValue(bedroom_option=_bedroom_option(value))
         for value in proposal.get("bedrooms", [])
     ]
     overview = candidate.editorial_draft
     if not overview or not overview.overview_en or not overview.overview_ar:
-        raise _invalid("An approved bilingual Overview is required.")
+        raise _invalid("A bilingual Overview draft is required.")
     project_name_ar = str(proposal.get("project_name_ar") or project_name)
     record.translations = [
         ProjectTranslation(
@@ -489,17 +448,53 @@ async def _create_draft(
         for index, value in enumerate(proposal.get("localized_nearby_places", []))
         if isinstance(value, dict) and value.get("name_en") and value.get("name_ar")
     ]
-    record.sources = [
-        ProjectSource(
-            source_url=candidate.official_source_url,
-            source_type=ProjectSourceType.OFFICIAL_DEVELOPER_PAGE,
-            is_official=True,
-            retrieved_at=candidate.extracted_at or datetime.now(UTC),
-            last_checked_at=candidate.last_verified_at or datetime.now(UTC),
-            content_hash=candidate.content_hash,
-            is_active=True,
+    latest_evidence = {
+        item.source_url: item
+        for item in sorted(candidate.evidence, key=lambda value: value.retrieved_at)
+        if item.outcome == "acquired"
+    }
+    retained_urls = list(
+        dict.fromkeys(
+            [
+                *([candidate.official_source_url] if candidate.official_source_url else []),
+                *candidate.source_urls,
+            ]
         )
-    ]
+    )
+    primary_secondary = next(
+        (value for value in retained_urls if "tanamiproperties.com/Projects/" in value), None
+    )
+    retained_urls = list(
+        dict.fromkeys(
+            [
+                *([candidate.official_source_url] if candidate.official_source_url else []),
+                *([primary_secondary] if primary_secondary else []),
+            ]
+        )
+    )
+    record.sources = []
+    for source_url in retained_urls:
+        evidence = latest_evidence.get(source_url)
+        is_official = source_url == candidate.official_source_url
+        record.sources.append(
+            ProjectSource(
+                source_url=source_url,
+                source_type=(
+                    ProjectSourceType.OFFICIAL_DEVELOPER_PAGE
+                    if is_official
+                    else ProjectSourceType.APPROVED_SECONDARY_SOURCE
+                ),
+                is_official=is_official,
+                retrieved_at=(
+                    evidence.retrieved_at
+                    if evidence
+                    else candidate.extracted_at or datetime.now(UTC)
+                ),
+                last_checked_at=candidate.last_verified_at or datetime.now(UTC),
+                content_hash=evidence.content_hash if evidence else candidate.content_hash,
+                is_active=True,
+            )
+        )
     record.media = [
         ProjectMedia(
             category=item.category,
@@ -527,12 +522,16 @@ async def _create_draft(
     await db.flush()
     payment = proposal.get("payment_plan")
     milestones = proposal.get("payment_milestones", [])
-    if isinstance(payment, str) and payment:
+    raw_payment = payment if isinstance(payment, str) else None
+    if isinstance(payment, dict):
+        raw_payment = str(payment.get("raw_source_text") or "") or None
+        milestones = payment.get("milestones") or milestones
+    if raw_payment and isinstance(milestones, list) and milestones:
         plan = ProjectPaymentPlan(
             project_id=record.id,
-            raw_source_text=payment,
+            raw_source_text=raw_payment,
             source_id=record.sources[0].id,
-            is_complete=False,
+            is_complete=bool(isinstance(payment, dict) and payment.get("is_complete")),
             verified_at=candidate.last_verified_at,
         )
         plan.milestones = [
@@ -549,6 +548,236 @@ async def _create_draft(
         ]
         record.payment_plan = plan
     return record
+
+
+async def sync_linked_draft_from_candidate(
+    db: AsyncSession, candidate: ProjectImportCandidate
+) -> Project | None:
+    """Refresh only an existing private Draft with retained source-grounded evidence."""
+    if not candidate.linked_project_id:
+        return None
+    record = await db.scalar(
+        select(Project)
+        .where(Project.id == candidate.linked_project_id)
+        .options(
+            selectinload(Project.property_types),
+            selectinload(Project.bedroom_options),
+            selectinload(Project.unit_types),
+            selectinload(Project.amenities),
+            selectinload(Project.sources),
+            selectinload(Project.payment_plan).selectinload(ProjectPaymentPlan.milestones),
+            selectinload(Project.media),
+        )
+    )
+    if not record or record.status != PublicationStatus.DRAFT:
+        return record
+    proposal = candidate.normalized_payload or {}
+    record.developer_id = candidate.proposed_developer_id or record.developer_id
+    record.area_id = candidate.proposed_area_id or record.area_id
+    record.availability_status = _availability_status(proposal.get("availability_status"))
+    record.construction_status = _construction_status(proposal.get("construction_status"))
+    record.handover_quarter = proposal.get("handover_quarter")
+    record.handover_year = proposal.get("handover_year")
+    record.original_handover_value = proposal.get("original_handover_value")
+    record.size_min = proposal.get("size_min")
+    record.size_max = proposal.get("size_max")
+    record.size_unit = (
+        ProjectSizeUnit(str(proposal["size_unit"])) if proposal.get("size_unit") else None
+    )
+    record.down_payment_percentage = proposal.get("down_payment_percentage")
+    record.down_payment_source_value = proposal.get("down_payment_source_value")
+    record.last_verified_at = candidate.last_verified_at
+    property_types = list(dict.fromkeys(proposal.get("property_types", [])))
+    if property_types:
+        desired_property_types = {ProjectPropertyType(str(value)) for value in property_types}
+        existing_property_types = {item.property_type: item for item in record.property_types}
+        for property_type_value, property_type_row in existing_property_types.items():
+            if property_type_value not in desired_property_types:
+                await db.delete(property_type_row)
+        for property_type_value in desired_property_types - existing_property_types.keys():
+            record.property_types.append(
+                ProjectPropertyTypeValue(property_type=property_type_value)
+            )
+    bedrooms = list(dict.fromkeys(proposal.get("bedrooms", [])))
+    if bedrooms:
+        desired_bedrooms = {_bedroom_option(value) for value in bedrooms}
+        existing_bedrooms = {item.bedroom_option: item for item in record.bedroom_options}
+        for bedroom_value, bedroom_row in existing_bedrooms.items():
+            if bedroom_value not in desired_bedrooms:
+                await db.delete(bedroom_row)
+        for bedroom_value in desired_bedrooms - existing_bedrooms.keys():
+            record.bedroom_options.append(ProjectBedroomValue(bedroom_option=bedroom_value))
+    localized_units = proposal.get("localized_unit_types", [])
+    if isinstance(localized_units, list) and localized_units:
+        desired_units = {
+            str(value["label_en"]): (str(value["label_ar"]), index)
+            for index, value in enumerate(localized_units)
+            if isinstance(value, dict) and value.get("label_en") and value.get("label_ar")
+        }
+        existing_units = {item.label_en: item for item in record.unit_types}
+        for label, unit_row in existing_units.items():
+            if label not in desired_units:
+                await db.delete(unit_row)
+        for label, (label_ar, display_order) in desired_units.items():
+            target_unit = existing_units.get(label)
+            if not target_unit:
+                target_unit = ProjectUnitType(label_en=label)
+                record.unit_types.append(target_unit)
+            target_unit.label_ar = label_ar
+            target_unit.display_order = display_order
+    localized_amenities = proposal.get("localized_amenities", [])
+    if isinstance(localized_amenities, list) and localized_amenities:
+        desired_amenities = {
+            str(value["label_en"]): (str(value["label_ar"]), index)
+            for index, value in enumerate(localized_amenities)
+            if isinstance(value, dict) and value.get("label_en") and value.get("label_ar")
+        }
+        existing_amenities = {item.label_en: item for item in record.amenities}
+        for label, amenity_row in existing_amenities.items():
+            if label not in desired_amenities:
+                await db.delete(amenity_row)
+        for label, (label_ar, display_order) in desired_amenities.items():
+            target_amenity = existing_amenities.get(label)
+            if not target_amenity:
+                target_amenity = ProjectAmenity(label_en=label)
+                record.amenities.append(target_amenity)
+            target_amenity.label_ar = label_ar
+            target_amenity.display_order = display_order
+
+    latest_evidence = {
+        item.source_url: item
+        for item in sorted(candidate.evidence, key=lambda value: value.retrieved_at)
+        if item.outcome == "acquired"
+    }
+    existing_sources = {item.source_url: item for item in record.sources}
+    retained_urls = list(
+        dict.fromkeys(
+            [
+                *([candidate.official_source_url] if candidate.official_source_url else []),
+                *[
+                    value
+                    for value in candidate.source_urls
+                    if "tanamiproperties.com/Projects/" in value
+                ][:1],
+            ]
+        )
+    )
+    for source_url in retained_urls:
+        evidence = latest_evidence.get(source_url)
+        source = existing_sources.get(source_url)
+        is_official = source_url == candidate.official_source_url
+        if not source:
+            source = ProjectSource(source_url=source_url)
+            record.sources.append(source)
+        source.source_type = (
+            ProjectSourceType.OFFICIAL_DEVELOPER_PAGE
+            if is_official
+            else ProjectSourceType.APPROVED_SECONDARY_SOURCE
+        )
+        source.is_official = is_official
+        source.retrieved_at = (
+            evidence.retrieved_at if evidence else candidate.extracted_at or datetime.now(UTC)
+        )
+        source.last_checked_at = candidate.last_verified_at or datetime.now(UTC)
+        source.content_hash = evidence.content_hash if evidence else candidate.content_hash
+        source.is_active = True
+
+    existing_media = {item.source_url: item for item in record.media}
+    staged_media_by_url = {item.source_url: item for item in candidate.staged_media}
+    for source_url, media in list(existing_media.items()):
+        staged_media = staged_media_by_url.get(source_url)
+        if staged_media and not (
+            staged_media.stage_status == "downloaded"
+            and staged_media.rights_status == MediaRightsStatus.APPROVED
+            and staged_media.storage_key
+        ):
+            await db.delete(media)
+            existing_media.pop(source_url)
+    for staged_media in candidate.staged_media:
+        if not (
+            staged_media.stage_status == "downloaded"
+            and staged_media.rights_status == MediaRightsStatus.APPROVED
+            and staged_media.storage_key
+        ):
+            continue
+        target_media = existing_media.get(staged_media.source_url)
+        if not target_media:
+            target_media = ProjectMedia(source_url=staged_media.source_url)
+            record.media.append(target_media)
+            existing_media[staged_media.source_url] = target_media
+        target_media.category = staged_media.category
+        target_media.rights_status = staged_media.rights_status
+        target_media.alt_en = staged_media.alt_en_draft
+        target_media.alt_ar = staged_media.alt_ar_draft
+        target_media.display_order = staged_media.display_order
+        target_media.storage_key = staged_media.storage_key
+        target_media.original_filename = staged_media.normalized_filename
+        target_media.mime_type = staged_media.mime_type
+        target_media.size_bytes = staged_media.size_bytes
+        target_media.sha256 = staged_media.sha256
+        target_media.width = staged_media.width
+        target_media.height = staged_media.height
+        target_media.verified_at = staged_media.rights_confirmed_at
+        target_media.uploaded_by = staged_media.rights_confirmed_by
+
+    await db.flush()
+    payment = proposal.get("payment_plan")
+    milestones = payment.get("milestones", []) if isinstance(payment, dict) else []
+    if isinstance(payment, dict) and milestones and record.sources:
+        if not record.payment_plan:
+            record.payment_plan = ProjectPaymentPlan(
+                raw_source_text=str(payment.get("raw_source_text") or "Source payment plan"),
+                source_id=record.sources[0].id,
+            )
+        record.payment_plan.raw_source_text = str(
+            payment.get("raw_source_text") or record.payment_plan.raw_source_text
+        )
+        record.payment_plan.is_complete = bool(payment.get("is_complete"))
+        record.payment_plan.verified_at = candidate.last_verified_at
+        desired_milestones = {
+            int(value.get("sequence", index + 1)): value
+            for index, value in enumerate(milestones)
+            if isinstance(value, dict) and value.get("source_value")
+        }
+        existing_milestones = {item.sequence: item for item in record.payment_plan.milestones}
+        for sequence, milestone_row in existing_milestones.items():
+            if sequence not in desired_milestones:
+                await db.delete(milestone_row)
+        for sequence, milestone_payload in desired_milestones.items():
+            target_milestone = existing_milestones.get(sequence)
+            if not target_milestone:
+                target_milestone = ProjectPaymentMilestone(sequence=sequence)
+                record.payment_plan.milestones.append(target_milestone)
+            target_milestone.stage = PaymentStage(str(milestone_payload.get("stage", "other")))
+            target_milestone.label_en = str(
+                milestone_payload.get("source_value", "Source milestone")
+            )[:240]
+            target_milestone.label_ar = (
+                str(milestone_payload["label_ar"]) if milestone_payload.get("label_ar") else None
+            )
+            target_milestone.percentage = milestone_payload.get("percentage")
+            target_milestone.source_value = str(milestone_payload.get("source_value", ""))
+    await db.flush()
+    return record
+
+
+def _availability_status(value: object) -> ProjectAvailabilityStatus:
+    try:
+        return ProjectAvailabilityStatus(str(value))
+    except ValueError:
+        return ProjectAvailabilityStatus.NOT_CONFIRMED
+
+
+def _construction_status(value: object) -> ConstructionStatus:
+    try:
+        return ConstructionStatus(str(value))
+    except ValueError:
+        return ConstructionStatus.NOT_CONFIRMED
+
+
+def _bedroom_option(value: object) -> ProjectBedroomOption:
+    normalized = "6+" if str(value) == "6" else str(value)
+    return ProjectBedroomOption(normalized)
 
 
 def _remove_mapping_issue(candidate: ProjectImportCandidate, field: str) -> None:

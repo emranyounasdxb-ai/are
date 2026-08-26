@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from email.message import Message
 from typing import Any, Literal, cast
 from urllib.error import HTTPError, URLError
-from urllib.parse import urljoin
+from urllib.parse import quote, urljoin, urlsplit, urlunsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from PIL import Image, UnidentifiedImageError
@@ -151,7 +151,7 @@ class SecureRasterFetcher:
         self._opener = build_opener(_NoRedirect())
 
     def fetch(self, url: str, allowed_domains: tuple[str, ...]) -> RasterFetchResult:
-        current = url
+        current = _encode_raster_url(url)
         try:
             for _ in range(4):
                 current = validate_public_url(current, allowed_domains)
@@ -188,7 +188,7 @@ class SecureRasterFetcher:
                         return RasterFetchResult(current, body, content_type, response.status)
                 except HTTPError as exc:
                     if exc.code in {301, 302, 303, 307, 308} and exc.headers.get("Location"):
-                        current = urljoin(current, str(exc.headers["Location"]))
+                        current = _encode_raster_url(urljoin(current, str(exc.headers["Location"])))
                         continue
                     return RasterFetchResult(
                         current,
@@ -209,6 +209,20 @@ class SecureRasterFetcher:
             return RasterFetchResult(
                 current, error_code="network_error", error_message=type(exc).__name__
             )
+
+
+def _encode_raster_url(url: str) -> str:
+    """Encode unsafe path/query characters without changing the destination host."""
+    parsed = urlsplit(url)
+    return urlunsplit(
+        (
+            parsed.scheme,
+            parsed.netloc,
+            quote(parsed.path, safe="/%:@+"),
+            quote(parsed.query, safe="=&?/:@%+,;"),
+            "",
+        )
+    )
 
 
 def validate_raster(content: bytes, declared_mime: str) -> ValidatedRaster:

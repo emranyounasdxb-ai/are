@@ -8,8 +8,10 @@ import pytest
 from httpx import AsyncClient
 from PIL import Image
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from app.db import SessionLocal
+from app.import_review import sync_linked_draft_from_candidate
 from app.models import (
     AuditLog,
     EditorialApprovalStatus,
@@ -262,6 +264,7 @@ async def test_project_rbac_publication_and_public_field_boundaries(
     public_record = public.json()
     assert public_record["emirate"] == "Dubai"
     assert public_record["area"]["emirate"] == "Dubai"
+    assert public_record["construction_status"] is None
     assert public_record["cta"] == "register-interest"
     assert "priority" not in public_record
     assert "internal_notes" not in public_record
@@ -453,10 +456,31 @@ async def test_import_review_summary_bulk_readiness_and_draft_are_safe(
                         rights_status=MediaRightsStatus.APPROVED,
                         stage_status="downloaded",
                         storage_key=f"qa-{candidate_id}.webp",
+                        thumbnail_storage_key=f"qa-thumb-{candidate_id}.webp",
                         mime_type="image/webp",
                         width=1600,
                         height=900,
-                    )
+                        normalized_filename="qa-source-grounded-project-cover-01.webp",
+                        alt_en_draft="Cover image for QA Source-Grounded Project",
+                        alt_ar_draft="الصورة الرئيسية — مشروع اختبار مصدر موثق",
+                        title_en="QA Source-Grounded Project — Cover image",
+                        title_ar="مشروع اختبار مصدر موثق — الصورة الرئيسية",
+                        description_en="Cover image for QA Source-Grounded Project.",
+                        description_ar="الصورة الرئيسية — مشروع اختبار مصدر موثق.",
+                        tags=["QA Source-Grounded Project", "Cover image"],
+                        derivative_manifest=[{"storage_key": f"qa-derivative-{candidate_id}.webp"}],
+                    ),
+                    ProjectImportMedia(
+                        category=ProjectMediaCategory.GALLERY,
+                        source_url="https://example.com/qa-rejected-gallery.webp",
+                        rights_status=MediaRightsStatus.REJECTED,
+                        stage_status="rejected-low-resolution",
+                        width=800,
+                        height=450,
+                        failure_reason=(
+                            "Image does not meet the minimum public-readiness dimensions."
+                        ),
+                    ),
                 ],
             )
         ]
@@ -471,6 +495,14 @@ async def test_import_review_summary_bulk_readiness_and_draft_are_safe(
     detail = await client.get(f"/api/v1/admin/project-imports/{batch_id}/candidates/{candidate_id}")
     assert detail.status_code == 200
     assert detail.json()["raw_source_payload"]
+    assert detail.json()["media_summary"] == {
+        "total_acquired": 2,
+        "approved": 1,
+        "removed": 1,
+    }
+    assert detail.json()["automatic_recovery_needs_review"] is False
+    assert len(detail.json()["staged_media"]) == 1
+    assert detail.json()["staged_media"][0]["rights_status"] == "approved"
     assert detail.json()["overview_provider"] == {
         "state": "configuration-required",
         "message": "Provider configuration required",
@@ -547,10 +579,21 @@ async def test_import_review_summary_bulk_readiness_and_draft_are_safe(
     assert drafts.status_code == 200, drafts.text
     assert (await client.get("/api/v1/public/projects?locale=en")).json()["meta"]["total"] == 0
     async with SessionLocal() as db:
-        candidate = await db.get(ProjectImportCandidate, candidate_id)
+        candidate = await db.scalar(
+            select(ProjectImportCandidate)
+            .where(ProjectImportCandidate.id == candidate_id)
+            .options(
+                selectinload(ProjectImportCandidate.evidence),
+                selectinload(ProjectImportCandidate.staged_media),
+            )
+        )
         assert candidate is not None
         assert candidate.review_status == ImportReviewStatus.MERGED
         assert candidate.linked_project_id is not None
+        await sync_linked_draft_from_candidate(db, candidate)
+        await db.flush()
+        await sync_linked_draft_from_candidate(db, candidate)
+        await db.commit()
         project = await db.get(Project, candidate.linked_project_id)
         assert project is not None
         assert project.status.value == "draft"

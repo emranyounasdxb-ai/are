@@ -23,6 +23,19 @@ PROPERTY_TYPES = {
     "mansion": ("mansion", "mansions"),
     "residential-plot": ("residential plot", "residential plots"),
 }
+AMENITIES = {
+    "Swimming pool": ("swimming pool", "infinity pool"),
+    "Gym": ("gym", "fitness centre", "fitness center"),
+    "Spa": ("spa",),
+    "Children's play area": ("children's play area", "kids play area", "children play area"),
+    "Clubhouse": ("clubhouse",),
+    "Cinema": ("cinema",),
+    "Beach access": ("beach access", "private beach"),
+    "Landscaped gardens": ("landscaped gardens", "landscape gardens"),
+    "Parking": ("parking",),
+    "Concierge": ("concierge",),
+    "Security": ("24-hour security", "24/7 security"),
+}
 
 
 class EvidenceHTMLParser(HTMLParser):
@@ -57,11 +70,24 @@ class EvidenceHTMLParser(HTMLParser):
         href = values.get("href")
         if href:
             self.links.add(urljoin(self.base_url, href))
-        for key in ("src", "data-src", "data-lazy-src"):
+        for key in (
+            "src",
+            "data-src",
+            "data-lazy-src",
+            "data-background-image",
+            "data-bg",
+        ):
             value = values.get(key)
             if value:
                 self.media.add(urljoin(self.base_url, value))
-        if tag == "meta" and values.get("property") in {"og:image", "og:video"}:
+        srcset = values.get("srcset") or values.get("data-srcset")
+        if srcset:
+            for candidate in srcset.split(","):
+                value = candidate.strip().split()[0] if candidate.strip() else ""
+                if value:
+                    self.media.add(urljoin(self.base_url, value))
+        meta_key = values.get("property") or values.get("name")
+        if tag == "meta" and meta_key in {"og:image", "og:video", "twitter:image"}:
             value = values.get("content")
             if value:
                 self.media.add(urljoin(self.base_url, value))
@@ -143,7 +169,7 @@ def normalize_evidence(
     conflicts: list[str] = []
     if discovery_conflict:
         conflicts.append(discovery_conflict)
-    if extracted_name and normalize_name(extracted_name) != normalize_name(candidate.project_name):
+    if extracted_name and names_genuinely_disagree(candidate.project_name, extracted_name):
         conflicts.append(
             "Official source name differs: "
             f"manifest '{candidate.project_name}' versus source '{extracted_name}'."
@@ -167,6 +193,9 @@ def normalize_evidence(
     availability = explicit_availability(lowered)
     construction = explicit_construction(lowered)
     payment = payment_plan(text)
+    size_min, size_max, size_unit = explicit_size_range(text)
+    down_payment = explicit_down_payment(text)
+    amenities = explicit_amenities(lowered)
     source_extracted: dict[str, object] = {
         "project_name": extracted_name,
         "developer": developer,
@@ -179,6 +208,11 @@ def normalize_evidence(
         "payment_plan": payment,
         "availability_status": availability,
         "construction_status": construction,
+        "size_min": size_min,
+        "size_max": size_max,
+        "size_unit": size_unit,
+        "down_payment_percentage": down_payment,
+        "amenities": amenities,
         "arabic_content_available": parsed.has_arabic,
     }
     missing = tuple(
@@ -197,6 +231,49 @@ def normalize_evidence(
 
 def normalize_name(value: str) -> str:
     return " ".join(re.findall(r"[a-z0-9]+", value.casefold()))
+
+
+def names_genuinely_disagree(manifest_name: str, source_name: str) -> bool:
+    ignored = {
+        "amenities",
+        "and",
+        "at",
+        "by",
+        "features",
+        "floor",
+        "location",
+        "map",
+        "master",
+        "payment",
+        "plan",
+        "plans",
+        "summary",
+        "the",
+        "developer",
+        "development",
+        "properties",
+        "property",
+        "rak",
+    }
+    synonyms = {
+        "residences": "residence",
+        "townhome": "townhouse",
+        "townhomes": "townhouse",
+        "townhouses": "townhouse",
+    }
+    manifest = {
+        synonyms.get(token, token)
+        for token in normalize_name(manifest_name).split()
+        if token not in ignored
+    }
+    source = {
+        synonyms.get(token, token)
+        for token in normalize_name(source_name).split()
+        if token not in ignored
+    }
+    if not manifest or not source:
+        return False
+    return not (manifest <= source or source <= manifest)
 
 
 def name_similarity(left: str, right: str) -> float:
@@ -231,6 +308,51 @@ def explicit_construction(text: str) -> str | None:
         if re.search(pattern, text):
             return value
     return None
+
+
+def explicit_size_range(text: str) -> tuple[float | None, float | None, str | None]:
+    ranges = re.findall(
+        r"\b([\d,]{3,10}(?:\.\d+)?)\s*(?:to|[-–])\s*([\d,]{3,10}(?:\.\d+)?)"
+        r"\s*(?:sq\.?\s*ft|sqft|square feet)\b",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if ranges:
+        values = [
+            (float(low.replace(",", "")), float(high.replace(",", ""))) for low, high in ranges
+        ]
+        return min(value[0] for value in values), max(value[1] for value in values), "sqft"
+    single = re.findall(
+        r"\b(?:from|starting from)\s+([\d,]{3,10}(?:\.\d+)?)\s*"
+        r"(?:sq\.?\s*ft|sqft|square feet)\b",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if single:
+        minimum = min(float(value.replace(",", "")) for value in single)
+        return minimum, None, "sqft"
+    return None, None, None
+
+
+def explicit_down_payment(text: str) -> float | None:
+    for pattern in (
+        r"\b(100|\d{1,2}(?:\.\d+)?)\s*%\s*(?:initial\s+)?down payment\b",
+        r"\bdown payment\s*(?:of|:|-)?\s*(100|\d{1,2}(?:\.\d+)?)\s*%",
+    ):
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if match:
+            return float(match.group(1))
+    return None
+
+
+def explicit_amenities(lowered_text: str) -> list[str]:
+    if "amenit" not in lowered_text and "facilit" not in lowered_text:
+        return []
+    return [
+        label
+        for label, variants in AMENITIES.items()
+        if any(re.search(rf"\b{re.escape(value)}\b", lowered_text) for value in variants)
+    ]
 
 
 def payment_plan(text: str) -> dict[str, object] | None:

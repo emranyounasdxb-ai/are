@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import selectinload
 
 from app.config import Settings, get_settings
@@ -24,6 +24,7 @@ from app.models import (
     Project,
     ProjectImportBatch,
     ProjectImportCandidate,
+    ProjectImportMedia,
     ProjectOverviewPack,
     Property,
     Role,
@@ -76,6 +77,18 @@ async def clean_disposable_records(test_settings: Settings) -> AsyncIterator[Non
                 )
             )
         ).all()
+        qa_candidate_ids = [
+            candidate.id for batch in import_batches for candidate in batch.candidates
+        ]
+        if qa_candidate_ids:
+            qa_media_ids = select(ProjectImportMedia.id).where(
+                ProjectImportMedia.candidate_id.in_(qa_candidate_ids)
+            )
+            await db.execute(
+                update(ProjectImportMedia)
+                .where(ProjectImportMedia.duplicate_of_id.in_(qa_media_ids))
+                .values(duplicate_of_id=None)
+            )
         for batch in import_batches:
             packs = (
                 await db.scalars(

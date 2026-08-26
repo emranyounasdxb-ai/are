@@ -9,12 +9,13 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import html
 import json
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from html.parser import HTMLParser
-from urllib.parse import urljoin, urlsplit, urlunsplit
+from urllib.parse import parse_qs, urljoin, urlsplit, urlunsplit
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -29,6 +30,7 @@ from app.acquisition.contracts import (
     SourceFetcher,
 )
 from app.acquisition.parser import clean, normalize_evidence, normalize_name, parse_html
+from app.acquisition.reconciliation import reconcile_candidate_quality, source_disagreement
 from app.acquisition.security import BatchCachingFetcher, SecureFetcher, host_is_allowed
 from app.config import Settings
 from app.models import (
@@ -50,6 +52,19 @@ TANAMI_ADAPTER_KEY = "tanami-explicit-project-list"
 TANAMI_ADAPTER_VERSION = "2.1"
 TANAMI_DOCUMENT_DOMAINS = ("tanamiproperties.com",)
 TANAMI_MEDIA_DOMAINS = ("tanamiproperties.com", "manage.tanamiproperties.com")
+AMENITY_AR = {
+    "Swimming pool": "مسبح",
+    "Gym": "صالة رياضية",
+    "Spa": "منتجع صحي",
+    "Children's play area": "منطقة لعب للأطفال",
+    "Clubhouse": "نادي اجتماعي",
+    "Cinema": "سينما",
+    "Beach access": "وصول إلى الشاطئ",
+    "Landscaped gardens": "حدائق منسقة",
+    "Parking": "مواقف سيارات",
+    "Concierge": "خدمة الكونسيرج",
+    "Security": "خدمات أمن",
+}
 PROJECT_PATH = re.compile(r"^/Projects/([A-Za-z0-9][A-Za-z0-9-]*)$")
 SAME_PROJECT_SECTIONS = frozenset(
     {
@@ -209,13 +224,76 @@ async def acquire_project_documents(
 
 def extract_identity(result: FetchResult) -> TanamiIdentity:
     page = parse_html(result.body, result.url)
-    project_name = next((value for value in page.headings if value), page.title)
+    breadcrumb_name, breadcrumb_developer, breadcrumb_area = _breadcrumb_identity(result.body)
+    project_name = breadcrumb_name or next((value for value in page.headings if value), page.title)
     if not project_name:
         raise ValueError("The exact Tanami page did not expose a Project identity.")
     project_name = re.split(r"\s+[|–—]\s+", project_name, maxsplit=1)[0].strip()
-    developer = _label_value(page.text, ("developer", "developed by"))
-    area = _label_value(page.text, ("area", "location", "community"))
+    developer = breadcrumb_developer or _label_value(page.text, ("developer", "developed by"))
+    area = breadcrumb_area or _label_value(page.text, ("area", "location", "community"))
     return TanamiIdentity(project_name, developer, area)
+
+
+class _JsonLdIdentityParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.collecting = False
+        self.parts: list[str] = []
+        self.payloads: list[object] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag == "script" and (dict(attrs).get("type") or "").casefold() == "application/ld+json":
+            self.collecting = True
+            self.parts = []
+
+    def handle_data(self, data: str) -> None:
+        if self.collecting:
+            self.parts.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag != "script" or not self.collecting:
+            return
+        try:
+            self.payloads.append(json.loads("".join(self.parts)))
+        except (json.JSONDecodeError, ValueError):
+            pass
+        self.collecting = False
+        self.parts = []
+
+
+def _breadcrumb_identity(body: bytes) -> tuple[str | None, str | None, str | None]:
+    parser = _JsonLdIdentityParser()
+    parser.feed(body.decode("utf-8", errors="replace"))
+    stack = list(parser.payloads)
+    while stack:
+        value = stack.pop()
+        if isinstance(value, list):
+            stack.extend(value)
+            continue
+        if not isinstance(value, dict):
+            continue
+        if value.get("@type") != "BreadcrumbList":
+            stack.extend(value.values())
+            continue
+        project = developer = area = None
+        items = value.get("itemListElement")
+        if not isinstance(items, list):
+            continue
+        for entry in items:
+            item = entry.get("item") if isinstance(entry, dict) else None
+            if not isinstance(item, dict):
+                continue
+            name = clean(str(item.get("name") or "")) or None
+            item_type = str(item.get("@type") or "").casefold()
+            if item_type == "brand":
+                developer = name
+            elif item_type == "place":
+                area = name
+            elif item_type in {"house", "apartment", "product", "residence"}:
+                project = name
+        if project or developer or area:
+            return project, developer, area
+    return None, None, None
 
 
 def _label_value(text: str, labels: tuple[str, ...]) -> str | None:
@@ -239,9 +317,11 @@ def _combined_normalized(
     results: list[FetchResult], manifest: ManifestCandidate
 ) -> NormalizedEvidence:
     normalized = [normalize_evidence(parse_html(item.body, item.url), manifest) for item in results]
+    structured = [_tanami_structured_facts(result) for result in results]
     extracted: dict[str, object] = {}
     proposal: dict[str, object] = {}
     conflicts: list[str] = []
+    disagreement_evidence: list[dict[str, object]] = []
     media: set[str] = set()
     for item in normalized:
         for key, value in item.source_extracted.items():
@@ -250,6 +330,47 @@ def _combined_normalized(
                 proposal[key] = value
         conflicts.extend(item.conflicts)
         media.update(item.media_urls)
+    for structured_item in structured:
+        for key, value in structured_item.items():
+            if value not in (None, [], {}, "") and key not in extracted:
+                extracted[key] = value
+                proposal[key] = value
+    for key in (
+        "handover_quarter",
+        "handover_year",
+        "availability_status",
+        "construction_status",
+        "down_payment_percentage",
+    ):
+        values = [
+            *[item.source_extracted.get(key) for item in normalized],
+            *[item.get(key) for item in structured],
+        ]
+        disagreement = source_disagreement(key, values)
+        if disagreement:
+            conflicts.append(disagreement)
+            retained: list[dict[str, object]] = []
+            for result, normalized_item, structured_item in zip(
+                results, normalized, structured, strict=True
+            ):
+                for value in (
+                    normalized_item.source_extracted.get(key),
+                    structured_item.get(key),
+                ):
+                    if value in (None, "", [], {}) or value == "not-confirmed":
+                        continue
+                    evidence_item = {"value": value, "source_url": result.url}
+                    if evidence_item not in retained:
+                        retained.append(evidence_item)
+            disagreement_evidence.append(
+                {
+                    "field": key,
+                    "sources": retained,
+                    "requires_human_review": True,
+                }
+            )
+    if disagreement_evidence:
+        extracted["_source_disagreement_evidence"] = disagreement_evidence
     extracted.setdefault("project_name", manifest.project_name)
     proposal.setdefault("project_name", manifest.project_name)
     missing = tuple(
@@ -258,12 +379,17 @@ def _combined_normalized(
             "developer",
             "area",
             "property_types",
+            "unit_types",
             "bedrooms",
+            "size_min",
+            "size_max",
+            "down_payment_percentage",
             "handover_quarter",
             "handover_year",
             "payment_plan",
             "availability_status",
             "construction_status",
+            "amenities",
         )
         if proposal.get(key) in (None, [], {}, "")
     )
@@ -274,6 +400,70 @@ def _combined_normalized(
         conflicts=tuple(dict.fromkeys(conflicts)),
         media_urls=tuple(sorted(media)),
     )
+
+
+def _tanami_structured_facts(result: FetchResult) -> dict[str, object]:
+    source = result.body.decode("utf-8", errors="replace")
+    text = parse_html(result.body, result.url).text
+    facts: dict[str, object] = {}
+
+    unit_values = re.findall(r"Unit\s*type\s*:\s*(.{1,140}?)\s+Size\s*:", text, re.IGNORECASE)
+    if unit_values:
+        facts["unit_types"] = list(dict.fromkeys(clean(value) for value in unit_values))
+
+    ranges: list[dict[str, object]] = []
+    minimum_sizes: list[float] = []
+    maximum_sizes: list[float] = []
+    for low, high in re.findall(
+        r"Size\s*:\s*([\d,.]+)\s+to\s+([\d,.]+)\s+Sq\s*Ft", text, re.IGNORECASE
+    ):
+        minimum = float(low.replace(",", ""))
+        maximum = float(high.replace(",", ""))
+        minimum_sizes.append(minimum)
+        maximum_sizes.append(maximum)
+        ranges.append(
+            {
+                "minimum": minimum,
+                "maximum": maximum,
+                "unit": "sqft",
+            }
+        )
+    if ranges:
+        facts["size_ranges"] = ranges
+        facts["size_min"] = min(minimum_sizes)
+        facts["size_max"] = max(maximum_sizes)
+        facts["size_unit"] = "sqft"
+
+    down_payment = re.search(r"Down\s+Payment\s*:\s*(\d{1,3}(?:\.\d+)?)\s*%", text, re.IGNORECASE)
+    if down_payment:
+        facts["down_payment_percentage"] = float(down_payment.group(1))
+
+    amenities = []
+    for value in re.findall(
+        r"class=['\"][^'\"]*\bfeatures\b[^'\"]*['\"][\s\S]{0,900}?"
+        r"<h3[^>]*>([\s\S]*?)</h3>",
+        source,
+        re.IGNORECASE,
+    ):
+        label = clean(html.unescape(re.sub(r"<[^>]+>", " ", value)))
+        if label and label.casefold() not in {"feature & amenities", "features & amenities"}:
+            amenities.append(label)
+    if amenities:
+        facts["amenities"] = list(dict.fromkeys(amenities))
+
+    lowered_url = result.url.casefold()
+    facts["overview_evidence_present"] = bool(
+        re.search(r"<h3[^>]*>\s*<span>\s*Overview\s*</span>", source, re.IGNORECASE)
+    )
+    if "floorplans" in lowered_url:
+        facts["floor_plans_present"] = True
+    if "masterplan" in lowered_url:
+        facts["master_plan_present"] = True
+    if lowered_url.endswith("-location"):
+        facts["location_map_present"] = True
+    if re.search(r"\bRas\s+Al\s+Khaimah\b", text, re.IGNORECASE):
+        facts["emirate"] = "RAS_AL_KHAIMAH"
+    return facts
 
 
 class _ContextualMediaParser(HTMLParser):
@@ -547,12 +737,46 @@ async def _update_candidate(
     fetcher: SourceFetcher,
 ) -> None:
     previous = candidate.normalized_payload or {}
+    prior_source_urls = list(candidate.source_urls)
     for result in documents.results:
         await _store_snapshot(
             db, storage, candidate, result, ProjectSourceType.APPROVED_SECONDARY_SOURCE
         )
     identity = documents.identity
     proposal = dict(documents.normalized.normalized_proposal)
+    retained_prior_evidence: list[dict[str, object]] = []
+    for field_name in (
+        "property_types",
+        "unit_types",
+        "bedrooms",
+        "size_min",
+        "size_max",
+        "size_unit",
+        "down_payment_percentage",
+        "down_payment_source_value",
+        "handover_quarter",
+        "handover_year",
+        "original_handover_value",
+        "payment_plan",
+        "availability_status",
+        "construction_status",
+        "amenities",
+        "localized_unit_types",
+        "localized_amenities",
+    ):
+        current = proposal.get(field_name)
+        retained = previous.get(field_name)
+        current_missing = current in (None, "", [], {}) or current == "not-confirmed"
+        retained_confirmed = retained not in (None, "", [], {}) and retained != "not-confirmed"
+        if current_missing and retained_confirmed:
+            proposal[field_name] = retained
+            retained_prior_evidence.append(
+                {
+                    "field": field_name,
+                    "source_urls": prior_source_urls,
+                    "reason": "Retained stored source evidence omitted by the latest response.",
+                }
+            )
     human_conflicts: list[str] = []
     for field_name in candidate.human_edited_fields:
         if field_name in previous and previous.get(field_name) != proposal.get(field_name):
@@ -567,7 +791,6 @@ async def _update_candidate(
     candidate.adapter_key = TANAMI_ADAPTER_KEY
     candidate.adapter_version = TANAMI_ADAPTER_VERSION
     candidate.normalized_project_name = identity.project_name
-    candidate.normalized_payload = proposal
     candidate.raw_source_payload = {
         "source_extracted": documents.normalized.source_extracted,
         "document_count": len(documents.results),
@@ -579,6 +802,12 @@ async def _update_candidate(
         "".join(hashlib.sha256(item.body).hexdigest() for item in documents.results).encode()
     ).hexdigest()
     conflicts = [*documents.normalized.conflicts, *human_conflicts]
+    source_disagreements = documents.normalized.source_extracted.get(
+        "_source_disagreement_evidence", []
+    )
+    official_fact_evidence: list[dict[str, object]] = (
+        list(source_disagreements) if isinstance(source_disagreements, list) else []
+    )
     official_status = "not-resolved"
     if identity.developer_name:
         official = adapter_for(identity.developer_name)
@@ -609,6 +838,34 @@ async def _update_candidate(
                     candidate.source_urls = list(
                         dict.fromkeys([*candidate.source_urls, result.url])
                     )
+                    await _stage_media(
+                        db,
+                        candidate,
+                        tuple(
+                            (url, _media_category(urlsplit(url).path.casefold(), "official"))
+                            for url in evidence.media_urls
+                        ),
+                    )
+                    official_page = parse_html(result.body, result.url)
+                    for brochure_url in (
+                        value
+                        for value in official_page.links
+                        if urlsplit(value).path.casefold().endswith(".pdf")
+                    ):
+                        brochure = await asyncio.to_thread(
+                            fetcher.fetch, brochure_url, official.allowed_domains
+                        )
+                        if brochure.ok:
+                            await _store_snapshot(
+                                db,
+                                storage,
+                                candidate,
+                                brochure,
+                                ProjectSourceType.OFFICIAL_DEVELOPER_PAGE,
+                            )
+                            candidate.source_urls = list(
+                                dict.fromkeys([*candidate.source_urls, brochure.url])
+                            )
                     for localized_url in discovery.localized_urls:
                         if localized_url == result.url:
                             continue
@@ -626,7 +883,25 @@ async def _update_candidate(
                             candidate.source_urls = list(
                                 dict.fromkeys([*candidate.source_urls, localized.url])
                             )
+                            await _stage_media(
+                                db,
+                                candidate,
+                                tuple(
+                                    (
+                                        url,
+                                        _media_category(urlsplit(url).path.casefold(), "official"),
+                                    )
+                                    for url in parse_html(localized.body, localized.url).media_urls
+                                ),
+                            )
                     official_status = "corroborated"
+                    _merge_official_evidence(
+                        proposal,
+                        evidence.normalized_proposal,
+                        conflicts,
+                        official_fact_evidence,
+                        result.url,
+                    )
                 else:
                     official_status = "source-unavailable"
             else:
@@ -641,16 +916,11 @@ async def _update_candidate(
             official_status = "alias-not-registered"
     if identity.area_name:
         candidate.proposed_area_id = await _match_area(db, identity.area_name)
-    if not candidate.proposed_developer_id:
-        conflicts.append("Canonical Developer requires exact human resolution.")
-    if not candidate.proposed_area_id:
-        conflicts.append("Canonical Area/Community requires exact human resolution.")
     media_warning = None
     if len(documents.media) < 2:
         media_warning = (
             "Insufficient exact-project media was discovered; retain the candidate for review."
         )
-        conflicts.append(media_warning)
     candidate.validation_errors = [
         {"field": field, "code": "missing_source_evidence"}
         for field in documents.normalized.missing_fields
@@ -670,11 +940,86 @@ async def _update_candidate(
         "document_count": len(documents.results),
         "media_discovered": len(documents.media),
         "media_warning": media_warning,
+        "official_fact_evidence": official_fact_evidence,
+        "retained_prior_evidence": retained_prior_evidence,
         "publication": "not-permitted",
     }
+    candidate.normalized_payload = dict(proposal)
     candidate.review_status = ImportReviewStatus.NEEDS_REVIEW
     candidate.processing_status = ProjectProcessingStatus.NEEDS_REVIEW
     await _stage_media(db, candidate, documents.media)
+    reconcile_candidate_quality(candidate)
+
+
+def _merge_official_evidence(
+    proposal: dict[str, object],
+    official: dict[str, object],
+    conflicts: list[str],
+    evidence_log: list[dict[str, object]],
+    source_url: str,
+) -> None:
+    for field in (
+        "property_types",
+        "bedrooms",
+        "handover_quarter",
+        "handover_year",
+        "original_handover_value",
+        "availability_status",
+        "construction_status",
+        "size_min",
+        "size_max",
+        "size_unit",
+        "down_payment_percentage",
+        "payment_plan",
+        "amenities",
+    ):
+        value = official.get(field)
+        if value in (None, "", [], {}) or value == "not-confirmed":
+            continue
+        current = proposal.get(field)
+        if field in {"property_types", "bedrooms", "amenities"} and isinstance(value, list):
+            merged = list(dict.fromkeys([*(current if isinstance(current, list) else []), *value]))
+            if merged != current:
+                proposal[field] = merged
+                evidence_log.append({"field": field, "value": value, "source_url": source_url})
+                if field == "amenities":
+                    proposal["localized_amenities"] = [
+                        {"label_en": label, "label_ar": AMENITY_AR[label]}
+                        for label in merged
+                        if label in AMENITY_AR
+                    ]
+            continue
+        if field == "original_handover_value":
+            if current in (None, ""):
+                proposal[field] = value
+            continue
+        if field == "payment_plan" and isinstance(value, dict):
+            official_milestones = value.get("milestones") or []
+            current_milestones = (
+                current.get("milestones") or [] if isinstance(current, dict) else []
+            )
+            if not official_milestones:
+                continue
+            if not current_milestones:
+                proposal[field] = value
+                evidence_log.append({"field": field, "value": value, "source_url": source_url})
+                continue
+        if current in (None, "", [], {}) or current == "not-confirmed":
+            proposal[field] = value
+            evidence_log.append({"field": field, "value": value, "source_url": source_url})
+            continue
+        disagreement = source_disagreement(field, (current, value))
+        if disagreement:
+            conflicts.append(disagreement)
+            evidence_log.append(
+                {
+                    "field": field,
+                    "retained_value": current,
+                    "official_value": value,
+                    "source_url": source_url,
+                    "requires_human_review": True,
+                }
+            )
 
 
 async def refresh_explicit_candidate(
@@ -691,6 +1036,7 @@ async def refresh_explicit_candidate(
         .options(
             selectinload(ProjectImportCandidate.evidence),
             selectinload(ProjectImportCandidate.staged_media),
+            selectinload(ProjectImportCandidate.editorial_draft),
         )
     )
     if not candidate or candidate.adapter_key != TANAMI_ADAPTER_KEY:
@@ -699,8 +1045,11 @@ async def refresh_explicit_candidate(
     if not isinstance(value, str):
         raise ValueError("The candidate has no retained owner-approved Project URL.")
     source_fetcher = fetcher or BatchCachingFetcher(SecureFetcher())
+    linked_draft = candidate.linked_project_id is not None
     documents = await acquire_project_documents(value, fetcher=source_fetcher)
     await _update_candidate(db, PrivateStorage(settings), candidate, documents, source_fetcher)
+    if linked_draft:
+        candidate.review_status = ImportReviewStatus.MERGED
     candidate.human_review_completed = False
     candidate.review_version += 1
     await db.commit()
@@ -751,23 +1100,39 @@ async def _stage_media(
     media: tuple[tuple[str, ProjectMediaCategory], ...],
 ) -> None:
     existing = {item.source_url: item for item in candidate.staged_media}
-    for order, (url, category) in enumerate(media[:24]):
+    eligible = tuple((url, category) for url, category in media if _is_https_raster_candidate(url))
+    for order, (url, category) in enumerate(eligible[:24]):
         item = existing.get(url)
         if item:
             item.category = category
             item.last_seen_at = datetime.now(UTC)
             continue
-        db.add(
-            ProjectImportMedia(
-                candidate_id=candidate.id,
-                category=category,
-                source_url=url,
-                rights_status=MediaRightsStatus.PENDING,
-                stage_status="reference-only",
-                display_order=order,
-                last_seen_at=datetime.now(UTC),
-            )
+        item = ProjectImportMedia(
+            candidate_id=candidate.id,
+            category=category,
+            source_url=url,
+            rights_status=MediaRightsStatus.PENDING,
+            stage_status="reference-only",
+            display_order=order,
+            last_seen_at=datetime.now(UTC),
         )
+        db.add(item)
+        candidate.staged_media.append(item)
+        existing[url] = item
+
+
+def _is_https_raster_candidate(url: str) -> bool:
+    parts = urlsplit(url)
+    if parts.scheme != "https" or not parts.netloc:
+        return False
+    if parts.path.casefold().endswith(IMAGE_SUFFIXES):
+        return True
+    if parts.path.rstrip("/").casefold().endswith("/image"):
+        return any(
+            value.casefold().endswith(IMAGE_SUFFIXES)
+            for value in parse_qs(parts.query).get("url", [])
+        )
+    return False
 
 
 async def _match_area(db: AsyncSession, name: str) -> UUID | None:
