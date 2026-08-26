@@ -123,11 +123,15 @@ async def intake_private_media(
             if media.category.value == "video-reference":
                 candidate_stats["skipped_video"] += 1
                 continue
-            if media.processing_version == MEDIA_PROCESSING_VERSION and media.stage_status in {
-                "downloaded",
-                "duplicate",
-                "rejected-low-resolution",
-            }:
+            if media.stage_status == "rejected-unrelated" or (
+                media.processing_version == MEDIA_PROCESSING_VERSION
+                and media.stage_status
+                in {
+                    "downloaded",
+                    "duplicate",
+                    "rejected-low-resolution",
+                }
+            ):
                 _count_terminal_media(candidate_stats, media)
                 continue
             allowed_domains = _allowed_domains_for_media(candidate, media.source_url)
@@ -139,9 +143,8 @@ async def intake_private_media(
                     media,
                     "Media URL is outside the bounded official raster policy.",
                 )
-                media.stage_status = "failed"
+                media.stage_status = "rejected-unrelated"
                 media.failure_reason = "Media URL is outside the bounded official raster policy."
-                candidate_stats["failed"] += 1
                 candidate_stats["unrelated_rejected"] += 1
                 continue
             candidate_stats["attempted"] += 1
@@ -383,6 +386,8 @@ def _count_terminal_media(stats: dict[str, int], media: ProjectImportMedia) -> N
         stats["deduplicated"] += 1
     elif media.stage_status == "rejected-low-resolution":
         stats["low_resolution_rejected"] += 1
+    elif media.stage_status == "rejected-unrelated":
+        stats["unrelated_rejected"] += 1
 
 
 def _select_best_cover(candidate: ProjectImportCandidate) -> None:

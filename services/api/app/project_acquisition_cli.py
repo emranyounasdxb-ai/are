@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
 import json
 import uuid
 from pathlib import Path
@@ -14,11 +15,39 @@ from app.audit import write_audit
 from app.config import get_settings
 from app.db import SessionLocal
 from app.manual_overviews import create_overview_pack, import_overview_response, pack_dict
-from app.models import ProjectImportCandidate, ProjectOverviewPack
+from app.models import ProjectImportBatch, ProjectImportCandidate, ProjectOverviewPack
 from app.project_processing import run_worker_once
 from app.schemas import ManualOverviewResponse
 
 DEFAULT_MANIFEST = Path("/app/data-intake/offplan-projects-owner-manifest.csv")
+SHARJAH_MEDIA_WORKERS = 4
+
+
+async def _intake_media_parallel(
+    batch_id: uuid.UUID, candidate_ids: list[uuid.UUID]
+) -> dict[str, int]:
+    """Process disjoint candidates concurrently while retaining per-candidate commits."""
+    from app.acquisition.media_intake import intake_private_media
+
+    groups = [candidate_ids[index::SHARJAH_MEDIA_WORKERS] for index in range(SHARJAH_MEDIA_WORKERS)]
+
+    async def process_group(group: list[uuid.UUID]) -> dict[str, int]:
+        if not group:
+            return {}
+        async with SessionLocal() as worker_db:
+            return await intake_private_media(
+                worker_db,
+                get_settings(),
+                batch_id,
+                candidate_ids=group,
+            )
+
+    results = await asyncio.gather(*(process_group(group) for group in groups))
+    totals: dict[str, int] = {}
+    for result in results:
+        for key, value in result.items():
+            totals[key] = totals.get(key, 0) + value
+    return totals
 
 
 def parser() -> argparse.ArgumentParser:
@@ -42,6 +71,11 @@ def parser() -> argparse.ArgumentParser:
         help="Acquire an explicit owner-approved list of exact Tanami Project URLs",
     )
     tanami.add_argument("--url", action="append", required=True, dest="urls")
+    sharjah = subcommands.add_parser(
+        "tanami-sharjah-batch",
+        help="Discover and acquire the complete bounded Tanami Sharjah Project listing",
+    )
+    sharjah.add_argument("--refresh", action="store_true")
     tanami_refresh = subcommands.add_parser(
         "tanami-refresh-existing",
         help="Refresh only the retained candidates in one existing explicit Tanami batch",
@@ -207,6 +241,130 @@ async def run(args: argparse.Namespace) -> None:
             print(
                 json.dumps(
                     {"batch": status_summary(batch), "media": media_result},
+                    indent=2,
+                )
+            )
+            return
+        if args.command == "tanami-sharjah-batch":
+            from app.acquisition.security import BatchCachingFetcher, SecureFetcher
+            from app.acquisition.tanami import (
+                SHARJAH_LISTING_URL,
+                acquire_explicit_batch,
+                discover_sharjah_project_urls,
+                finalize_sharjah_private_drafts,
+            )
+
+            session_fetcher = SecureFetcher()
+            discovery = await discover_sharjah_project_urls(fetcher=session_fetcher)
+            manifest_hash = hashlib.sha256(
+                json.dumps(discovery.urls, separators=(",", ":")).encode()
+            ).hexdigest()
+            sharjah_batch = await db.scalar(
+                select(ProjectImportBatch)
+                .where(ProjectImportBatch.manifest_hash == manifest_hash)
+                .options(
+                    selectinload(ProjectImportBatch.candidates).selectinload(
+                        ProjectImportCandidate.evidence
+                    ),
+                    selectinload(ProjectImportBatch.candidates).selectinload(
+                        ProjectImportCandidate.staged_media
+                    ),
+                    selectinload(ProjectImportBatch.candidates).selectinload(
+                        ProjectImportCandidate.editorial_draft
+                    ),
+                )
+            )
+            acquisition_reused = bool(
+                not args.refresh
+                and sharjah_batch
+                and sharjah_batch.completed_at
+                and len(sharjah_batch.candidates) == len(discovery.urls)
+            )
+            if not acquisition_reused:
+                sharjah_batch = await acquire_explicit_batch(
+                    db,
+                    get_settings(),
+                    discovery.urls,
+                    fetcher=BatchCachingFetcher(session_fetcher),
+                    batch_name="Tanami Sharjah Off-Plan Projects",
+                )
+            if sharjah_batch is None:
+                raise RuntimeError("The Sharjah acquisition batch was not available.")
+            batch = sharjah_batch
+            listing_by_url = {item.url: item for item in discovery.projects}
+            for candidate in batch.candidates:
+                approved_url = candidate.owner_manifest_values.get("approved_project_url")
+                listing_identity = (
+                    listing_by_url.get(approved_url) if isinstance(approved_url, str) else None
+                )
+                owner_values = dict(candidate.owner_manifest_values)
+                if listing_identity:
+                    owner_values["listing_project_name"] = listing_identity.project_name
+                    owner_values["listing_developer"] = listing_identity.developer_name
+                    owner_values["listing_area"] = listing_identity.area_name
+                    owner_values["source_developer"] = (
+                        owner_values.get("source_developer") or listing_identity.developer_name
+                    )
+                    owner_values["source_area"] = (
+                        owner_values.get("source_area") or listing_identity.area_name
+                    )
+                    candidate.owner_manifest_values = owner_values
+                facts = dict(candidate.normalized_payload or {})
+                facts["emirate"] = "Sharjah"
+                if listing_identity:
+                    facts["project_name"] = listing_identity.project_name
+                candidate.normalized_payload = facts
+                candidate.source_urls = list(
+                    dict.fromkeys([*candidate.source_urls, SHARJAH_LISTING_URL])
+                )
+                candidate.acquisition_summary = {
+                    **candidate.acquisition_summary,
+                    "listing_source_url": SHARJAH_LISTING_URL,
+                    "listing_content_hash": discovery.listing_content_hash,
+                    "listing_retrieved_at": discovery.retrieved_at.isoformat(),
+                }
+            await db.commit()
+            media_result = await _intake_media_parallel(
+                batch.id, [candidate.id for candidate in batch.candidates]
+            )
+            refreshed_batch = await db.scalar(
+                select(ProjectImportBatch)
+                .where(ProjectImportBatch.id == batch.id)
+                .execution_options(populate_existing=True)
+                .options(
+                    selectinload(ProjectImportBatch.candidates).selectinload(
+                        ProjectImportCandidate.evidence
+                    ),
+                    selectinload(ProjectImportBatch.candidates).selectinload(
+                        ProjectImportCandidate.staged_media
+                    ),
+                    selectinload(ProjectImportBatch.candidates).selectinload(
+                        ProjectImportCandidate.editorial_draft
+                    ),
+                )
+            )
+            if refreshed_batch is None:
+                raise RuntimeError("The completed Sharjah batch could not be reloaded.")
+            batch = refreshed_batch
+            draft_result = await finalize_sharjah_private_drafts(
+                db,
+                batch,
+                fetcher=BatchCachingFetcher(session_fetcher),
+            )
+            print(
+                json.dumps(
+                    {
+                        "discovery": {
+                            "total_reported": discovery.total_reported,
+                            "unique_urls": len(discovery.urls),
+                            "duplicates": discovery.duplicate_count,
+                            "pages": discovery.pages_fetched,
+                            "acquisition_reused": acquisition_reused,
+                        },
+                        "batch": status_summary(batch),
+                        "media": media_result,
+                        "drafts": draft_result,
+                    },
                     indent=2,
                 )
             )

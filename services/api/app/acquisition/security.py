@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import ipaddress
+import json
 import socket
 import time
 from datetime import UTC, datetime
 from email.message import Message
+from http.cookiejar import CookieJar
 from threading import Lock
 from typing import Any, Protocol, cast
 from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin, urlsplit
-from urllib.request import HTTPRedirectHandler, Request, build_opener
+from urllib.request import HTTPCookieProcessor, HTTPRedirectHandler, Request, build_opener
 from urllib.robotparser import RobotFileParser
 
 from app.acquisition.contracts import FetchResult
@@ -106,7 +108,7 @@ class SecureFetcher:
     def __init__(self, *, timeout_seconds: float = 12, domain_delay_seconds: float = 0.5) -> None:
         self.timeout_seconds = timeout_seconds
         self.domain_delay_seconds = domain_delay_seconds
-        self._opener = build_opener(_NoRedirect())
+        self._opener = build_opener(_NoRedirect(), HTTPCookieProcessor(CookieJar()))
         self._last_request: dict[str, float] = {}
         self._robots: dict[str, RobotFileParser | None] = {}
         self._lock = Lock()
@@ -123,6 +125,53 @@ class SecureFetcher:
                     if not self._allowed_by_robots(current, allowed_domains):
                         return self._failure(
                             current, "robots_disallowed", "robots.txt disallows the redirect URL."
+                        )
+                    continue
+                return result
+            return self._failure(current, "redirect_limit", "The redirect limit was exceeded.")
+        except AcquisitionSecurityError as exc:
+            return self._failure(url, "security_rejected", str(exc))
+
+    def post_json(
+        self,
+        url: str,
+        allowed_domains: tuple[str, ...],
+        payload: dict[str, object],
+        *,
+        referer: str,
+    ) -> FetchResult:
+        """POST bounded JSON to an allowlisted same-origin acquisition endpoint."""
+        try:
+            current = validate_public_url(url, allowed_domains)
+            safe_referer = validate_public_url(referer, allowed_domains)
+            if urlsplit(current).netloc != urlsplit(safe_referer).netloc:
+                raise AcquisitionSecurityError("JSON acquisition requests must remain same-origin.")
+            if not self._allowed_by_robots(current, allowed_domains):
+                return self._failure(current, "robots_disallowed", "robots.txt disallows this URL.")
+            encoded = json.dumps(payload, separators=(",", ":")).encode()
+            for _ in range(4):
+                result, redirect = self._request_once(
+                    current,
+                    allowed_domains,
+                    data=encoded,
+                    extra_headers={
+                        "Accept": "application/json",
+                        "Content-Type": "application/json; charset=UTF-8",
+                        "Origin": f"{urlsplit(safe_referer).scheme}://{urlsplit(safe_referer).netloc}",
+                        "Referer": safe_referer,
+                    },
+                )
+                if redirect:
+                    current = validate_public_url(urljoin(current, redirect), allowed_domains)
+                    if urlsplit(current).netloc != urlsplit(safe_referer).netloc:
+                        raise AcquisitionSecurityError(
+                            "JSON acquisition redirects must remain same-origin."
+                        )
+                    if not self._allowed_by_robots(current, allowed_domains):
+                        return self._failure(
+                            current,
+                            "robots_disallowed",
+                            "robots.txt disallows the redirect URL.",
                         )
                     continue
                 return result
@@ -148,20 +197,28 @@ class SecureFetcher:
         return cached_parser is None or cached_parser.can_fetch(USER_AGENT, url)
 
     def _request_once(
-        self, url: str, allowed_domains: tuple[str, ...]
+        self,
+        url: str,
+        allowed_domains: tuple[str, ...],
+        *,
+        data: bytes | None = None,
+        extra_headers: dict[str, str] | None = None,
     ) -> tuple[FetchResult, str | None]:
         validate_public_url(url, allowed_domains)
         host = normalize_host(urlsplit(url).hostname or "")
         self._throttle(host)
+        headers = {
+            "User-Agent": USER_AGENT,
+            "Accept": (
+                "text/html,application/xhtml+xml,application/json,"
+                "application/pdf,application/xml;q=0.9"
+            ),
+        }
+        headers.update(extra_headers or {})
         request = Request(  # noqa: S310 -- URL passed strict HTTPS/domain/IP validation above.
             url,
-            headers={
-                "User-Agent": USER_AGENT,
-                "Accept": (
-                    "text/html,application/xhtml+xml,application/json,"
-                    "application/pdf,application/xml;q=0.9"
-                ),
-            },
+            data=data,
+            headers=headers,
         )
         for attempt in range(3):
             try:
