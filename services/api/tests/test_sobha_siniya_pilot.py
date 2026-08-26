@@ -118,6 +118,7 @@ def test_unresolved_market_facts_do_not_block_a_private_draft() -> None:
         proposed_developer_id="developer",
         proposed_area_id="area",
         official_source_url=OFFICIAL_EN_URL,
+        source_urls=[OFFICIAL_EN_URL],
         normalized_project_name="Sobha Siniya Island",
         normalized_payload={"property_types": ["villa"], "bedrooms": ["4"]},
         human_review_completed=True,
