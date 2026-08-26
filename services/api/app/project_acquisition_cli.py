@@ -42,7 +42,19 @@ def parser() -> argparse.ArgumentParser:
         help="Acquire an explicit owner-approved list of exact Tanami Project URLs",
     )
     tanami.add_argument("--url", action="append", required=True, dest="urls")
-    for command in ("acquire", "refresh", "retry-failed", "media-intake", "status"):
+    tanami_refresh = subcommands.add_parser(
+        "tanami-refresh-existing",
+        help="Refresh only the retained candidates in one existing explicit Tanami batch",
+    )
+    tanami_refresh.add_argument("--batch-id", required=True, type=uuid.UUID)
+    for command in (
+        "acquire",
+        "refresh",
+        "retry-failed",
+        "media-intake",
+        "reconcile-conflicts",
+        "status",
+    ):
         item = subcommands.add_parser(command)
         item.add_argument("--batch-id")
     worker = subcommands.add_parser("process-worker", help="Run the bounded preparation worker")
@@ -187,10 +199,17 @@ async def run(args: argparse.Namespace) -> None:
             print(json.dumps(result, default=str, indent=2))
             return
         if args.command == "tanami-batch":
+            from app.acquisition.media_intake import intake_private_media
             from app.acquisition.tanami import acquire_explicit_batch
 
             batch = await acquire_explicit_batch(db, get_settings(), args.urls)
-            print(json.dumps(status_summary(batch), indent=2))
+            media_result = await intake_private_media(db, get_settings(), batch.id)
+            print(
+                json.dumps(
+                    {"batch": status_summary(batch), "media": media_result},
+                    indent=2,
+                )
+            )
             return
         if args.command == "load":
             batch = await load_manifest(db, args.manifest)
@@ -207,6 +226,95 @@ async def run(args: argparse.Namespace) -> None:
             batch = await selected_batch(db, args.batch_id)
             media_result = await intake_private_media(db, get_settings(), batch.id)
             print(json.dumps(media_result, indent=2))
+            return
+        elif args.command == "reconcile-conflicts":
+            from app.acquisition.reconciliation import reconcile_candidate_quality
+            from app.acquisition.service import selected_batch
+
+            batch = await selected_batch(db, args.batch_id)
+            before = sum(len(item.conflict_reasons) for item in batch.candidates)
+            for candidate in batch.candidates:
+                reconcile_candidate_quality(candidate)
+            await db.commit()
+            print(
+                json.dumps(
+                    {
+                        "batch_id": str(batch.id),
+                        "candidates": len(batch.candidates),
+                        "conflicts_before": before,
+                        "conflicts_after": sum(
+                            len(item.conflict_reasons) for item in batch.candidates
+                        ),
+                    },
+                    indent=2,
+                )
+            )
+            return
+        if args.command == "tanami-refresh-existing":
+            from app.acquisition.media_intake import intake_private_media
+            from app.acquisition.reconciliation import reconcile_candidate_quality
+            from app.acquisition.security import BatchCachingFetcher, SecureFetcher
+            from app.acquisition.service import selected_batch
+            from app.acquisition.tanami import refresh_explicit_candidate
+            from app.import_review import sync_linked_draft_from_candidate
+
+            batch = await selected_batch(db, str(args.batch_id))
+            candidate_ids = [item.id for item in batch.candidates]
+            fetcher = BatchCachingFetcher(SecureFetcher())
+            succeeded = 0
+            failures: list[dict[str, object]] = []
+            for candidate_id in candidate_ids:
+                try:
+                    await refresh_explicit_candidate(
+                        db,
+                        get_settings(),
+                        candidate_id,
+                        fetcher=fetcher,
+                    )
+                    succeeded += 1
+                except Exception as exc:
+                    await db.rollback()
+                    failed_candidate = await db.scalar(
+                        select(ProjectImportCandidate)
+                        .where(ProjectImportCandidate.id == candidate_id)
+                        .options(
+                            selectinload(ProjectImportCandidate.staged_media),
+                            selectinload(ProjectImportCandidate.editorial_draft),
+                        )
+                    )
+                    if failed_candidate:
+                        failed_candidate.validation_errors = [
+                            *failed_candidate.validation_errors,
+                            {
+                                "field": "acquisition",
+                                "code": "refresh_failed",
+                                "message": f"{type(exc).__name__}: {str(exc)[:300]}",
+                            },
+                        ]
+                        reconcile_candidate_quality(failed_candidate)
+                        await db.commit()
+                    failures.append(
+                        {
+                            "candidate_id": str(candidate_id),
+                            "error": f"{type(exc).__name__}: {str(exc)[:300]}",
+                        }
+                    )
+            media = await intake_private_media(db, get_settings(), batch.id)
+            refreshed_batch = await selected_batch(db, str(batch.id))
+            for candidate in refreshed_batch.candidates:
+                await sync_linked_draft_from_candidate(db, candidate)
+            await db.commit()
+            print(
+                json.dumps(
+                    {
+                        "batch_id": str(batch.id),
+                        "refreshed": succeeded,
+                        "failed": failures,
+                        "media": media,
+                    },
+                    indent=2,
+                )
+            )
             return
         else:
             from app.acquisition.service import selected_batch

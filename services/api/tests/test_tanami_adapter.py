@@ -8,10 +8,12 @@ from sqlalchemy import func, select
 from app.acquisition.adapters import adapter_for
 from app.acquisition.contracts import FetchResult
 from app.acquisition.tanami import (
+    _stage_media,
     acquire_explicit_batch,
     acquire_project_documents,
     discover_exact_project_media,
     exact_project_media,
+    extract_identity,
     normalize_project_urls,
     same_project_urls,
 )
@@ -37,7 +39,9 @@ class TanamiFixtureFetcher:
                 <h1>Alpha Residences</h1>
                 Developer: Unregistered Developments Area: Test Harbour
                 Property Type: Apartments Bedrooms: 1 Bedroom and 2 Bedrooms
-                Handover: Q4 2029 Payment Plan: 10% booking 90% handover
+                Unit type: 1 &amp; 2 BR Size: 650 to 1,250 Sq Ft.
+                Down Payment: 10% Handover: Q4 2029
+                Payment Plan: 10% booking 90% handover Ras Al Khaimah
                 <a href="{ALPHA_GALLERY}">Gallery</a>
                 <a href="{BETA}"><img src="https://manage.tanamiproperties.com/Project/related.webp"></a>
                 <img src="https://manage.tanamiproperties.com/Project/alpha-cover.webp">
@@ -120,6 +124,28 @@ def _html_result(body: str, url: str = ALPHA) -> FetchResult:
     )
 
 
+def test_identity_uses_exact_json_ld_breadcrumb_aliases() -> None:
+    result = _html_result(
+        """
+        <html><title>SKAI at Mina Al Arab, Ras Al Khaimah - RAK Properties</title><body>
+        <h1>SKAI at Mina Al Arab, Ras Al Khaimah - RAK Properties</h1>
+        <script type="application/ld+json">
+        {"@type":"BreadcrumbList","itemListElement":[
+          {"item":{"@type":"Place","name":"Mina Al Arab"}},
+          {"item":{"@type":"Brand","name":"RAK Properties"}},
+          {"item":{"@type":"House","name":"SKAI at Mina Al Arab"}}
+        ]}
+        </script></body></html>
+        """
+    )
+
+    identity = extract_identity(result)
+
+    assert identity.project_name == "SKAI at Mina Al Arab"
+    assert identity.developer_name == "RAK Properties"
+    assert identity.area_name == "Mina Al Arab"
+
+
 def test_srcset_prefers_largest_original_and_deduplicates_thumbnail_variant() -> None:
     result = _html_result(
         """
@@ -179,6 +205,37 @@ def test_json_css_and_exact_project_boundary_exclude_branding_and_related_media(
 
 
 @pytest.mark.asyncio
+async def test_media_staging_rejects_embedded_data_and_deduplicates_pending_urls() -> None:
+    class RecordingSession:
+        def __init__(self) -> None:
+            self.added: list[ProjectImportMedia] = []
+
+        def add(self, value: ProjectImportMedia) -> None:
+            self.added.append(value)
+
+    session = RecordingSession()
+    candidate = type(
+        "Candidate",
+        (),
+        {"id": __import__("uuid").uuid4(), "staged_media": []},
+    )()
+    valid = "https://example.com/project/gallery.webp"
+
+    await _stage_media(  # type: ignore[arg-type]
+        session,
+        candidate,
+        (
+            ("data:image/svg+xml;base64,placeholder", ProjectMediaCategory.GALLERY),
+            (valid, ProjectMediaCategory.GALLERY),
+            (valid, ProjectMediaCategory.GALLERY),
+        ),
+    )
+
+    assert [item.source_url for item in session.added] == [valid]
+    assert [item.source_url for item in candidate.staged_media] == [valid]
+
+
+@pytest.mark.asyncio
 async def test_exact_project_media_excludes_related_and_brand_assets() -> None:
     result = await acquire_project_documents(ALPHA, fetcher=TanamiFixtureFetcher())
     urls = {url for url, _ in result.media}
@@ -189,6 +246,11 @@ async def test_exact_project_media_excludes_related_and_brand_assets() -> None:
     assert "https://www.tanamiproperties.com/Projects/images/tiktok.webp" not in urls
     assert "https://www.tanamiproperties.com/Projects/images/x.webp" not in urls
     assert result.identity.developer_name == "Unregistered Developments"
+    assert result.normalized.normalized_proposal["emirate"] == "RAS_AL_KHAIMAH"
+    assert result.normalized.normalized_proposal["size_min"] == 650
+    assert result.normalized.normalized_proposal["size_max"] == 1250
+    assert result.normalized.normalized_proposal["down_payment_percentage"] == 10
+    assert result.normalized.normalized_proposal["unit_types"] == ["1 & 2 BR"]
 
 
 @pytest.mark.asyncio
@@ -216,6 +278,7 @@ async def test_explicit_batch_is_idempotent_and_missing_official_source_needs_re
         candidate.normalized_payload = {
             **(candidate.normalized_payload or {}),
             "project_name": "Human-reviewed Alpha Residences",
+            "availability_status": "available",
         }
         candidate.human_edited_fields = ["project_name"]
         await db.commit()
@@ -231,6 +294,11 @@ async def test_explicit_batch_is_idempotent_and_missing_official_source_needs_re
         await db.refresh(candidate)
         assert candidate.normalized_payload is not None
         assert candidate.normalized_payload["project_name"] == "Human-reviewed Alpha Residences"
+        assert candidate.normalized_payload["availability_status"] == "available"
+        assert any(
+            item.get("field") == "availability_status"
+            for item in candidate.acquisition_summary["retained_prior_evidence"]
+        )
         assert "Human-edited field preserved" in " ".join(candidate.conflict_reasons)
         assert (
             await db.scalar(
@@ -259,7 +327,7 @@ async def test_explicit_batch_is_idempotent_and_missing_official_source_needs_re
 
 
 @pytest.mark.asyncio
-async def test_explicit_batch_acquires_multiple_urls_and_retains_insufficient_media_warning(
+async def test_explicit_batch_acquires_multiple_urls_and_separates_media_warning_from_conflicts(
     test_settings,
 ) -> None:
     async with SessionLocal() as db:
@@ -277,7 +345,38 @@ async def test_explicit_batch_acquires_multiple_urls_and_retains_insufficient_me
         )
         assert beta.review_status.value == "needs-review"
         assert beta.acquisition_summary["media_discovered"] == 0
-        assert "Insufficient exact-project media" in " ".join(beta.conflict_reasons)
+        assert "Insufficient exact-project media" in str(beta.acquisition_summary["media_warning"])
+        assert "Insufficient exact-project media" not in " ".join(beta.conflict_reasons)
+
+
+@pytest.mark.asyncio
+async def test_source_disagreement_retains_each_private_value_and_url() -> None:
+    class DisagreementFetcher(TanamiFixtureFetcher):
+        def fetch(self, url: str, allowed_domains: tuple[str, ...]) -> FetchResult:
+            result = super().fetch(url, allowed_domains)
+            if url == ALPHA_GALLERY:
+                return _html_result(
+                    "<h1>Alpha Residences Gallery</h1> Down Payment: 30%",
+                    ALPHA_GALLERY,
+                )
+            return result
+
+    result = await acquire_project_documents(ALPHA, fetcher=DisagreementFetcher())
+
+    assert "Source disagreement for down_payment_percentage: 10.0 | 30.0." in (
+        result.normalized.conflicts
+    )
+    evidence = result.normalized.source_extracted["_source_disagreement_evidence"]
+    assert evidence == [
+        {
+            "field": "down_payment_percentage",
+            "sources": [
+                {"value": 10.0, "source_url": ALPHA},
+                {"value": 30.0, "source_url": ALPHA_GALLERY},
+            ],
+            "requires_human_review": True,
+        }
+    ]
 
 
 def test_official_developer_registry_uses_exact_private_aliases() -> None:

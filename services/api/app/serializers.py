@@ -338,6 +338,10 @@ def project_dict(record: Project, locale: str | None = None) -> dict[str, Any]:
             "coming-soon": "register-interest",
             "sold-out": "explore-similar-projects",
         }[record.availability_status.value]
+        if record.availability_status.value == "not-confirmed":
+            data["availability_status"] = None
+        if record.construction_status.value == "not-confirmed":
+            data["construction_status"] = None
         data.pop("sources", None)
         data.pop("workflow_status", None)
         data.pop("down_payment_source_value", None)
@@ -418,6 +422,8 @@ def project_dict(record: Project, locale: str | None = None) -> dict[str, Any]:
 def project_preview_dict(record: Project, locale: str) -> dict[str, Any]:
     """Return the public allowlist for an authenticated canonical Project preview."""
     data = project_dict(record, locale)
+    data["availability_status"] = record.availability_status.value
+    data["construction_status"] = record.construction_status.value
     data["media"] = [
         {
             **item,
@@ -461,7 +467,31 @@ def _import_media_quality(item: ProjectImportMedia) -> dict[str, object]:
     }
 
 
+def _is_prepared_approved_import_media(item: ProjectImportMedia) -> bool:
+    return bool(
+        item.stage_status == "downloaded"
+        and item.rights_status.value == "approved"
+        and item.storage_key
+        and item.thumbnail_storage_key
+        and item.normalized_filename
+        and item.width
+        and item.height
+        and item.alt_en_draft
+        and item.alt_ar_draft
+        and item.title_en
+        and item.title_ar
+        and item.description_en
+        and item.description_ar
+        and item.tags
+        and item.derivative_manifest
+    )
+
+
 def import_candidate_dict(record: ProjectImportCandidate) -> dict[str, Any]:
+    approved_media = sorted(
+        (item for item in record.staged_media if _is_prepared_approved_import_media(item)),
+        key=lambda item: (item.display_order, str(item.id)),
+    )
     return {
         "id": record.id,
         "batch_id": record.batch_id,
@@ -492,6 +522,11 @@ def import_candidate_dict(record: ProjectImportCandidate) -> dict[str, Any]:
         "human_edited_fields": record.human_edited_fields,
         "rejection_reason": record.rejection_reason,
         "linked_project_id": record.linked_project_id,
+        "media_summary": {
+            "total_acquired": len(record.staged_media),
+            "approved": len(approved_media),
+            "removed": len(record.staged_media) - len(approved_media),
+        },
         "evidence": [
             {
                 "source_url": item.source_url,
@@ -544,7 +579,7 @@ def import_candidate_dict(record: ProjectImportCandidate) -> dict[str, Any]:
                 "tags": item.tags,
                 **_import_media_quality(item),
             }
-            for item in record.staged_media
+            for item in approved_media
         ],
         "changes": [
             {
@@ -709,6 +744,10 @@ def import_candidate_summary_dict(record: ProjectImportCandidate) -> dict[str, A
         str(item.get("field", "Unknown"))
         for item in record.validation_errors
         if isinstance(item, dict)
+        and (
+            str(item.get("code", "")).startswith("missing_")
+            or item.get("code") == "official_source_not_found"
+        )
     ]
     media_statuses = [item.stage_status for item in record.staged_media]
     accepted_media = [item for item in record.staged_media if item.stage_status == "downloaded"]

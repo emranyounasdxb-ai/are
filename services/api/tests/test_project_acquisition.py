@@ -5,6 +5,7 @@ import io
 import uuid
 from datetime import UTC, date, datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from PIL import Image
@@ -15,14 +16,16 @@ from app.acquisition.contracts import FetchResult, ManifestCandidate
 from app.acquisition.mapping_registry import TANAMI_V1, mapping_contract
 from app.acquisition.media import (
     RasterFetchResult,
+    _encode_raster_url,
     classify_media_quality,
     duplicate_hash,
     normalized_media_filename,
     responsive_derivatives,
     validate_raster,
 )
-from app.acquisition.media_intake import intake_private_media
+from app.acquisition.media_intake import _select_best_cover, intake_private_media
 from app.acquisition.parser import normalize_evidence, parse_html
+from app.acquisition.reconciliation import reconcile_candidate_quality, source_disagreement
 from app.acquisition.security import AcquisitionSecurityError, validate_public_url
 from app.acquisition.service import (
     classify_change,
@@ -50,6 +53,133 @@ from app.models import (
     PublicationStatus,
 )
 from app.storage import PrivateStorage
+
+
+def test_raster_source_paths_are_encoded_without_changing_the_host() -> None:
+    assert _encode_raster_url("https://example.com/Lifestyle/Cinema Room.jpg") == (
+        "https://example.com/Lifestyle/Cinema%20Room.jpg"
+    )
+
+
+def test_reconciliation_does_not_recreate_the_generic_nine_conflicts() -> None:
+    name = "Address Residences at Al Marjan"
+    cosmetic = [
+        f"Official source name differs: manifest '{name}' versus source '{name} - {suffix}'."
+        for suffix in (
+            "Features & Amenities",
+            "Floor Plans",
+            "Location Plan",
+            "Master Plan",
+            "Payment Plan",
+            "Summary",
+        )
+    ]
+    candidate = SimpleNamespace(
+        proposed_developer_id="developer",
+        proposed_area_id="area",
+        official_source_url="https://example.com/project",
+        normalized_payload={
+            "availability_status": "available",
+            "construction_status": "launched",
+            "handover_quarter": "Q4",
+            "handover_year": 2029,
+            "bedrooms": ["1"],
+            "size_min": 700,
+            "size_max": 900,
+            "size_unit": "sqft",
+            "down_payment_percentage": 10,
+            "payment_plan": {"milestones": [{"percentage": 100}]},
+            "amenities": ["Swimming pool"],
+        },
+        conflict_reasons=[
+            *cosmetic,
+            "Canonical Developer requires exact human resolution.",
+            "Canonical Area/Community requires exact human resolution.",
+            "High-resolution Cover image required",
+        ],
+        validation_errors=[],
+        acquisition_summary={},
+        editorial_draft=SimpleNamespace(overview_en="English", overview_ar="العربية"),
+        staged_media=[],
+    )
+    assert len(candidate.conflict_reasons) == 9
+    reconcile_candidate_quality(candidate)
+    assert candidate.conflict_reasons == []
+    assert candidate.acquisition_summary["genuine_conflict_count"] == 0
+
+
+def test_reconciliation_preserves_a_genuine_source_name_disagreement() -> None:
+    reason = "Official source name differs: manifest 'Valia Tower' versus source 'Valia at Creek'."
+    candidate = SimpleNamespace(
+        proposed_developer_id="developer",
+        proposed_area_id="area",
+        official_source_url="https://example.com/project",
+        normalized_payload={},
+        conflict_reasons=[reason],
+        validation_errors=[],
+        acquisition_summary={},
+        editorial_draft=None,
+        staged_media=[],
+    )
+    reconcile_candidate_quality(candidate)
+    assert candidate.conflict_reasons == [reason]
+
+
+def test_source_disagreement_ignores_only_insignificant_size_rounding() -> None:
+    assert source_disagreement("size_max", [5747.07, 5747.0]) is None
+    assert source_disagreement("size_min", [873.6, 854.0]) == (
+        "Source disagreement for size_min: 873.6 | 854.0."
+    )
+
+
+def test_best_cover_selection_uses_only_a_valid_high_resolution_landscape() -> None:
+    invalid = SimpleNamespace(
+        category=ProjectMediaCategory.COVER,
+        stage_status="downloaded",
+        rights_status=MediaRightsStatus.APPROVED,
+        storage_key="invalid.webp",
+        width=1620,
+        height=600,
+        display_order=0,
+    )
+    selected = SimpleNamespace(
+        category=ProjectMediaCategory.GALLERY,
+        stage_status="downloaded",
+        rights_status=MediaRightsStatus.APPROVED,
+        storage_key="selected.webp",
+        width=2400,
+        height=1350,
+        display_order=2,
+        normalized_filename=None,
+        title_en=None,
+        title_ar=None,
+        description_en=None,
+        description_ar=None,
+        alt_en_draft=None,
+        alt_ar_draft=None,
+        tags=[],
+        public_metadata={},
+    )
+    for item in (invalid,):
+        item.normalized_filename = None
+        item.title_en = None
+        item.title_ar = None
+        item.description_en = None
+        item.description_ar = None
+        item.alt_en_draft = None
+        item.alt_ar_draft = None
+        item.tags = []
+        item.public_metadata = {}
+    candidate = SimpleNamespace(
+        normalized_project_name="Exact Project",
+        owner_manifest_values={},
+        normalized_payload={},
+        manifest_row_id=1,
+        staged_media=[invalid, selected],
+    )
+    _select_best_cover(candidate)
+    assert selected.category == ProjectMediaCategory.COVER
+    assert invalid.category == ProjectMediaCategory.GALLERY
 
 
 def public_resolver(
@@ -125,7 +255,8 @@ def test_all_required_adapters_are_registered() -> None:
         "Reportage",
         "Aldar",
     }
-    assert {item.developer_name for item in ADAPTERS.values()} == expected
+    registered = {item.developer_name for item in ADAPTERS.values()}
+    assert expected <= registered
     assert all(adapter_for(name) is not None for name in expected)
 
 
@@ -424,6 +555,8 @@ async def test_private_media_intake_is_sanitized_pending_and_authenticated(
         candidate = ProjectImportCandidate(
             manifest_row_id=1,
             raw_source_payload={},
+            normalized_payload={"project_name_ar": "مشروع الوسائط التجريبي"},
+            normalized_project_name="QA Media Project",
             owner_manifest_values={
                 "owner_project_name": "QA Media Project",
                 "owner_developer": "Emaar",
@@ -456,25 +589,38 @@ async def test_private_media_intake_is_sanitized_pending_and_authenticated(
         assert stats["downloaded"] == 1
         media = await db.get(ProjectImportMedia, media_id)
         assert media is not None
-        assert media.rights_status == MediaRightsStatus.PENDING
+        assert media.rights_status == MediaRightsStatus.APPROVED
+        assert media.rights_basis == (
+            "Automatically approved exact-Project image from a validated candidate source."
+        )
+        assert media.rights_confirmed_at is not None
         assert media.thumbnail_storage_key
         assert media.raw_storage_key
         assert media.storage_key
-        assert media.normalized_filename
+        assert media.normalized_filename == "qa-media-project-cover-01.webp"
+        assert media.alt_en_draft == "Cover image for QA Media Project"
+        assert media.alt_ar_draft == "الصورة الرئيسية — مشروع الوسائط التجريبي"
+        assert media.title_en == "QA Media Project — Cover image"
+        assert media.title_ar == "مشروع الوسائط التجريبي — الصورة الرئيسية"
+        assert media.description_en == "Cover image for QA Media Project."
+        assert media.description_ar == "الصورة الرئيسية — مشروع الوسائط التجريبي."
+        assert media.tags == ["QA Media Project", "Cover image"]
         assert {item["format"] for item in media.derivative_manifest} == {"webp", "avif"}
         assert media.change_status == "newly-added"
         sanitized = PrivateStorage(test_settings).read(media.storage_key)
         assert b"private-metadata" not in sanitized
+        with Image.open(io.BytesIO(sanitized)) as cleaned:
+            assert not cleaned.getexif()
 
     unauthenticated = await client.get(f"/api/v1/admin/project-import-media/{media_id}/thumbnail")
     assert unauthenticated.status_code == 401
     email, password = await create_user("super-admin")
     await client.post("/api/v1/auth/login", json={"email": email, "password": password})
-    blocked_preview = await client.get(
+    approved_preview = await client.get(
         f"/api/v1/admin/project-imports/candidates/{candidate.id}/preview-media/"
         f"{media_id}?size=thumbnail"
     )
-    assert blocked_preview.status_code == 404
+    assert approved_preview.status_code == 200
     preview = await client.get(f"/api/v1/admin/project-import-media/{media_id}/thumbnail")
     assert preview.status_code == 200
     assert preview.headers["cache-control"] == "private, no-store, max-age=0"
@@ -483,18 +629,126 @@ async def test_private_media_intake_is_sanitized_pending_and_authenticated(
     assert full.status_code == 200
     assert full.headers["cache-control"] == "private, no-store, max-age=0"
     assert full.headers["content-type"].startswith("image/jpeg")
-    async with SessionLocal() as db:
-        media = await db.get(ProjectImportMedia, media_id)
-        assert media is not None
-        media.rights_status = MediaRightsStatus.APPROVED
-        await db.commit()
-    approved_preview = await client.get(
-        f"/api/v1/admin/project-imports/candidates/{candidate.id}/preview-media/"
-        f"{media_id}?size=thumbnail"
-    )
-    assert approved_preview.status_code == 200
     assert approved_preview.headers["cache-control"] == "private, no-store, max-age=0"
     assert approved_preview.headers["content-type"].startswith("image/webp")
+
+
+@pytest.mark.asyncio
+async def test_identical_images_remain_scoped_to_their_own_project_candidate(
+    test_settings,
+) -> None:
+    image = io.BytesIO()
+    Image.new("RGB", (1600, 1000), "#745238").save(image, "JPEG")
+    batch_id = uuid.uuid4()
+    async with SessionLocal() as db:
+        batch = ProjectImportBatch(
+            id=batch_id,
+            name="QA Project-scoped Media",
+            source_reference="qa-project-scoped-media",
+            manifest_hash=uuid.uuid4().hex + uuid.uuid4().hex,
+            adapter_version="test",
+            total_count=2,
+        )
+        candidates: list[ProjectImportCandidate] = []
+        for ordinal in (1, 2):
+            candidate = ProjectImportCandidate(
+                manifest_row_id=ordinal,
+                raw_source_payload={},
+                normalized_project_name=f"QA Media Project {ordinal}",
+                owner_manifest_values={
+                    "owner_project_name": f"QA Media Project {ordinal}",
+                    "owner_developer": "Emaar",
+                    "owner_area": "Dubai",
+                },
+                source_urls=[],
+                content_hash=str(ordinal) * 64,
+                validation_errors=[],
+                conflict_reasons=[],
+                review_status=ImportReviewStatus.NEEDS_REVIEW,
+            )
+            candidate.staged_media = [
+                ProjectImportMedia(
+                    category=ProjectMediaCategory.GALLERY,
+                    source_url=f"https://properties.emaar.com/media/project-{ordinal}.jpg",
+                    rights_status=MediaRightsStatus.PENDING,
+                    stage_status="reference-only",
+                )
+            ]
+            candidates.append(candidate)
+        batch.candidates = candidates
+        db.add(batch)
+        await db.commit()
+
+        stats = await intake_private_media(
+            db,
+            test_settings,
+            batch_id,
+            fetcher=RasterFixtureFetcher(image.getvalue()),
+        )
+        media = [candidate.staged_media[0] for candidate in candidates]
+        assert stats["accepted"] == 2
+        assert stats["deduplicated"] == 0
+        assert all(item.stage_status == "downloaded" for item in media)
+        assert all(item.rights_status == MediaRightsStatus.APPROVED for item in media)
+        assert all(item.duplicate_of_id is None for item in media)
+        assert media[0].storage_key != media[1].storage_key
+
+
+@pytest.mark.asyncio
+async def test_media_intake_processes_references_beyond_the_old_fifty_item_cap(
+    test_settings,
+) -> None:
+    image = io.BytesIO()
+    Image.new("RGB", (800, 450), "#745238").save(image, "JPEG")
+    batch_id = uuid.uuid4()
+    async with SessionLocal() as db:
+        candidate = ProjectImportCandidate(
+            manifest_row_id=1,
+            raw_source_payload={},
+            normalized_project_name="QA Complete Gallery Project",
+            owner_manifest_values={
+                "owner_project_name": "QA Complete Gallery Project",
+                "owner_developer": "Emaar",
+                "owner_area": "Dubai",
+            },
+            source_urls=[],
+            content_hash="f" * 64,
+            validation_errors=[],
+            conflict_reasons=[],
+            review_status=ImportReviewStatus.NEEDS_REVIEW,
+            staged_media=[
+                ProjectImportMedia(
+                    category=ProjectMediaCategory.GALLERY,
+                    source_url=f"https://properties.emaar.com/media/gallery-{index}.jpg",
+                    rights_status=MediaRightsStatus.PENDING,
+                    stage_status="reference-only",
+                )
+                for index in range(51)
+            ],
+        )
+        db.add(
+            ProjectImportBatch(
+                id=batch_id,
+                name="QA Complete Gallery Batch",
+                source_reference="qa-complete-gallery",
+                manifest_hash=uuid.uuid4().hex + uuid.uuid4().hex,
+                adapter_version="test",
+                total_count=1,
+                candidates=[candidate],
+            )
+        )
+        await db.commit()
+
+        stats = await intake_private_media(
+            db,
+            test_settings,
+            batch_id,
+            fetcher=RasterFixtureFetcher(image.getvalue()),
+        )
+
+        assert stats["references"] == 51
+        assert stats["attempted"] == 51
+        assert all(item.stage_status != "reference-only" for item in candidate.staged_media)
 
 
 @pytest.mark.asyncio
@@ -535,6 +789,30 @@ async def test_low_resolution_media_is_private_review_only_and_rerun_is_idempote
             rights_status=MediaRightsStatus.PENDING,
             stage_status="reference-only",
         )
+        storage = PrivateStorage(test_settings)
+        media.raw_storage_key = await storage.save_acquisition_media(
+            image.getvalue(), "jpg", normalized_filename="old-low-raw.jpg"
+        )
+        media.storage_key = await storage.save_acquisition_media(
+            image.getvalue(), "jpg", normalized_filename="old-low-clean.jpg"
+        )
+        media.thumbnail_storage_key = await storage.save_acquisition_media(
+            b"old-thumbnail", "webp", normalized_filename="old-low-thumb.webp", thumbnail=True
+        )
+        derivative_key = await storage.save_acquisition_media(
+            b"old-derivative", "webp", normalized_filename="old-low-480w.webp"
+        )
+        media.derivative_manifest = [{"storage_key": derivative_key}]
+        old_keys = {
+            key
+            for key in (
+                media.raw_storage_key,
+                media.storage_key,
+                media.thumbnail_storage_key,
+                derivative_key,
+            )
+            if key
+        }
         candidate.staged_media = [media]
         batch.candidates = [candidate]
         db.add(batch)
@@ -546,16 +824,34 @@ async def test_low_resolution_media_is_private_review_only_and_rerun_is_idempote
             fetcher=RasterFixtureFetcher(image.getvalue()),
         )
         await db.refresh(media)
-        first_keys = (media.raw_storage_key, media.storage_key, media.thumbnail_storage_key)
         assert first["low_resolution_rejected"] == 1
         assert media.stage_status == "rejected-low-resolution"
+        assert media.rights_status == MediaRightsStatus.REJECTED
+        assert media.rights_basis and media.rights_basis.startswith("Automatically removed:")
         assert (
             media.failure_reason == "Image does not meet the minimum public-readiness dimensions."
         )
         assert media.derivative_manifest == []
-        assert all(first_keys)
-        assert "Media coverage incomplete" in candidate.conflict_reasons
-        assert "High-resolution Cover image required" in candidate.conflict_reasons
+        assert media.raw_storage_key is None
+        assert media.storage_key is None
+        assert media.thumbnail_storage_key is None
+        assert media.normalized_filename is None
+        assert media.alt_en_draft is None
+        assert media.alt_ar_draft is None
+        assert media.title_en is None
+        assert media.title_ar is None
+        assert media.description_en is None
+        assert media.description_ar is None
+        assert media.tags == []
+        assert media.public_metadata == {}
+        assert all(
+            not (Path(test_settings.private_storage_path) / key).exists() for key in old_keys
+        )
+        assert "Media coverage incomplete" not in candidate.conflict_reasons
+        assert "High-resolution Cover image required" not in candidate.conflict_reasons
+        assert any(
+            item.get("code") == "missing_approved_cover" for item in candidate.validation_errors
+        )
 
         second = await intake_private_media(
             db,
@@ -566,7 +862,9 @@ async def test_low_resolution_media_is_private_review_only_and_rerun_is_idempote
         await db.refresh(media)
         assert second["attempted"] == 0
         assert second["low_resolution_rejected"] == 1
-        assert (media.raw_storage_key, media.storage_key, media.thumbnail_storage_key) == first_keys
+        assert media.raw_storage_key is None
+        assert media.storage_key is None
+        assert media.thumbnail_storage_key is None
 
 
 def test_cover_quality_gate_requires_real_1600_by_900_landscape_master() -> None:

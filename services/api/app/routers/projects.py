@@ -22,6 +22,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.acquisition.reconciliation import reconcile_candidate_quality
 from app.audit import request_correlation_id, write_audit
 from app.config import Settings, get_settings
 from app.db import get_db
@@ -1539,10 +1540,22 @@ async def import_candidate_detail(
         .order_by(ProjectOverviewGeneration.generated_at.desc())
         .limit(1)
     )
+    human_review_required = bool(
+        await db.scalar(
+            select(func.count(ProjectProcessingDiagnostic.id))
+            .join(ProjectProcessingItem)
+            .where(
+                ProjectProcessingItem.candidate_id == candidate.id,
+                ProjectProcessingDiagnostic.resolution_status
+                == DiagnosticResolutionStatus.HUMAN_INPUT_REQUIRED,
+            )
+        )
+    )
     return {
         **import_candidate_summary_dict(candidate),
         **import_candidate_dict(candidate),
         "eligibility_errors": eligibility_errors(candidate),
+        "automatic_recovery_needs_review": human_review_required,
         "overview_provider": {
             "state": (
                 "configured"
@@ -2136,6 +2149,10 @@ async def review_import_candidate(
         select(ProjectImportCandidate)
         .where(ProjectImportCandidate.id == candidate_id)
         .with_for_update()
+        .options(
+            selectinload(ProjectImportCandidate.staged_media),
+            selectinload(ProjectImportCandidate.editorial_draft),
+        )
     )
     if not candidate:
         raise HTTPException(
@@ -2182,6 +2199,7 @@ async def review_import_candidate(
     candidate.reviewed_by = context.user.id
     candidate.review_version += 1
     await _reconcile_completed_candidate_gates(candidate, db)
+    reconcile_candidate_quality(candidate)
     await write_audit(
         db,
         action="project-import.review.update",

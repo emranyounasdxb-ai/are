@@ -624,7 +624,13 @@ async def _batch(db: AsyncSession, batch_id: UUID) -> ProjectImportBatch:
         .options(
             selectinload(ProjectImportBatch.candidates).selectinload(
                 ProjectImportCandidate.staged_media
-            )
+            ),
+            selectinload(ProjectImportBatch.candidates).selectinload(
+                ProjectImportCandidate.editorial_draft
+            ),
+            selectinload(ProjectImportBatch.candidates).selectinload(
+                ProjectImportCandidate.evidence
+            ),
         )
     )
     if record is None:

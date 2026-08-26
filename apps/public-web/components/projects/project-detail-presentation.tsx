@@ -163,10 +163,10 @@ export function ProjectDetailPresentation({
           <span><Landmark aria-hidden size={17}/>{normalized.developer}</span>
           <span><MapPin aria-hidden size={17}/>{normalized.area}, {normalized.emirate}</span>
         </div>
-        <div className="project-presentation__status-row">
-          <span><BadgeCheck aria-hidden size={15}/>{t.availability}: {normalized.availability}</span>
-          <span><HardHat aria-hidden size={15}/>{t.construction}: {normalized.construction}</span>
-        </div>
+        {normalized.availability || normalized.construction ? <div className="project-presentation__status-row">
+          {normalized.availability ? <span><BadgeCheck aria-hidden size={15}/>{t.availability}: {normalized.availability}</span> : null}
+          {normalized.construction ? <span><HardHat aria-hidden size={15}/>{t.construction}: {normalized.construction}</span> : null}
+        </div> : null}
         <div className="project-presentation__hero-actions">
           <Link className="button button--primary" href={enquiryHref}><Send aria-hidden size={17}/>{t.enquire}</Link>
           <a className="button star-action--outline" href={whatsappHref} rel="noreferrer" target="_blank"><MessageCircle aria-hidden size={17}/>{t.whatsapp}</a>
@@ -269,8 +269,8 @@ type NormalizedProject = {
   downPayment: string | null;
   handover: string | null;
   handoverNote: string | null;
-  availability: string;
-  construction: string;
+  availability: string | null;
+  construction: string | null;
   paymentPlan: string | null;
   milestones: Array<{ sequence: number; stage: string; label?: string | null; percentage: number | null }>;
   amenities: string[];
@@ -295,8 +295,8 @@ function normalizeProject(project: PresentationProject, locale: Locale, mediaBas
     downPayment: project.down_payment_percentage == null ? null : `${project.down_payment_percentage}%`,
     handover: project.handover_quarter && project.handover_year ? handoverLabel(project.handover_quarter, project.handover_year, locale) : null,
     handoverNote: project.handover_quarter && project.handover_year ? copy[locale].verification : null,
-    availability: statusLabel(project.availability_status, locale),
-    construction: statusLabel(project.construction_status, locale),
+    availability: project.availability_status ? statusLabel(project.availability_status, locale) : null,
+    construction: project.construction_status ? statusLabel(project.construction_status, locale) : null,
     paymentPlan: project.payment_plan,
     milestones: project.payment_milestones,
     amenities: project.amenities,
@@ -326,8 +326,8 @@ function normalizeProject(project: PresentationProject, locale: Locale, mediaBas
     downPayment: project.down_payment_percentage == null ? null : `${project.down_payment_percentage}%`,
     handover: project.handover_quarter && project.handover_year ? handoverLabel(project.handover_quarter, project.handover_year, locale) : null,
     handoverNote: null,
-    availability: statusLabel(project.availability_status, locale),
-    construction: statusLabel(project.construction_status, locale),
+    availability: project.availability_status ? statusLabel(project.availability_status, locale) : null,
+    construction: project.construction_status ? statusLabel(project.construction_status, locale) : null,
     paymentPlan: null,
     milestones: project.payment_plan?.milestones.map((item) => ({
       sequence: item.sequence,
