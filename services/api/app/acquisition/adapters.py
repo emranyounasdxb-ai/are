@@ -128,16 +128,13 @@ def _xml_locations(body: bytes) -> set[str]:
 
 
 def _best_url(project_name: str, urls: set[str]) -> tuple[str | None, str | None]:
-    target = normalize_name(project_name)
-    important = {value for value in target.split() if value not in STOP_TOKENS and len(value) > 2}
     exact: list[str] = []
     fuzzy: list[tuple[float, str]] = []
     for url in urls:
         path = normalize_name(urlsplit(url).path.replace("-", " "))
         if not path or any(value in path for value in ("privacy", "terms", "career", "news")):
             continue
-        tokens = set(path.split())
-        if target in path or (important and important <= tokens):
+        if official_url_matches_project(project_name, url):
             exact.append(url)
             continue
         score = name_similarity(path, project_name)
@@ -152,13 +149,7 @@ def _best_url(project_name: str, urls: set[str]) -> tuple[str | None, str | None
 
 def _localized_exact_urls(project_name: str, urls: set[str], primary: str) -> tuple[str, ...]:
     """Keep at most one exact English and one exact Arabic official Project URL."""
-    target = normalize_name(project_name)
-    important = {value for value in target.split() if value not in STOP_TOKENS and len(value) > 2}
-    matches = []
-    for url in urls:
-        path = normalize_name(urlsplit(url).path.replace("-", " "))
-        if target in path or (important and important <= set(path.split())):
-            matches.append(url)
+    matches = [url for url in urls if official_url_matches_project(project_name, url)]
     english = sorted(
         (url for url in matches if "/ar/" not in urlsplit(url).path.casefold()),
         key=lambda value: (len(urlsplit(value).path), value),
@@ -170,7 +161,130 @@ def _localized_exact_urls(project_name: str, urls: set[str], primary: str) -> tu
     return tuple(dict.fromkeys([primary, *(english[:1]), *(arabic[:1])]))
 
 
+def official_url_matches_project(project_name: str, url: str) -> bool:
+    """Require every meaningful Project token, including phase numbers, in the URL."""
+    project_identity = re.split(r"\s+by\s+", project_name, maxsplit=1, flags=re.IGNORECASE)[0]
+    target_tokens = normalize_name(project_identity).split()
+    important = {
+        value
+        for value in target_tokens
+        if value not in STOP_TOKENS and (len(value) > 2 or value.isdigit())
+    }
+    path = normalize_name(urlsplit(url).path.replace("-", " "))
+    path_tokens = set(path.split())
+    excluded_sections = {"blog", "career", "media", "news", "press", "privacy", "terms"}
+    return bool(important) and not (path_tokens & excluded_sections) and important <= path_tokens
+
+
 OFFICIAL_ADAPTERS = (
+    OfficialSiteAdapter(
+        "arada",
+        "ARADA Developer",
+        "https://www.arada.com/en/properties/",
+        ("arada.com",),
+        None,
+        ("/en/properties/",),
+        aliases=("Arada", "ARADA"),
+    ),
+    OfficialSiteAdapter(
+        "ajmal-makan",
+        "Ajmal Makan",
+        "https://ajmalmakan.com/",
+        ("ajmalmakan.com",),
+        None,
+        ("/",),
+    ),
+    OfficialSiteAdapter(
+        "alef-group",
+        "Alef Group",
+        "https://www.alefgroup.ae/",
+        ("alefgroup.ae",),
+        None,
+        ("/", "/projects/"),
+    ),
+    OfficialSiteAdapter(
+        "diamond-developers",
+        "Diamond Developer",
+        "https://www.sharjahsustainablecity.ae/",
+        ("sharjahsustainablecity.ae",),
+        None,
+        ("/",),
+        aliases=("Diamond Developers",),
+    ),
+    OfficialSiteAdapter(
+        "eagle-hills",
+        "Eagle Hills",
+        "https://eaglehills.com/eagle-hills-uae-projects/",
+        ("eaglehills.com",),
+        None,
+        ("/eagle-hills-uae-projects/", "/our-projects/"),
+    ),
+    OfficialSiteAdapter(
+        "ifa-hotels-resorts",
+        "IFA Hotel & Resorts",
+        "https://www.ifahotelsresorts.com/en",
+        ("ifahotelsresorts.com",),
+        None,
+        ("/en",),
+        aliases=("IFA Hotels & Resorts",),
+    ),
+    OfficialSiteAdapter(
+        "madain-properties",
+        "Mada'in Properties",
+        "https://madain.com/",
+        ("madain.com",),
+        None,
+        ("/",),
+        aliases=("Mada’in Properties",),
+    ),
+    OfficialSiteAdapter(
+        "majid-al-futtaim",
+        "Majid Al Futtaim",
+        "https://communities.majidalfuttaim.com/en",
+        ("majidalfuttaim.com",),
+        None,
+        ("/en",),
+    ),
+    OfficialSiteAdapter(
+        "sharjah-holding",
+        "Sharjah Holding",
+        "https://sharjahholding.ae/",
+        ("sharjahholding.ae",),
+        None,
+        ("/",),
+    ),
+    OfficialSiteAdapter(
+        "shoumous-properties",
+        "Shoumous Properties",
+        "https://www.shoumous.com/",
+        ("shoumous.com",),
+        None,
+        ("/", "/the-community/"),
+    ),
+    OfficialSiteAdapter(
+        "shurooq",
+        "Shurooq",
+        "https://shurooq.gov.ae/",
+        ("shurooq.gov.ae",),
+        None,
+        ("/", "/portfolio/"),
+    ),
+    OfficialSiteAdapter(
+        "tiger-group",
+        "Tiger Group",
+        "https://www.tigergroup.ae/Home/",
+        ("tigergroup.ae",),
+        None,
+        ("/Home/", "/Projects/SearchProjects"),
+    ),
+    OfficialSiteAdapter(
+        "tilal-properties",
+        "Tilal Properties",
+        "https://www.tilalproperties.com/",
+        ("tilalproperties.com",),
+        None,
+        ("/",),
+    ),
     OfficialSiteAdapter(
         "emaar",
         "Emaar",

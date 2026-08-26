@@ -1,17 +1,20 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import func, select
 
-from app.acquisition.adapters import adapter_for
+from app.acquisition.adapters import adapter_for, official_url_matches_project
 from app.acquisition.contracts import FetchResult
 from app.acquisition.tanami import (
+    _ambiguous_cross_candidate_media_ids,
     _stage_media,
     acquire_explicit_batch,
     acquire_project_documents,
     discover_exact_project_media,
+    discover_sharjah_project_urls,
     exact_project_media,
     extract_identity,
     normalize_project_urls,
@@ -80,6 +83,62 @@ class TanamiFixtureFetcher:
         )
 
 
+class SharjahListingFixtureFetcher:
+    def fetch(self, url: str, allowed_domains: tuple[str, ...]) -> FetchResult:
+        del allowed_domains
+        assert url == "https://www.tanamiproperties.com/Offplan-Projects-in-Sharjah"
+        body = b"""
+            <input id="hdnCity" value="114">
+            <input id="hdnProjPageRows" value="10">
+            <input id="hdnProjRecordCount" value="12">
+        """
+        return FetchResult(
+            url=url,
+            status=200,
+            retrieved_at=datetime.now(UTC),
+            content_type="text/html",
+            body=body,
+        )
+
+    def post_json(
+        self,
+        url: str,
+        allowed_domains: tuple[str, ...],
+        payload: dict[str, object],
+        *,
+        referer: str,
+    ) -> FetchResult:
+        del allowed_domains
+        assert url.endswith("/CityProjectlist.aspx/GetProjectListbyCity")
+        assert referer.endswith("/Offplan-Projects-in-Sharjah")
+        assert payload["strCity"] == "114"
+        page = int(str(payload["iPageIndex"]))
+        count = 10 if page == 1 else 2
+        body = json.dumps(
+            {
+                "d": {
+                    "lstprojlist": [
+                        {
+                            "ProjURL": f"/Projects/Sharjah-{page}-{index}",
+                            "ProjName": f"Sharjah {page} {index}",
+                            "DevName": "Verified Developer",
+                            "ComName": "Verified Area",
+                            "ProjCount": "12",
+                        }
+                        for index in range(count)
+                    ]
+                }
+            }
+        ).encode()
+        return FetchResult(
+            url=url,
+            status=200,
+            retrieved_at=datetime.now(UTC),
+            content_type="application/json",
+            body=body,
+        )
+
+
 def test_explicit_url_contract_supports_one_multiple_and_large_approved_lists() -> None:
     assert normalize_project_urls([ALPHA]) == (ALPHA,)
     assert normalize_project_urls([BETA, ALPHA, ALPHA]) == (ALPHA, BETA)
@@ -102,6 +161,24 @@ def test_explicit_url_contract_supports_one_multiple_and_large_approved_lists() 
     ):
         with pytest.raises(ValueError, match="exact credential-free HTTPS"):
             normalize_project_urls([unsafe])
+
+
+@pytest.mark.asyncio
+async def test_sharjah_listing_discovery_is_bounded_complete_and_project_only() -> None:
+    result = await discover_sharjah_project_urls(  # type: ignore[arg-type]
+        fetcher=SharjahListingFixtureFetcher()
+    )
+
+    assert result.total_reported == 12
+    assert result.rows_seen == 12
+    assert result.pages_fetched == 2
+    assert result.duplicate_count == 0
+    assert len(result.urls) == 12
+    assert len(result.projects) == 12
+    assert result.projects[0].developer_name == "Verified Developer"
+    assert all(
+        value.startswith("https://www.tanamiproperties.com/Projects/") for value in result.urls
+    )
 
 
 def test_same_project_discovery_excludes_related_project_links() -> None:
@@ -205,6 +282,44 @@ def test_json_css_and_exact_project_boundary_exclude_branding_and_related_media(
 
 
 @pytest.mark.asyncio
+async def test_same_project_section_title_variants_are_not_conflicts() -> None:
+    class SectionTitleFetcher(TanamiFixtureFetcher):
+        def fetch(self, url: str, allowed_domains: tuple[str, ...]) -> FetchResult:
+            result = super().fetch(url, allowed_domains)
+            if url == ALPHA_GALLERY:
+                return _html_result(
+                    "<h1>Alpha Apartments at Sharjah - Features & Amenities</h1>",
+                    ALPHA_GALLERY,
+                )
+            return result
+
+    result = await acquire_project_documents(ALPHA, fetcher=SectionTitleFetcher())
+
+    assert not any(
+        reason.startswith("Official source name differs:") for reason in result.normalized.conflicts
+    )
+
+
+@pytest.mark.asyncio
+async def test_primary_page_seo_title_is_not_a_source_conflict() -> None:
+    class SeoTitleFetcher(TanamiFixtureFetcher):
+        def fetch(self, url: str, allowed_domains: tuple[str, ...]) -> FetchResult:
+            result = super().fetch(url, allowed_domains)
+            if url == ALPHA:
+                return _html_result(
+                    "<h1>Alpha Apartments Summary in Sharjah</h1>",
+                    ALPHA,
+                )
+            return result
+
+    result = await acquire_project_documents(ALPHA, fetcher=SeoTitleFetcher())
+
+    assert not any(
+        reason.startswith("Official source name differs:") for reason in result.normalized.conflicts
+    )
+
+
+@pytest.mark.asyncio
 async def test_media_staging_rejects_embedded_data_and_deduplicates_pending_urls() -> None:
     class RecordingSession:
         def __init__(self) -> None:
@@ -233,6 +348,74 @@ async def test_media_staging_rejects_embedded_data_and_deduplicates_pending_urls
 
     assert [item.source_url for item in session.added] == [valid]
     assert [item.source_url for item in candidate.staged_media] == [valid]
+
+
+@pytest.mark.asyncio
+async def test_media_staging_has_no_per_candidate_raster_cap() -> None:
+    class RecordingSession:
+        def __init__(self) -> None:
+            self.added: list[ProjectImportMedia] = []
+
+        def add(self, value: ProjectImportMedia) -> None:
+            self.added.append(value)
+
+    session = RecordingSession()
+    candidate = type(
+        "Candidate",
+        (),
+        {"id": __import__("uuid").uuid4(), "staged_media": []},
+    )()
+    media = tuple(
+        (
+            f"https://manage.tanamiproperties.com/Project/gallery-{index}.webp",
+            ProjectMediaCategory.GALLERY,
+        )
+        for index in range(31)
+    )
+
+    await _stage_media(session, candidate, media)  # type: ignore[arg-type]
+
+    assert len(session.added) == 31
+    assert len(candidate.staged_media) == 31
+
+
+def test_cross_candidate_media_is_rejected_for_urls_and_binary_hashes() -> None:
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    shared_official = "https://developer.example.com/media/shared.webp"
+    shared_tanami = "https://manage.tanamiproperties.com/Gallery/1/shared.webp"
+    first = SimpleNamespace(
+        id=uuid4(),
+        staged_media=[
+            SimpleNamespace(
+                id=uuid4(), source_url=shared_official, stage_status="downloaded", sha256="a"
+            ),
+            SimpleNamespace(
+                id=uuid4(), source_url=shared_tanami, stage_status="downloaded", sha256="b"
+            ),
+        ],
+    )
+    second = SimpleNamespace(
+        id=uuid4(),
+        staged_media=[
+            SimpleNamespace(
+                id=uuid4(), source_url=shared_official, stage_status="downloaded", sha256="a"
+            ),
+            SimpleNamespace(
+                id=uuid4(), source_url=shared_tanami, stage_status="downloaded", sha256="b"
+            ),
+        ],
+    )
+
+    rejected = _ambiguous_cross_candidate_media_ids(SimpleNamespace(candidates=[first, second]))
+
+    assert rejected == {
+        first.staged_media[0].id,
+        first.staged_media[1].id,
+        second.staged_media[0].id,
+        second.staged_media[1].id,
+    }
 
 
 @pytest.mark.asyncio
@@ -382,5 +565,28 @@ async def test_source_disagreement_retains_each_private_value_and_url() -> None:
 def test_official_developer_registry_uses_exact_private_aliases() -> None:
     assert adapter_for("Sobha Group") is adapter_for("Sobha Realty")
     assert adapter_for("شوبا العقارية") is adapter_for("Sobha Realty")
+    assert adapter_for("ARADA Developer") is adapter_for("Arada")
+    assert adapter_for("IFA Hotel & Resorts") is adapter_for("IFA Hotels & Resorts")
+    assert adapter_for("Alef Group") is not None
+    assert adapter_for("Eagle Hills") is not None
+    assert adapter_for("Majid Al Futtaim") is not None
+    assert adapter_for("Shoumous Properties") is not None
+    assert adapter_for("Tiger Group") is not None
     assert adapter_for("Sobha Real") is None
     assert adapter_for("Sobha Group International") is None
+
+
+def test_official_project_url_requires_phase_tokens_and_rejects_broad_pages() -> None:
+    assert official_url_matches_project(
+        "Sedra at Masaar 3",
+        "https://www.arada.com/en/property/masaar-3-sedra-4br-villa/",
+    )
+    assert not official_url_matches_project(
+        "Olfah 2 by Alef",
+        "https://www.alefgroup.ae/alef-communities/olfah/",
+    )
+    assert not official_url_matches_project(
+        "Nama 1",
+        "https://www.alefgroup.ae/press/alef-group-partners-with-nama/",
+    )
+    assert not official_url_matches_project("Signature Villas", "https://www.arada.com/ar/")

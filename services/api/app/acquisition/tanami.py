@@ -1,8 +1,8 @@
-"""Reusable, explicit-list Tanami Project acquisition boundary.
+"""Reusable, bounded Tanami Project acquisition boundary.
 
-Only owner-approved exact Project URLs enter this adapter. It may follow a small
-set of same-project document links, but it never enumerates the Tanami catalogue
-or follows related-project cards.
+Only owner-approved exact Project URLs or an explicitly approved city listing
+enter this adapter. It may follow a small set of same-project document links,
+but it never follows related-project cards.
 """
 
 from __future__ import annotations
@@ -11,6 +11,7 @@ import asyncio
 import hashlib
 import html
 import json
+import math
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -22,7 +23,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.acquisition.adapters import adapter_for
+from app.acquisition.adapters import adapter_for, official_url_matches_project
 from app.acquisition.contracts import (
     FetchResult,
     ManifestCandidate,
@@ -32,19 +33,27 @@ from app.acquisition.contracts import (
 from app.acquisition.parser import clean, normalize_evidence, normalize_name, parse_html
 from app.acquisition.reconciliation import reconcile_candidate_quality, source_disagreement
 from app.acquisition.security import BatchCachingFetcher, SecureFetcher, host_is_allowed
-from app.config import Settings
+from app.config import Settings, get_settings
 from app.models import (
     AreaAlias,
     AreaCommunity,
+    Developer,
+    DeveloperTranslation,
+    DeveloperVerificationStatus,
+    EditorialApprovalStatus,
     ImportReviewStatus,
     MediaRightsStatus,
     ProjectImportBatch,
     ProjectImportCandidate,
+    ProjectImportEditorialDraft,
     ProjectImportMedia,
     ProjectMediaCategory,
     ProjectProcessingStatus,
     ProjectSourceSnapshot,
     ProjectSourceType,
+    PublicationStatus,
+    UAEEmirate,
+    User,
 )
 from app.storage import PrivateStorage
 
@@ -52,6 +61,43 @@ TANAMI_ADAPTER_KEY = "tanami-explicit-project-list"
 TANAMI_ADAPTER_VERSION = "2.1"
 TANAMI_DOCUMENT_DOMAINS = ("tanamiproperties.com",)
 TANAMI_MEDIA_DOMAINS = ("tanamiproperties.com", "manage.tanamiproperties.com")
+SHARJAH_LISTING_URL = "https://www.tanamiproperties.com/Offplan-Projects-in-Sharjah"
+TANAMI_CITY_PROJECT_ENDPOINT = (
+    "https://www.tanamiproperties.com/CityProjectlist.aspx/GetProjectListbyCity"
+)
+SHARJAH_CITY_ID = "114"
+CITY_PAGE_ROWS = 10
+MAX_CITY_LISTING_PAGES = 25
+SHARJAH_AREA_AR = {
+    "Al Mamsha Raseel": "الممشى رسيل",
+    "Al Mamzar": "الممزر",
+    "Al Zahia": "الزاهية",
+    "Aljada": "الجادة",
+    "Maryam Island": "جزيرة مريم",
+    "Masaar": "مسار",
+    "Masaar 2": "مسار 2",
+    "Masaar 3": "مسار 3",
+    "Naseej District": "حي نسيج",
+    "Sharjah": "الشارقة",
+    "Sharjah Waterfront City": "مدينة الشارقة للواجهات المائية",
+    "Tilal City": "مدينة تلال",
+}
+SHARJAH_DEVELOPER_AR = {
+    "ARADA Developer": "أرادَ",
+    "Ajmal Makan": "أجمل مكان",
+    "Alef Group": "مجموعة ألف",
+    "Diamond Developer": "دايموند ديفلوبرز",
+    "Eagle Hills": "إيجل هيلز",
+    "Emaar Properties": "إعمار العقارية",
+    "IFA Hotel & Resorts": "إيفا للفنادق والمنتجعات",
+    "Mada'in Properties": "مدائن العقارية",
+    "Majid Al Futtaim": "ماجد الفطيم",
+    "Sharjah Holding": "الشارقة القابضة",
+    "Shoumous Properties": "شموس العقارية",
+    "Shurooq": "شروق",
+    "Tiger Group": "مجموعة تايجر",
+    "Tilal Properties": "تلال العقارية",
+}
 AMENITY_AR = {
     "Swimming pool": "مسبح",
     "Gym": "صالة رياضية",
@@ -139,6 +185,152 @@ class MediaDiscovery:
     excluded_count: int
     duplicate_count: int
     visible_gallery_count: int
+
+
+@dataclass(frozen=True)
+class TanamiCityDiscovery:
+    urls: tuple[str, ...]
+    projects: tuple[TanamiListingProject, ...]
+    total_reported: int
+    rows_seen: int
+    pages_fetched: int
+    duplicate_count: int
+    listing_content_hash: str
+    retrieved_at: datetime
+
+
+@dataclass(frozen=True)
+class TanamiListingProject:
+    url: str
+    project_name: str
+    developer_name: str
+    area_name: str
+
+
+class _HiddenInputParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.values: dict[str, str] = {}
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag != "input":
+            return
+        values = dict(attrs)
+        identifier = values.get("id")
+        value = values.get("value")
+        if identifier and value is not None:
+            self.values[identifier] = value
+
+
+def _city_listing_payload(page: int) -> dict[str, object]:
+    return {
+        "iPageIndex": str(page),
+        "iPageRows": str(CITY_PAGE_ROWS),
+        "strSearch": "",
+        "strOrderBy": "",
+        "strMinPrice": "",
+        "strMaxPrice": "",
+        "strCity": SHARJAH_CITY_ID,
+        "strCommunity": "",
+        "strPropertyType": "",
+        "strProjectStage": "",
+        "strDevelopers": "",
+        "strAccommodation": "",
+        "strHandover": "",
+        "strMinSize": "",
+        "strMaxSize": "",
+        "strDPMinPrice": "",
+        "strDPMaxPrice": "",
+    }
+
+
+async def discover_sharjah_project_urls(
+    *, fetcher: SecureFetcher | None = None
+) -> TanamiCityDiscovery:
+    """Enumerate every exact Project URL from the bounded Sharjah listing."""
+    source_fetcher = fetcher or SecureFetcher()
+    landing = await asyncio.to_thread(
+        source_fetcher.fetch, SHARJAH_LISTING_URL, TANAMI_DOCUMENT_DOMAINS
+    )
+    if not landing.ok or landing.content_type not in {"text/html", "application/xhtml+xml"}:
+        raise ValueError(landing.error_message or "The Sharjah Project listing was unavailable.")
+    parser = _HiddenInputParser()
+    parser.feed(landing.body.decode("utf-8", errors="replace"))
+    if parser.values.get("hdnCity") != SHARJAH_CITY_ID:
+        raise ValueError("The approved listing no longer resolves to the locked Sharjah city ID.")
+    try:
+        rows_per_page = int(parser.values["hdnProjPageRows"])
+        total = int(parser.values["hdnProjRecordCount"])
+    except (KeyError, ValueError) as exc:
+        raise ValueError("The Sharjah listing did not expose bounded pagination metadata.") from exc
+    if rows_per_page != CITY_PAGE_ROWS or total < 1:
+        raise ValueError("The Sharjah listing pagination contract changed unexpectedly.")
+    page_count = math.ceil(total / rows_per_page)
+    if page_count > MAX_CITY_LISTING_PAGES:
+        raise ValueError("The Sharjah listing exceeds the approved bounded pagination limit.")
+    rows_seen = 0
+    discovered: list[TanamiListingProject] = []
+    reported_totals: set[int] = set()
+    for page in range(1, page_count + 1):
+        response = await asyncio.to_thread(
+            source_fetcher.post_json,
+            TANAMI_CITY_PROJECT_ENDPOINT,
+            TANAMI_DOCUMENT_DOMAINS,
+            _city_listing_payload(page),
+            referer=SHARJAH_LISTING_URL,
+        )
+        if not response.ok or response.content_type not in {
+            "application/json",
+            "application/ld+json",
+        }:
+            raise ValueError(
+                response.error_message or f"Sharjah listing page {page} was unavailable."
+            )
+        try:
+            envelope = json.loads(response.body)
+            payload = envelope["d"]
+            records = payload["lstprojlist"]
+        except (KeyError, TypeError, json.JSONDecodeError) as exc:
+            raise ValueError(f"Sharjah listing page {page} returned an invalid payload.") from exc
+        if not isinstance(records, list) or not records:
+            raise ValueError(f"Sharjah listing page {page} returned no Project records.")
+        if len(records) > rows_per_page:
+            raise ValueError(f"Sharjah listing page {page} exceeded its row limit.")
+        for record in records:
+            if not isinstance(record, dict) or not all(
+                isinstance(record.get(key), str)
+                for key in ("ProjURL", "ProjName", "DevName", "ComName")
+            ):
+                raise ValueError(f"Sharjah listing page {page} exposed an invalid Project URL.")
+            discovered.append(
+                TanamiListingProject(
+                    url=urljoin(SHARJAH_LISTING_URL, str(record["ProjURL"])),
+                    project_name=clean(str(record["ProjName"])),
+                    developer_name=clean(str(record["DevName"])),
+                    area_name=clean(str(record["ComName"])),
+                )
+            )
+            try:
+                reported_totals.add(int(record["ProjCount"]))
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ValueError("A Sharjah listing row omitted its catalogue total.") from exc
+        rows_seen += len(records)
+    if reported_totals != {total} or rows_seen != total:
+        raise ValueError("Sharjah listing totals changed during bounded pagination.")
+    normalized = normalize_project_urls([item.url for item in discovered])
+    projects_by_url = {item.url: item for item in discovered}
+    if len(projects_by_url) != len(normalized):
+        raise ValueError("The Sharjah listing contains duplicate exact Project URLs.")
+    return TanamiCityDiscovery(
+        urls=normalized,
+        projects=tuple(projects_by_url[url] for url in normalized),
+        total_reported=total,
+        rows_seen=rows_seen,
+        pages_fetched=page_count,
+        duplicate_count=rows_seen - len(normalized),
+        listing_content_hash=hashlib.sha256(landing.body).hexdigest(),
+        retrieved_at=landing.retrieved_at,
+    )
 
 
 def normalize_project_urls(urls: list[str] | tuple[str, ...]) -> tuple[str, ...]:
@@ -328,7 +520,14 @@ def _combined_normalized(
             if value not in (None, [], {}, "") and key not in extracted:
                 extracted[key] = value
                 proposal[key] = value
-        conflicts.extend(item.conflicts)
+        # Tanami uses SEO-expanded headings and short marketing names on different
+        # views of the same exact Project URL. Preserve those titles in evidence,
+        # but do not misclassify cosmetic identity variants as source conflicts.
+        conflicts.extend(
+            conflict
+            for conflict in item.conflicts
+            if not conflict.startswith("Official source name differs:")
+        )
         media.update(item.media_urls)
     for structured_item in structured:
         for key, value in structured_item.items():
@@ -729,6 +928,252 @@ async def acquire_explicit_batch(
     return batch
 
 
+async def finalize_sharjah_private_drafts(
+    db: AsyncSession,
+    batch: ProjectImportBatch,
+    *,
+    fetcher: SourceFetcher | None = None,
+) -> dict[str, object]:
+    """Create exact Draft identities, bilingual review copy and private Projects."""
+    from app.acquisition.service import match_developer_identity
+    from app.import_review import (
+        _create_draft,
+        draft_eligibility_errors,
+        sync_linked_draft_from_candidate,
+    )
+
+    source_fetcher = fetcher or BatchCachingFetcher(SecureFetcher())
+    storage = PrivateStorage(get_settings())
+    ambiguous_media_ids = _ambiguous_cross_candidate_media_ids(batch)
+    if ambiguous_media_ids:
+        from app.acquisition.media_intake import _remove_media_output
+
+        for candidate in batch.candidates:
+            for media in candidate.staged_media:
+                if media.id in ambiguous_media_ids:
+                    _remove_media_output(
+                        storage,
+                        media,
+                        "Identical media was shared across multiple Project candidates.",
+                    )
+                    media.stage_status = "rejected-unrelated"
+                    media.rights_status = MediaRightsStatus.REJECTED
+            reconcile_candidate_quality(candidate)
+    actor_id = await db.scalar(
+        select(User.id).where(User.is_active.is_(True)).order_by(User.created_at)
+    )
+    if not isinstance(actor_id, UUID):
+        raise ValueError("An active Admin user is required to attribute private Draft creation.")
+    developers_created = 0
+    areas_created = 0
+    overviews_created = 0
+    drafts_created = 0
+    drafts_reused = 0
+    unresolved: list[dict[str, object]] = []
+    for candidate in batch.candidates:
+        source_developer = candidate.owner_manifest_values.get("source_developer")
+        source_area = candidate.owner_manifest_values.get("source_area")
+        if isinstance(source_developer, str) and source_developer:
+            candidate.proposed_developer_id = await match_developer_identity(db, source_developer)
+            if not candidate.proposed_developer_id:
+                official = adapter_for(source_developer)
+                if official:
+                    verification = await asyncio.to_thread(
+                        source_fetcher.fetch, official.base_url, official.allowed_domains
+                    )
+                    candidate.acquisition_summary = {
+                        **candidate.acquisition_summary,
+                        "developer_identity_check": {
+                            "official_url": official.base_url,
+                            "status": verification.status,
+                            "error_code": verification.error_code,
+                            "retrieved_at": verification.retrieved_at.isoformat(),
+                        },
+                    }
+                    slug = _canonical_slug(official.key)
+                    if await db.scalar(select(Developer.id).where(Developer.slug == slug)):
+                        raise ValueError(
+                            f"Developer slug collision requires review: {source_developer}."
+                        )
+                    developer = Developer(
+                        slug=slug,
+                        legal_name=None,
+                        source_name=source_developer,
+                        internal_aliases=list(dict.fromkeys([source_developer, *official.aliases])),
+                        primary_emirate=UAEEmirate.SHARJAH.value,
+                        other_presence=[],
+                        selected_projects=[],
+                        official_website=official.base_url,
+                        source_url=(official.base_url if verification.ok else SHARJAH_LISTING_URL),
+                        additional_source_urls=list(
+                            dict.fromkeys(
+                                [
+                                    SHARJAH_LISTING_URL,
+                                    official.base_url,
+                                ]
+                            )
+                        ),
+                        verification_date=verification.retrieved_at.date(),
+                        verification_status=DeveloperVerificationStatus.PENDING,
+                        enquiry_types=[],
+                        featured=False,
+                        display_order=0,
+                        status=PublicationStatus.DRAFT,
+                        created_by=actor_id,
+                        updated_by=actor_id,
+                    )
+                    developer.translations = [
+                        DeveloperTranslation(
+                            locale="en",
+                            name=source_developer,
+                            description=(
+                                "Developer identity retained from the exact Sharjah listing "
+                                "and configured Developer-controlled source for private review."
+                            ),
+                            focus="Sharjah Project identity review.",
+                            verification_note=(
+                                "Draft identity; publication requires Admin review."
+                            ),
+                        ),
+                        DeveloperTranslation(
+                            locale="ar",
+                            name=SHARJAH_DEVELOPER_AR.get(source_developer, source_developer),
+                            description=(
+                                "هوية مطور محفوظة من قائمة الشارقة المطابقة ومصدر المطور "
+                                "المحدد لأغراض المراجعة الداخلية."
+                            ),
+                            focus="مراجعة هوية مشاريع الشارقة.",
+                            verification_note="هوية مسودة؛ يتطلب النشر مراجعة الإدارة.",
+                        ),
+                    ]
+                    db.add(developer)
+                    await db.flush()
+                    candidate.proposed_developer_id = developer.id
+                    developers_created += 1
+        if isinstance(source_area, str) and source_area:
+            candidate.proposed_area_id = await _match_area(db, source_area)
+            if not candidate.proposed_area_id:
+                if source_area not in SHARJAH_AREA_AR:
+                    unresolved.append(
+                        {
+                            "candidate_id": str(candidate.id),
+                            "reason": f"Unverified Sharjah Area identity: {source_area}",
+                        }
+                    )
+                else:
+                    slug = _canonical_slug(source_area)
+                    if await db.scalar(select(AreaCommunity.id).where(AreaCommunity.slug == slug)):
+                        raise ValueError(f"Area slug collision requires review: {source_area}.")
+                    area = AreaCommunity(
+                        slug=slug,
+                        name_en=source_area,
+                        name_ar=SHARJAH_AREA_AR[source_area],
+                        emirate=UAEEmirate.SHARJAH,
+                        status=PublicationStatus.DRAFT,
+                    )
+                    area.aliases = [
+                        AreaAlias(
+                            locale="en",
+                            alias=source_area,
+                            normalized_alias=normalize_name(source_area),
+                        )
+                    ]
+                    db.add(area)
+                    await db.flush()
+                    candidate.proposed_area_id = area.id
+                    areas_created += 1
+        if candidate.editorial_draft is None and candidate.normalized_project_name:
+            developer_en = str(source_developer or "the source-listed developer")
+            area_en = str(source_area or "Sharjah")
+            developer_ar = SHARJAH_DEVELOPER_AR.get(developer_en, developer_en)
+            area_ar = SHARJAH_AREA_AR.get(area_en, "الشارقة")
+            candidate.editorial_draft = ProjectImportEditorialDraft(
+                candidate_id=candidate.id,
+                overview_en=(
+                    f"{candidate.normalized_project_name} is a real estate Project in "
+                    f"{area_en}, Sharjah, associated with {developer_en}. This private "
+                    "bilingual draft reflects only the source-grounded identity and location "
+                    "evidence currently retained; unconfirmed details remain under review."
+                ),
+                overview_ar=(
+                    f"يُعد {candidate.normalized_project_name} مشروعًا عقاريًا في {area_ar} "
+                    f"بإمارة الشارقة، ويرتبط بالمطور {developer_ar}. تعكس هذه المسودة الخاصة "
+                    "ثنائية اللغة فقط بيانات الهوية والموقع المدعومة بالمصادر المحفوظة حاليًا، "
+                    "وتظل التفاصيل غير المؤكدة قيد المراجعة."
+                ),
+                source_version=candidate.content_hash,
+                generated_at=datetime.now(UTC),
+                approval_status=EditorialApprovalStatus.NEEDS_REVIEW,
+                origin="source-grounded-template",
+                fact_input_version="normalized-facts-v1",
+                fact_input_hash=hashlib.sha256(
+                    json.dumps(
+                        candidate.normalized_payload or {},
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ).encode()
+                ).hexdigest(),
+                candidate_version=candidate.review_version,
+                import_correlation_id=f"sharjah:{batch.manifest_hash[:16]}",
+            )
+            overviews_created += 1
+        reconcile_candidate_quality(candidate)
+        await db.flush()
+        if candidate.linked_project_id:
+            await sync_linked_draft_from_candidate(db, candidate)
+            drafts_reused += 1
+            continue
+        problems = draft_eligibility_errors(candidate)
+        if problems:
+            unresolved.append(
+                {
+                    "candidate_id": str(candidate.id),
+                    "project": candidate.normalized_project_name,
+                    "reason": "; ".join(problems),
+                }
+            )
+            continue
+        project = await _create_draft(db, candidate, actor_id)
+        candidate.linked_project_id = project.id
+        candidate.review_status = ImportReviewStatus.MERGED
+        drafts_created += 1
+    await db.commit()
+    return {
+        "developers_created": developers_created,
+        "areas_created": areas_created,
+        "overviews_created": overviews_created,
+        "drafts_created": drafts_created,
+        "drafts_reused": drafts_reused,
+        "unresolved": unresolved,
+    }
+
+
+def _ambiguous_cross_candidate_media_ids(
+    batch: ProjectImportBatch,
+) -> set[UUID]:
+    """Reject raster evidence reused by more than one exact Project candidate."""
+    grouped: dict[tuple[str, str], list[tuple[UUID, UUID]]] = {}
+    for candidate in batch.candidates:
+        for media in candidate.staged_media:
+            if media.stage_status != "downloaded":
+                continue
+            grouped.setdefault(("url", media.source_url), []).append((candidate.id, media.id))
+            if media.sha256:
+                grouped.setdefault(("sha256", media.sha256), []).append((candidate.id, media.id))
+    rejected: set[UUID] = set()
+    for references in grouped.values():
+        if len({candidate_id for candidate_id, _media_id in references}) > 1:
+            rejected.update(media_id for _candidate_id, media_id in references)
+    return rejected
+
+
+def _canonical_slug(value: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", value.casefold()).strip("-")
+    if not slug:
+        raise ValueError("A verified canonical identity could not produce a stable slug.")
+    return slug
+
+
 async def _update_candidate(
     db: AsyncSession,
     storage: PrivateStorage,
@@ -808,7 +1253,9 @@ async def _update_candidate(
     official_fact_evidence: list[dict[str, object]] = (
         list(source_disagreements) if isinstance(source_disagreements, list) else []
     )
+    retained_media_urls = {url for url, _category in documents.media}
     official_status = "not-resolved"
+    candidate.official_source_url = None
     if identity.developer_name:
         official = adapter_for(identity.developer_name)
         if official:
@@ -819,14 +1266,18 @@ async def _update_candidate(
                 identity.area_name or "Area not confirmed",
             )
             discovery = await asyncio.to_thread(official.discover, manifest, fetcher)
-            if discovery.source_url:
+            if discovery.source_url and discovery.match_kind == "deterministic":
                 result, evidence = await asyncio.to_thread(
                     official.acquire,
                     manifest,
                     discovery,
                     fetcher,
                 )
-                if result.ok and evidence:
+                if (
+                    result.ok
+                    and evidence
+                    and official_url_matches_project(manifest.project_name, result.url)
+                ):
                     await _store_snapshot(
                         db,
                         storage,
@@ -846,6 +1297,7 @@ async def _update_candidate(
                             for url in evidence.media_urls
                         ),
                     )
+                    retained_media_urls.update(evidence.media_urls)
                     official_page = parse_html(result.body, result.url)
                     for brochure_url in (
                         value
@@ -872,7 +1324,9 @@ async def _update_candidate(
                         localized = await asyncio.to_thread(
                             fetcher.fetch, localized_url, official.allowed_domains
                         )
-                        if localized.ok:
+                        if localized.ok and official_url_matches_project(
+                            manifest.project_name, localized.url
+                        ):
                             await _store_snapshot(
                                 db,
                                 storage,
@@ -894,6 +1348,9 @@ async def _update_candidate(
                                     for url in parse_html(localized.body, localized.url).media_urls
                                 ),
                             )
+                            retained_media_urls.update(
+                                parse_html(localized.body, localized.url).media_urls
+                            )
                     official_status = "corroborated"
                     _merge_official_evidence(
                         proposal,
@@ -902,8 +1359,12 @@ async def _update_candidate(
                         official_fact_evidence,
                         result.url,
                     )
+                elif result.ok:
+                    official_status = "redirect-mismatch-needs-review"
                 else:
                     official_status = "source-unavailable"
+            elif discovery.suggested_url:
+                official_status = "fuzzy-suggestion-needs-review"
             else:
                 official_status = "source-not-found"
             if official.canonical_developer_slug:
@@ -948,6 +1409,21 @@ async def _update_candidate(
     candidate.review_status = ImportReviewStatus.NEEDS_REVIEW
     candidate.processing_status = ProjectProcessingStatus.NEEDS_REVIEW
     await _stage_media(db, candidate, documents.media)
+    # Imported lazily because media_intake imports this adapter's domain constants.
+    from app.acquisition.media_intake import _remove_media_output
+
+    for media in candidate.staged_media:
+        hostname = urlsplit(media.source_url).hostname or ""
+        if host_is_allowed(hostname, TANAMI_MEDIA_DOMAINS):
+            continue
+        if media.source_url not in retained_media_urls:
+            _remove_media_output(
+                storage,
+                media,
+                "Media was not retained by an exact Project-specific official source.",
+            )
+            media.stage_status = "rejected-unrelated"
+            media.rights_status = MediaRightsStatus.REJECTED
     reconcile_candidate_quality(candidate)
 
 
@@ -1101,7 +1577,7 @@ async def _stage_media(
 ) -> None:
     existing = {item.source_url: item for item in candidate.staged_media}
     eligible = tuple((url, category) for url, category in media if _is_https_raster_candidate(url))
-    for order, (url, category) in enumerate(eligible[:24]):
+    for order, (url, category) in enumerate(eligible):
         item = existing.get(url)
         if item:
             item.category = category
