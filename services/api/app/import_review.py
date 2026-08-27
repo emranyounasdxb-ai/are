@@ -467,11 +467,14 @@ async def _create_draft(
     primary_secondary = next(
         (value for value in retained_urls if "tanamiproperties.com/Projects/" in value), None
     )
+    proposed_payment = proposal.get("payment_plan")
+    plan_url = proposed_payment.get("source_url") if isinstance(proposed_payment, dict) else None
     retained_urls = list(
         dict.fromkeys(
             [
                 *([candidate.official_source_url] if candidate.official_source_url else []),
                 *([primary_secondary] if primary_secondary else []),
+                *([plan_url] if plan_url and plan_url in latest_evidence else []),
             ]
         )
     )
@@ -530,12 +533,19 @@ async def _create_draft(
         raw_payment = str(payment.get("raw_source_text") or "") or None
         milestones = payment.get("milestones") or milestones
     if raw_payment and isinstance(milestones, list) and milestones:
+        plan_source = next(
+            (s for s in record.sources if s.source_url == plan_url), record.sources[0]
+        )
+        if plan_url and plan_source.source_url != plan_url:
+            raise ValueError("Payment plan must retain its exact source evidence.")
         plan = ProjectPaymentPlan(
             project_id=record.id,
             raw_source_text=raw_payment,
-            source_id=record.sources[0].id,
+            source_id=plan_source.id,
             is_complete=bool(isinstance(payment, dict) and payment.get("is_complete")),
-            verified_at=candidate.last_verified_at,
+            verified_at=None
+            if isinstance(payment, dict) and payment.get("requires_review")
+            else candidate.last_verified_at,
         )
         plan.milestones = [
             ProjectPaymentMilestone(
@@ -554,7 +564,7 @@ async def _create_draft(
 
 
 async def sync_linked_draft_from_candidate(
-    db: AsyncSession, candidate: ProjectImportCandidate
+    db: AsyncSession, candidate: ProjectImportCandidate, *, fields: set[str] | None = None
 ) -> Project | None:
     """Refresh only an existing private Draft with retained source-grounded evidence."""
     if not candidate.linked_project_id:
@@ -575,23 +585,35 @@ async def sync_linked_draft_from_candidate(
     if not record or record.status != PublicationStatus.DRAFT:
         return record
     proposal = candidate.normalized_payload or {}
-    record.developer_id = candidate.proposed_developer_id or record.developer_id
-    record.area_id = candidate.proposed_area_id or record.area_id
-    record.availability_status = _availability_status(proposal.get("availability_status"))
-    record.construction_status = _construction_status(proposal.get("construction_status"))
-    record.handover_quarter = proposal.get("handover_quarter")
-    record.handover_year = proposal.get("handover_year")
-    record.original_handover_value = proposal.get("original_handover_value")
-    record.size_min = proposal.get("size_min")
-    record.size_max = proposal.get("size_max")
-    record.size_unit = (
-        ProjectSizeUnit(str(proposal["size_unit"])) if proposal.get("size_unit") else None
-    )
-    record.down_payment_percentage = proposal.get("down_payment_percentage")
-    record.down_payment_source_value = proposal.get("down_payment_source_value")
-    record.last_verified_at = candidate.last_verified_at
+
+    def included(field: str) -> bool:
+        return fields is None or field in fields
+
+    if fields is None:
+        record.developer_id = candidate.proposed_developer_id or record.developer_id
+        record.area_id = candidate.proposed_area_id or record.area_id
+        record.last_verified_at = candidate.last_verified_at
+    if included("availability_status"):
+        record.availability_status = _availability_status(proposal.get("availability_status"))
+    if included("construction_status"):
+        record.construction_status = _construction_status(proposal.get("construction_status"))
+    for field in (
+        "handover_quarter",
+        "handover_year",
+        "original_handover_value",
+        "size_min",
+        "size_max",
+        "down_payment_percentage",
+        "down_payment_source_value",
+    ):
+        if included(field):
+            setattr(record, field, proposal.get(field))
+    if included("size_unit"):
+        record.size_unit = (
+            ProjectSizeUnit(str(proposal["size_unit"])) if proposal.get("size_unit") else None
+        )
     property_types = list(dict.fromkeys(proposal.get("property_types", [])))
-    if property_types:
+    if property_types and included("property_types"):
         desired_property_types = {ProjectPropertyType(str(value)) for value in property_types}
         existing_property_types = {item.property_type: item for item in record.property_types}
         for property_type_value, property_type_row in existing_property_types.items():
@@ -602,7 +624,7 @@ async def sync_linked_draft_from_candidate(
                 ProjectPropertyTypeValue(property_type=property_type_value)
             )
     bedrooms = list(dict.fromkeys(proposal.get("bedrooms", [])))
-    if bedrooms:
+    if bedrooms and included("bedrooms"):
         desired_bedrooms = {_bedroom_option(value) for value in bedrooms}
         existing_bedrooms = {item.bedroom_option: item for item in record.bedroom_options}
         for bedroom_value, bedroom_row in existing_bedrooms.items():
@@ -611,7 +633,7 @@ async def sync_linked_draft_from_candidate(
         for bedroom_value in desired_bedrooms - existing_bedrooms.keys():
             record.bedroom_options.append(ProjectBedroomValue(bedroom_option=bedroom_value))
     localized_units = proposal.get("localized_unit_types", [])
-    if isinstance(localized_units, list) and localized_units:
+    if isinstance(localized_units, list) and localized_units and included("localized_unit_types"):
         desired_units = {
             str(value["label_en"]): (str(value["label_ar"]), index)
             for index, value in enumerate(localized_units)
@@ -629,7 +651,11 @@ async def sync_linked_draft_from_candidate(
             target_unit.label_ar = label_ar
             target_unit.display_order = display_order
     localized_amenities = proposal.get("localized_amenities", [])
-    if isinstance(localized_amenities, list) and localized_amenities:
+    if (
+        isinstance(localized_amenities, list)
+        and localized_amenities
+        and included("localized_amenities")
+    ):
         desired_amenities = {
             str(value["label_en"]): (str(value["label_ar"]), index)
             for index, value in enumerate(localized_amenities)
@@ -650,10 +676,16 @@ async def sync_linked_draft_from_candidate(
     latest_evidence = {
         item.source_url: item
         for item in sorted(candidate.evidence, key=lambda value: value.retrieved_at)
-        if item.outcome in {"acquired", "extracted"}
-        and item.storage_key
-        and item.http_status is not None
-        and 200 <= item.http_status < 300
+        if item.storage_key
+        and item.content_hash
+        and (
+            (
+                item.outcome in {"acquired", "extracted"}
+                and item.http_status is not None
+                and 200 <= item.http_status < 300
+            )
+            or (item.outcome == "rendered" and item.adapter_version == "tanami-rendered-context-v1")
+        )
     }
     existing_sources = {item.source_url: item for item in record.sources}
     retained_urls = list(
@@ -668,6 +700,13 @@ async def sync_linked_draft_from_candidate(
             ]
         )
     )
+    payment = proposal.get("payment_plan")
+    payment_url = payment.get("source_url") if isinstance(payment, dict) else None
+    if payment_url and payment_url in latest_evidence and included("payment_plan"):
+        retained_urls = list(dict.fromkeys([*retained_urls, payment_url]))
+    if fields is not None:
+        # A bounded gap refresh must not reactivate or restamp unrelated evidence.
+        retained_urls = [url for url in retained_urls if url in latest_evidence]
     for source_url in retained_urls:
         evidence = latest_evidence.get(source_url)
         source = existing_sources.get(source_url)
@@ -691,6 +730,8 @@ async def sync_linked_draft_from_candidate(
     existing_media = {item.source_url: item for item in record.media}
     staged_media_by_url = {item.source_url: item for item in candidate.staged_media}
     for source_url, media in list(existing_media.items()):
+        if not included("media"):
+            break
         staged_media = staged_media_by_url.get(source_url)
         if staged_media and not (
             staged_media.stage_status == "downloaded"
@@ -700,6 +741,8 @@ async def sync_linked_draft_from_candidate(
             await db.delete(media)
             existing_media.pop(source_url)
     for staged_media in candidate.staged_media:
+        if not included("media"):
+            break
         if not (
             staged_media.stage_status == "downloaded"
             and staged_media.rights_status == MediaRightsStatus.APPROVED
@@ -729,17 +772,25 @@ async def sync_linked_draft_from_candidate(
     await db.flush()
     payment = proposal.get("payment_plan")
     milestones = payment.get("milestones", []) if isinstance(payment, dict) else []
-    if isinstance(payment, dict) and milestones and record.sources:
+    if isinstance(payment, dict) and milestones and record.sources and included("payment_plan"):
+        payment_source = next(
+            (source for source in record.sources if source.source_url == payment_url),
+            record.sources[0],
+        )
+        if payment_url and payment_source.source_url != payment_url:
+            raise ValueError("Payment plan must retain its exact source evidence.")
         if not record.payment_plan:
             record.payment_plan = ProjectPaymentPlan(
                 raw_source_text=str(payment.get("raw_source_text") or "Source payment plan"),
-                source_id=record.sources[0].id,
+                source_id=payment_source.id,
+                milestones=[],
             )
+        record.payment_plan.source_id = payment_source.id
         record.payment_plan.raw_source_text = str(
             payment.get("raw_source_text") or record.payment_plan.raw_source_text
         )
         record.payment_plan.is_complete = bool(payment.get("is_complete"))
-        record.payment_plan.verified_at = candidate.last_verified_at
+        record.payment_plan.verified_at = candidate.last_verified_at if fields is None else None
         desired_milestones = {
             int(value.get("sequence", index + 1)): value
             for index, value in enumerate(milestones)

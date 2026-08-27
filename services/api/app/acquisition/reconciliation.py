@@ -141,6 +141,18 @@ def reconcile_candidate_quality(candidate: ProjectImportCandidate) -> None:
 
 
 def _missing(value: object) -> bool:
+    if isinstance(value, str):
+        return value.strip().casefold() in {
+            "",
+            "-",
+            "not confirmed",
+            "not-confirmed",
+            "will be updated soon",
+            "announcing soon",
+            "various sizes available",
+        }
+    if isinstance(value, list):
+        return not value or all(_missing(item) for item in value)
     return value in (None, "", [], {})
 
 

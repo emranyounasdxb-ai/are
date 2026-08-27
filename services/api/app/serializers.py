@@ -642,6 +642,27 @@ _PREVIEW_LABELS = {
 }
 
 
+def public_candidate_payment(value: object) -> object:
+    """Never forward private source URLs/IDs nested in an acquired payment plan."""
+    if not isinstance(value, dict):
+        return value
+    result = {
+        key: value[key]
+        for key in ("raw_source_text", "is_complete", "requires_review")
+        if key in value
+    }
+    result["milestones"] = [
+        {
+            key: item[key]
+            for key in ("sequence", "stage", "percentage", "label_en", "label_ar", "source_value")
+            if key in item
+        }
+        for item in value.get("milestones", [])
+        if isinstance(item, dict)
+    ]
+    return result
+
+
 def candidate_public_preview_dict(
     record: ProjectImportCandidate,
     developer: Developer,
@@ -706,7 +727,7 @@ def candidate_public_preview_dict(
         "size_unit": proposal.get("size_unit"),
         "size_ranges": proposal.get("size_ranges", []),
         "down_payment_percentage": proposal.get("down_payment_percentage"),
-        "payment_plan": proposal.get("payment_plan"),
+        "payment_plan": public_candidate_payment(proposal.get("payment_plan")),
         "payment_milestones": [
             {
                 "sequence": index + 1,

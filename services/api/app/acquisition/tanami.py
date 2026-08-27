@@ -33,6 +33,12 @@ from app.acquisition.contracts import (
 from app.acquisition.parser import clean, normalize_evidence, normalize_name, parse_html
 from app.acquisition.reconciliation import reconcile_candidate_quality, source_disagreement
 from app.acquisition.security import BatchCachingFetcher, SecureFetcher, host_is_allowed
+from app.acquisition.tanami_context import (
+    contextual_tables,
+    payment_variants,
+    select_unambiguous_plan,
+    summary_facts,
+)
 from app.config import Settings, get_settings
 from app.models import (
     AreaAlias,
@@ -534,6 +540,37 @@ def _combined_normalized(
             if value not in (None, [], {}, "") and key not in extracted:
                 extracted[key] = value
                 proposal[key] = value
+    # Explicit summary cells outrank keyword matches in surrounding prose.
+    summary = summary_facts(contextual_tables(results[0].body)) if results else {}
+    extracted.update(summary)
+    proposal.update(summary)
+    variants = [
+        {**plan, "source_url": result.url}
+        for result in results
+        for plan in payment_variants(contextual_tables(result.body))
+    ]
+    if variants:
+        extracted["payment_plan_variants"] = variants
+        selected_plan = select_unambiguous_plan(variants)
+        if selected_plan:
+            selected_plan["requires_review"] = True
+        extracted["payment_plan"] = selected_plan
+        proposal["payment_plan"] = selected_plan
+    scoped_payment_urls = set()
+    for result in results:
+        offers = payment_variants(contextual_tables(result.body))
+        bookings = {
+            milestone["percentage"]
+            for offer in offers
+            for milestone in offer["milestones"]
+            if milestone["stage"] == "booking"
+        }
+        if (
+            len(offers) > 1
+            and all(offer["is_complete"] for offer in offers)
+            and proposal.get("down_payment_percentage") in bookings
+        ):
+            scoped_payment_urls.add(result.url)
     for key in (
         "handover_quarter",
         "handover_year",
@@ -541,17 +578,23 @@ def _combined_normalized(
         "construction_status",
         "down_payment_percentage",
     ):
+        observations = [
+            (result, item, structured_item)
+            for result, item, structured_item in zip(results, normalized, structured, strict=True)
+            if not (key == "down_payment_percentage" and result.url in scoped_payment_urls)
+        ]
+        # A down payment inside a labelled offer is not a contradictory
+        # Project-wide value. Keep every offer privately for applicability review.
         values = [
-            *[item.source_extracted.get(key) for item in normalized],
-            *[item.get(key) for item in structured],
+            value
+            for _, item, structured_item in observations
+            for value in (item.source_extracted.get(key), structured_item.get(key))
         ]
         disagreement = source_disagreement(key, values)
         if disagreement:
             conflicts.append(disagreement)
             retained: list[dict[str, object]] = []
-            for result, normalized_item, structured_item in zip(
-                results, normalized, structured, strict=True
-            ):
+            for result, normalized_item, structured_item in observations:
                 for value in (
                     normalized_item.source_extracted.get(key),
                     structured_item.get(key),
@@ -1538,6 +1581,8 @@ async def _store_snapshot(
     candidate: ProjectImportCandidate,
     result: FetchResult,
     source_type: ProjectSourceType,
+    *,
+    rendered: bool = False,
 ) -> None:
     digest = hashlib.sha256(result.body).hexdigest()
     existing = await db.scalar(
@@ -1558,14 +1603,14 @@ async def _store_snapshot(
             http_status=result.status,
             retrieved_at=result.retrieved_at,
             adapter_key=TANAMI_ADAPTER_KEY,
-            adapter_version=TANAMI_ADAPTER_VERSION,
+            adapter_version="tanami-rendered-context-v1" if rendered else TANAMI_ADAPTER_VERSION,
             content_type=result.content_type,
             size_bytes=len(result.body),
             etag=result.etag,
             last_modified=result.last_modified,
             content_hash=digest,
             storage_key=stored.storage_key,
-            outcome="extracted",
+            outcome="rendered" if rendered else "extracted",
         )
     )
 
