@@ -56,7 +56,7 @@ class EvidenceHTMLParser(HTMLParser):
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         values = dict(attrs)
-        if tag in {"script", "style", "noscript", "template"}:
+        if tag in {"script", "style", "noscript", "template", "select", "nav", "footer"}:
             if tag == "script" and (values.get("type") or "").lower() == "application/ld+json":
                 self._json_ld = True
                 self._json_parts = []
@@ -93,7 +93,7 @@ class EvidenceHTMLParser(HTMLParser):
                 self.media.add(urljoin(self.base_url, value))
 
     def handle_endtag(self, tag: str) -> None:
-        if tag in {"script", "style", "noscript", "template"}:
+        if tag in {"script", "style", "noscript", "template", "select", "nav", "footer"}:
             if tag == "script" and self._json_ld:
                 self._consume_json_ld()
                 self._json_ld = False
@@ -159,7 +159,9 @@ def parse_html(body: bytes, source_url: str) -> ParsedEvidence:
 def normalize_evidence(
     parsed: ParsedEvidence, candidate: ManifestCandidate, *, discovery_conflict: str | None = None
 ) -> NormalizedEvidence:
-    text = parsed.text
+    # Tanami appends other developments after this explicit catalogue heading.
+    # Those cards are discovery links, not facts about the current Project.
+    text = re.split(r"\bMore Projects of\b", parsed.text, maxsplit=1, flags=re.I)[0]
     lowered = text.casefold()
     headings = [value for value in parsed.headings if value]
     extracted_name = next(
@@ -182,6 +184,8 @@ def normalize_evidence(
         if any(re.search(rf"\b{re.escape(value)}\b", lowered) for value in variants)
     ]
     bedrooms = list(dict.fromkeys(match.group(1).lower() for match in BEDROOM.finditer(text)))
+    if re.search(r"\bstudios?\b", lowered) and "studio" not in bedrooms:
+        bedrooms.insert(0, "studio")
     handover_match = HANDOVER.search(text)
     handover_quarter = None
     handover_year = None
@@ -289,7 +293,9 @@ def explicit_availability(text: str) -> str | None:
         return "sold-out"
     if re.search(r"\blimited availability\b|\blimited units? available\b", text):
         return "limited-availability"
-    if re.search(r"\bcoming soon\b|\bregister (?:your )?interest\b", text):
+    # An enquiry CTA is also present on completed/sold-out developments and
+    # cannot establish a commercial availability state.
+    if re.search(r"\bcoming soon\b", text):
         return "coming-soon"
     if re.search(r"\bavailable now\b|\bcurrently available\b", text):
         return "available"
@@ -312,7 +318,9 @@ def explicit_construction(text: str) -> str | None:
 
 def explicit_size_range(text: str) -> tuple[float | None, float | None, str | None]:
     ranges = re.findall(
-        r"\b([\d,]{3,10}(?:\.\d+)?)\s*(?:to|[-–])\s*([\d,]{3,10}(?:\.\d+)?)"
+        r"\b([\d,]{3,10}(?:\.\d+)?)\s*"
+        r"(?:(?:sq\.?\s*ft|sqft|square feet)\s*)?"
+        r"(?:to|[-–])\s*([\d,]{3,10}(?:\.\d+)?)"
         r"\s*(?:sq\.?\s*ft|sqft|square feet)\b",
         text,
         flags=re.IGNORECASE,

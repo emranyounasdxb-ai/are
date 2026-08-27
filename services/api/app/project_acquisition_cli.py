@@ -76,6 +76,11 @@ def parser() -> argparse.ArgumentParser:
         help="Discover and acquire the complete bounded Tanami Sharjah Project listing",
     )
     sharjah.add_argument("--refresh", action="store_true")
+    research = subcommands.add_parser(
+        "official-research",
+        help="Reinspect one existing private batch without approval/publication",
+    )
+    research.add_argument("--batch-id", required=True, type=uuid.UUID)
     tanami_refresh = subcommands.add_parser(
         "tanami-refresh-existing",
         help="Refresh only the retained candidates in one existing explicit Tanami batch",
@@ -118,6 +123,12 @@ def parser() -> argparse.ArgumentParser:
 
 async def run(args: argparse.Namespace) -> None:
     async with SessionLocal() as db:
+        if args.command == "official-research":
+            from app.acquisition.research import research_existing_batch
+
+            result = await research_existing_batch(db, get_settings(), args.batch_id)
+            print(json.dumps(result, indent=2))
+            return
         if args.command == "overview-pack-validate":
             response = ManualOverviewResponse.model_validate_json(
                 await asyncio.to_thread(args.file.read_bytes)

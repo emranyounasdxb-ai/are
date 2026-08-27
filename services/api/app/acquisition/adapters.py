@@ -170,10 +170,16 @@ def official_url_matches_project(project_name: str, url: str) -> bool:
         for value in target_tokens
         if value not in STOP_TOKENS and (len(value) > 2 or value.isdigit())
     }
+    # Identity must occur in the document slug, not across unrelated location
+    # folders (for example /abu-dhabi/towers/renad-tower).
     path = normalize_name(urlsplit(url).path.replace("-", " "))
     path_tokens = set(path.split())
     excluded_sections = {"blog", "career", "media", "news", "press", "privacy", "terms"}
-    return bool(important) and not (path_tokens & excluded_sections) and important <= path_tokens
+    leaf = urlsplit(url).path.rstrip("/").rsplit("/", 1)[-1]
+    # A bedroom count is not a numbered building or phase.
+    leaf = re.sub(r"\b\d+[-_ ]?(?:br|bedroom|bedrooms)\b", "", leaf, flags=re.I)
+    leaf_tokens = set(normalize_name(leaf.replace("-", " ")).split())
+    return bool(important) and not (path_tokens & excluded_sections) and important <= leaf_tokens
 
 
 OFFICIAL_ADAPTERS = (
@@ -200,7 +206,12 @@ OFFICIAL_ADAPTERS = (
         "https://www.alefgroup.ae/",
         ("alefgroup.ae",),
         None,
-        ("/", "/projects/"),
+        (
+            "/",
+            "/projects/",
+            "https://almamsha.alefgroup.ae/",
+            "https://hayyan.alefgroup.ae/",
+        ),
     ),
     OfficialSiteAdapter(
         "diamond-developers",
@@ -215,9 +226,10 @@ OFFICIAL_ADAPTERS = (
         "eagle-hills",
         "Eagle Hills",
         "https://eaglehills.com/eagle-hills-uae-projects/",
-        ("eaglehills.com",),
+        # Linked by Eagle Hills' official UAE portfolio; not a portal alias.
+        ("eaglehills.com", "maryamisland.ae"),
         None,
-        ("/eagle-hills-uae-projects/", "/our-projects/"),
+        ("/eagle-hills-uae-projects/", "/our-projects/", "https://maryamisland.ae/"),
     ),
     OfficialSiteAdapter(
         "ifa-hotels-resorts",

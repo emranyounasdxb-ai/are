@@ -69,7 +69,11 @@ def normalize_host(host: str) -> str:
 
 
 def host_is_allowed(host: str, allowed_domains: tuple[str, ...]) -> bool:
-    normalized = normalize_host(host)
+    try:
+        normalized = normalize_host(host)
+    except UnicodeError:
+        # Malformed source links must fail closed, not abort the bounded batch.
+        return False
     return any(
         normalized == normalize_host(domain) or normalized.endswith(f".{normalize_host(domain)}")
         for domain in allowed_domains

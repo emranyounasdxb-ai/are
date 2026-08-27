@@ -451,7 +451,10 @@ async def _create_draft(
     latest_evidence = {
         item.source_url: item
         for item in sorted(candidate.evidence, key=lambda value: value.retrieved_at)
-        if item.outcome == "acquired"
+        if item.outcome in {"acquired", "extracted"}
+        and item.storage_key
+        and item.http_status is not None
+        and 200 <= item.http_status < 300
     }
     retained_urls = list(
         dict.fromkeys(
@@ -647,7 +650,10 @@ async def sync_linked_draft_from_candidate(
     latest_evidence = {
         item.source_url: item
         for item in sorted(candidate.evidence, key=lambda value: value.retrieved_at)
-        if item.outcome == "acquired"
+        if item.outcome in {"acquired", "extracted"}
+        and item.storage_key
+        and item.http_status is not None
+        and 200 <= item.http_status < 300
     }
     existing_sources = {item.source_url: item for item in record.sources}
     retained_urls = list(

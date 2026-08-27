@@ -590,3 +590,52 @@ def test_official_project_url_requires_phase_tokens_and_rejects_broad_pages() ->
         "https://www.alefgroup.ae/press/alef-group-partners-with-nama/",
     )
     assert not official_url_matches_project("Signature Villas", "https://www.arada.com/ar/")
+    assert not official_url_matches_project(
+        "Abu Dhabi Tower", "https://www.tigergroup.ae/abu-dhabi/towers/renad-tower"
+    )
+    assert not official_url_matches_project(
+        "The Boulevard 3", "https://www.arada.com/en/property/the-boulevard-3-bedroom/"
+    )
+
+
+def test_register_interest_is_not_availability_evidence() -> None:
+    from app.acquisition.parser import explicit_availability
+
+    assert explicit_availability("register your interest") is None
+    assert explicit_availability("register interest") is None
+    assert explicit_availability("coming soon; register your interest") == "coming-soon"
+
+
+def test_size_range_retains_units_on_both_endpoints() -> None:
+    from app.acquisition.parser import explicit_size_range
+
+    assert explicit_size_range(
+        "Plots range from 5,000 sqft to 12,000 sqft. Larger 8,000-12,000 square feet plots."
+    ) == (5000, 12000, "sqft")
+
+
+def test_global_filters_are_not_project_fact_evidence() -> None:
+    from app.acquisition.parser import parse_html
+
+    page = parse_html(
+        b"<nav>Apartments</nav><select><option>Coming soon</option></select>"
+        b"<h1>Example Villas</h1><p>Register your interest.</p><footer>Sold out</footer>",
+        "https://example.com/project",
+    )
+    assert page.text == "Example Villas Register your interest."
+
+
+def test_related_project_cards_do_not_add_types_or_status_to_current_project() -> None:
+    from app.acquisition.contracts import ManifestCandidate
+    from app.acquisition.parser import normalize_evidence, parse_html
+
+    page = parse_html(
+        b"<h1>QA Residences</h1><p>Property Type: Apartment. Studio, 1 &amp; 2 Bedrooms.</p>"
+        b"<h2>More Projects of Developer</h2><p>Other Island Villas. Sold out. 6 bedrooms.</p>",
+        "https://example.com/project",
+    )
+    result = normalize_evidence(page, ManifestCandidate(1, "QA Residences", "Developer", "Sharjah"))
+    assert result.normalized_proposal["property_types"] == ["apartment"]
+    assert "studio" in result.normalized_proposal["bedrooms"]
+    assert "6" not in result.normalized_proposal["bedrooms"]
+    assert result.normalized_proposal["availability_status"] is None
