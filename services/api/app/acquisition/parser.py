@@ -161,7 +161,9 @@ def normalize_evidence(
 ) -> NormalizedEvidence:
     # Tanami appends other developments after this explicit catalogue heading.
     # Those cards are discovery links, not facts about the current Project.
-    text = re.split(r"\bMore Projects of\b", parsed.text, maxsplit=1, flags=re.I)[0]
+    text = re.split(
+        r"\b(?:More|Other|Related) Projects(?: of)?\b", parsed.text, maxsplit=1, flags=re.I
+    )[0]
     lowered = text.casefold()
     headings = [value for value in parsed.headings if value]
     extracted_name = next(

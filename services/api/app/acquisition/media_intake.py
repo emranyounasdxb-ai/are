@@ -73,6 +73,7 @@ async def intake_private_media(
     batch_id: uuid.UUID,
     *,
     candidate_ids: list[uuid.UUID] | None = None,
+    media_ids: set[uuid.UUID] | None = None,
     fetcher: SecureRasterFetcher | None = None,
 ) -> dict[str, int]:
     batch = await db.scalar(
@@ -93,6 +94,16 @@ async def intake_private_media(
     ]
     if candidate_ids and len(selected) != len(set(candidate_ids)):
         raise ValueError("Every media candidate must belong to the selected batch.")
+    if media_ids is not None and not media_ids <= {
+        media.id for candidate in selected for media in candidate.staged_media
+    }:
+        raise ValueError("Every selected image must belong to the selected candidates.")
+    if media_ids is not None:
+        selected = [
+            candidate
+            for candidate in selected
+            if any(media.id in media_ids for media in candidate.staged_media)
+        ]
     storage = PrivateStorage(settings)
     source_fetcher = fetcher or SecureRasterFetcher()
     stats: dict[str, int] = {
@@ -115,6 +126,8 @@ async def intake_private_media(
         for order, media in enumerate(
             sorted(candidate.staged_media, key=lambda value: value.source_url)
         ):
+            if media_ids is not None and media.id not in media_ids:
+                continue
             candidate_stats["references"] += 1
             if media.category.value == "floor-plan":
                 candidate_stats["floor_plan_candidates"] += 1

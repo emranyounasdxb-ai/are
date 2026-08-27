@@ -22,7 +22,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.acquisition.adapters import adapter_for, official_url_matches_project
 from app.acquisition.contracts import ManifestCandidate, SourceFetcher
 from app.acquisition.parser import normalize_evidence, normalize_name, parse_html
-from app.acquisition.reconciliation import reconcile_candidate_quality, source_disagreement
+from app.acquisition.reconciliation import (
+    _missing,
+    reconcile_candidate_quality,
+    source_disagreement,
+)
 from app.acquisition.security import BatchCachingFetcher, SecureFetcher, host_is_allowed
 from app.acquisition.tanami import _store_snapshot
 from app.audit import write_audit
@@ -152,7 +156,7 @@ def readiness_report(candidate: ProjectImportCandidate) -> dict[str, Any]:
     proposal = candidate.normalized_payload or {}
     missing = sorted({str(item.get("field")) for item in candidate.validation_errors})
     for field in ("property_types", "unit_types"):
-        if not proposal.get(field) and field not in missing:
+        if _missing(proposal.get(field)) and field not in missing:
             missing.append(field)
     plan = proposal.get("payment_plan")
     if (
