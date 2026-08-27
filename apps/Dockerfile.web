@@ -1,0 +1,42 @@
+# syntax=docker/dockerfile:1
+FROM node:24.18.0-bookworm-slim AS dependencies
+WORKDIR /app
+COPY package.json package-lock.json ./
+COPY apps/public-web/package.json apps/public-web/package.json
+COPY apps/admin-web/package.json apps/admin-web/package.json
+COPY apps/mobile/package.json apps/mobile/package.json
+RUN npm ci
+COPY apps/public-web apps/public-web
+COPY apps/admin-web apps/admin-web
+
+FROM dependencies AS public-build
+# Owner-local BuildKit secrets: fonts never enter the context, layers or exports.
+RUN --mount=type=secret,id=h1-regular,target=/run/are-fonts/h1-regular.woff2,required=true \
+    --mount=type=secret,id=h1-italic,target=/run/are-fonts/h1-italic.woff2,required=true \
+    --mount=type=secret,id=headings,target=/run/are-fonts/headings.ttf,required=true \
+    --mount=type=secret,id=body,target=/run/are-fonts/body.woff2,required=true \
+    --mount=type=secret,id=decorative,target=/run/are-fonts/decorative.ttf,required=true \
+    --mount=type=secret,id=signature,target=/run/are-fonts/signature.woff2,required=true \
+    --mount=type=secret,id=arabic-h1,target=/run/are-fonts/arabic-h1.woff2,required=true \
+    ARE_PRIVATE_FONT_DIR=/run/are-fonts NEXT_TELEMETRY_DISABLED=1 npm run build --workspace=@are/public-web
+
+FROM dependencies AS admin-build
+RUN NEXT_TELEMETRY_DISABLED=1 npm run build --workspace=@are/admin-web
+
+FROM node:24.18.0-bookworm-slim AS public-runtime
+ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 ARE_PRIVATE_FONT_DIR=/run/are-fonts
+WORKDIR /app
+COPY --from=public-build --chown=node:node /app/node_modules ./node_modules
+COPY --from=public-build --chown=node:node /app/apps/public-web ./apps/public-web
+USER node
+WORKDIR /app/apps/public-web
+CMD ["sh", "-c", "node scripts/check-fonts.mjs && exec node ../../node_modules/next/dist/bin/next start --hostname 0.0.0.0 --port 50001"]
+
+FROM node:24.18.0-bookworm-slim AS admin-runtime
+ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1
+WORKDIR /app
+COPY --from=admin-build --chown=node:node /app/node_modules ./node_modules
+COPY --from=admin-build --chown=node:node /app/apps/admin-web ./apps/admin-web
+USER node
+WORKDIR /app/apps/admin-web
+CMD ["node", "../../node_modules/next/dist/bin/next", "start", "--hostname", "0.0.0.0", "--port", "50002"]

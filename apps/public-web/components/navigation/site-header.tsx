@@ -2,12 +2,13 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { LogIn, Send } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { LogIn } from "lucide-react";
+import { Suspense, useEffect, useRef, useState } from "react";
 
 import type { HeaderCopy, Locale } from "../../lib/home-copy";
 import { isNavigationHrefActive } from "../../lib/navigation";
+import GradientText from "../GradientText";
 
 type SiteHeaderProps = Readonly<{
   copy: HeaderCopy;
@@ -19,6 +20,49 @@ type NavigationItem = Readonly<{
   label: string;
 }>;
 
+function ConsultGradientLabel({ children }: Readonly<{ children: string }>) {
+  return (
+    <GradientText
+      animationSpeed={5}
+      className="header-consult-gradient"
+      colors={["#B89245", "#F4D995", "#FFF3C4", "#D4B675", "#B89245"]}
+      showBorder={false}
+    >
+      {children}
+    </GradientText>
+  );
+}
+
+function NavigationLink({
+  item,
+  onClick,
+  pathname,
+}: Readonly<{
+  item: NavigationItem;
+  onClick: (event: React.MouseEvent<HTMLAnchorElement>) => void;
+  pathname: string;
+}>) {
+  const searchParams = useSearchParams();
+  const query = searchParams.toString();
+  const isActive = isNavigationHrefActive(`${pathname}${query ? `?${query}` : ""}`, item.href);
+
+  return (
+    <Link aria-current={isActive ? "page" : undefined} href={item.href} onClick={onClick}>
+      <span>{item.label}</span>
+    </Link>
+  );
+}
+
+function NavigationLinkFallback({ item, pathname }: Readonly<{ item: NavigationItem; pathname: string }>) {
+  const isActive = isNavigationHrefActive(pathname, item.href);
+
+  return (
+    <Link aria-current={isActive ? "page" : undefined} href={item.href}>
+      <span>{item.label}</span>
+    </Link>
+  );
+}
+
 export function SiteHeader({ copy, locale }: SiteHeaderProps) {
   const adminUrl = process.env.NEXT_PUBLIC_ARE_ADMIN_URL ?? "http://127.0.0.1:50002";
   const adminAccessibleLabel = locale === "ar" ? "تسجيل دخول الإدارة" : "Admin login";
@@ -28,12 +72,11 @@ export function SiteHeader({ copy, locale }: SiteHeaderProps) {
   const pathname = usePathname();
   const router = useRouter();
   const directNavigation: ReadonlyArray<NavigationItem> = [
-    { href: `/${locale}`, label: copy.home },
-    { href: `/${locale}/about`, label: copy.about },
-    { href: `/${locale}/properties`, label: copy.properties },
+    { href: `/${locale}/properties?purpose=buy`, label: copy.buy },
+    { href: `/${locale}/properties?purpose=rent`, label: copy.rent },
     { href: `/${locale}/off-plan`, label: copy.offPlan },
-    { href: `/${locale}/communities`, label: copy.communities },
     { href: `/${locale}/developers`, label: copy.developers },
+    { href: `/${locale}/communities`, label: copy.communities },
     { href: `/${locale}/insights`, label: copy.insights },
     { href: `/${locale}/careers`, label: copy.careers },
   ];
@@ -176,18 +219,24 @@ export function SiteHeader({ copy, locale }: SiteHeaderProps) {
 
           <nav aria-label={copy.navigation} className="desktop-navigation">
             {directNavigation.map((item) => (
-              <Link
-                aria-current={isActive(item.href) ? "page" : undefined}
-                href={item.href}
-                key={item.href}
-                onClick={(event) => resetCurrentRoute(event, item.href)}
-              >
-                <span>{item.label}</span>
-              </Link>
+              <Suspense fallback={<NavigationLinkFallback item={item} pathname={pathname} />} key={item.href}>
+                <NavigationLink
+                  item={item}
+                  onClick={(event) => resetCurrentRoute(event, item.href)}
+                  pathname={pathname}
+                />
+              </Suspense>
             ))}
           </nav>
 
           <div className="site-header__actions">
+            <Link
+              aria-current={isActive(`/${locale}/contact`) ? "page" : undefined}
+              className="header-cta"
+              href={`/${locale}/contact`}
+            >
+              <ConsultGradientLabel>{copy.contact}</ConsultGradientLabel>
+            </Link>
             <nav aria-label={copy.language} className="locale-control">
               <Link
                 aria-current={locale === "en" ? "page" : undefined}
@@ -220,14 +269,6 @@ export function SiteHeader({ copy, locale }: SiteHeaderProps) {
             >
               <LogIn aria-hidden="true" size={15} strokeWidth={1.75} />
             </a>
-            <Link
-              aria-current={isActive(`/${locale}/contact`) ? "page" : undefined}
-              className="header-cta"
-              href={`/${locale}/contact`}
-            >
-              <Send aria-hidden="true" size={15} strokeWidth={1.75} />
-              {copy.contact}
-            </Link>
             <button
               aria-controls={isOpen ? "mobile-navigation" : undefined}
               aria-expanded={isOpen}
@@ -263,64 +304,64 @@ export function SiteHeader({ copy, locale }: SiteHeaderProps) {
             </div>
             <nav aria-label={copy.navigation}>
               {mobileNavigation.map((item) => (
-                <Link
-                  aria-current={isActive(item.href) ? "page" : undefined}
-                  href={item.href}
-                  key={item.href}
-                  onClick={(event) => {
-                    resetCurrentRoute(event, item.href);
-                    closeMenu();
-                  }}
-                >
-                  <span>{item.label}</span>
-                </Link>
+                <Suspense fallback={<NavigationLinkFallback item={item} pathname={pathname} />} key={item.href}>
+                  <NavigationLink
+                    item={item}
+                    onClick={(event) => {
+                      resetCurrentRoute(event, item.href);
+                      closeMenu();
+                    }}
+                    pathname={pathname}
+                  />
+                </Suspense>
               ))}
             </nav>
             <div className="mobile-menu__footer">
               <p>{copy.activeLanguage}</p>
               <span>{copy.menuDescription}</span>
-              <nav aria-label={copy.language} className="mobile-menu__locales">
+              <div className="mobile-menu__utilities">
                 <Link
-                  aria-current={locale === "en" ? "page" : undefined}
-                  href={pathname.replace(/^\/(en|ar)/, "/en")}
-                  hrefLang="en"
-                  onClick={(event) => {
-                    event.preventDefault();
-                    switchLocale("en");
-                  }}
+                  aria-current={isActive(`/${locale}/contact`) ? "page" : undefined}
+                  className="mobile-enquire-link"
+                  href={`/${locale}/contact`}
+                  onClick={closeMenu}
                 >
-                  EN
+                  <ConsultGradientLabel>{copy.contact}</ConsultGradientLabel>
                 </Link>
-                <Link
-                  aria-current={locale === "ar" ? "page" : undefined}
-                  href={pathname.replace(/^\/(en|ar)/, "/ar")}
-                  hrefLang="ar"
-                  onClick={(event) => {
-                    event.preventDefault();
-                    switchLocale("ar");
-                  }}
+                <nav aria-label={copy.language} className="mobile-menu__locales">
+                  <Link
+                    aria-current={locale === "en" ? "page" : undefined}
+                    href={pathname.replace(/^\/(en|ar)/, "/en")}
+                    hrefLang="en"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      switchLocale("en");
+                    }}
+                  >
+                    EN
+                  </Link>
+                  <Link
+                    aria-current={locale === "ar" ? "page" : undefined}
+                    href={pathname.replace(/^\/(en|ar)/, "/ar")}
+                    hrefLang="ar"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      switchLocale("ar");
+                    }}
+                  >
+                    العربية
+                  </Link>
+                </nav>
+                <a
+                  aria-label={adminAccessibleLabel}
+                  className="mobile-admin-login"
+                  href={adminUrl}
+                  onClick={closeMenu}
+                  title={adminAccessibleLabel}
                 >
-                  العربية
-                </Link>
-              </nav>
-              <a
-                aria-label={adminAccessibleLabel}
-                className="mobile-admin-login"
-                href={adminUrl}
-                onClick={closeMenu}
-                title={adminAccessibleLabel}
-              >
-                <LogIn aria-hidden="true" size={15} strokeWidth={1.75} />
-              </a>
-              <Link
-                aria-current={isActive(`/${locale}/contact`) ? "page" : undefined}
-                className="mobile-enquire-link"
-                href={`/${locale}/contact`}
-                onClick={closeMenu}
-              >
-                <Send aria-hidden="true" size={15} strokeWidth={1.75} />
-                <span>{copy.contact}</span>
-              </Link>
+                  <LogIn aria-hidden="true" size={15} strokeWidth={1.75} />
+                </a>
+              </div>
             </div>
           </div>
         </div>

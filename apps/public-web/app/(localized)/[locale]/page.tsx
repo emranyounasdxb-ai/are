@@ -4,7 +4,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { FaqSection, ProcessList } from "../../../components/content/editorial-content";
+import { HomeHeroTypedDescription } from "../../../components/motion/home-hero-typed-description";
 import { Reveal } from "../../../components/motion/reveal";
+import { HomeHeroShinyEyebrow } from "../../../components/motion/home-hero-shiny-eyebrow";
 import { SiteFooter } from "../../../components/navigation/site-footer";
 import { DiscoverySearch } from "../../../components/search/discovery-search";
 import { getDeveloper, getInsight } from "../../../lib/api";
@@ -39,6 +41,10 @@ export default async function HomePage({ params, searchParams }: HomePageProps) 
 async function LocalizedHome({ locale, initialPurpose }: Readonly<{ locale: Locale; initialPurpose: "buy" | "rent" | "off-plan" }>) {
   const copy = homeCopy[locale];
   const content = homepageCopy[locale];
+  const pathwayTitleBreakWord = locale === "ar" ? "عقارك" : "your";
+  const pathwayTitleBreakIndex = copy.discovery.title.indexOf(pathwayTitleBreakWord);
+  const pathwayTitleLead = copy.discovery.title.slice(0, pathwayTitleBreakIndex).trim();
+  const pathwayTitleEnd = copy.discovery.title.slice(pathwayTitleBreakIndex).trim();
   const [featuredDeveloper, featuredInsight] = await Promise.all([
     getDeveloper(locale, "emaar-properties"),
     getInsight(locale, "choosing-a-uae-community"),
@@ -56,55 +62,69 @@ async function LocalizedHome({ locale, initialPurpose }: Readonly<{ locale: Loca
               height={941}
               priority
               sizes="100vw"
-              src="/images/home-premium/hero-residence.webp"
+              src="/images/home-premium/aliyas-uae-luxury-residence-hero.webp"
               width={1672}
             />
             <div aria-hidden="true" className="premium-home__hero-shade" />
           </div>
           <div className="premium-home__hero-inner">
             <Reveal className="premium-home__hero-copy" distance={18}>
-              <p className="premium-home__eyebrow">{copy.hero.eyebrow}</p>
-              <h1 id="hero-title">{copy.hero.title}</h1>
-              <span>{copy.hero.description}</span>
+              <p className="premium-home__eyebrow">
+                {locale === "en" ? <HomeHeroShinyEyebrow text={copy.hero.eyebrow} /> : copy.hero.eyebrow}
+              </p>
+              <h1 id="hero-title">
+                {locale === "en" ? (
+                  <>
+                    <span className="premium-home__hero-title-line">Find the place</span>{" "}
+                    <span className="premium-home__hero-title-line">that fits the life</span>{" "}
+                    <span className="premium-home__hero-title-line">you are building.</span>
+                  </>
+                ) : copy.hero.title}
+              </h1>
+              <HomeHeroTypedDescription locale={locale} text={copy.hero.description} />
               <div className="premium-home__actions">
-                <Link className="button button--primary" href={`/${locale}/contact`}>{copy.hero.primaryAction}</Link>
-                <Link className="button button--secondary" href={`/${locale}/properties`}>{copy.hero.secondaryAction}</Link>
+                <Link className="button button--primary animated-gold-border" href={`/${locale}/properties`}>{copy.hero.primaryAction}</Link>
+                <Link className="button button--secondary" href={`/${locale}/contact`}>{copy.hero.secondaryAction}</Link>
               </div>
             </Reveal>
-            <div className="premium-home__image-note">
-              <span>{copy.hero.visualLabel}</span>
-              <small>{copy.hero.localReview}</small>
-            </div>
           </div>
-          <div className="premium-home__search">
-            <div className="premium-home__search-heading" id="search">
-              <p>{copy.searchHeading.eyebrow}</p>
-              <h2>{copy.searchHeading.title}</h2>
-            </div>
-            <DiscoverySearch copy={copy.search} initialPurpose={initialPurpose} key={initialPurpose} locale={locale} />
+          <div className="premium-home__search" id="search">
+            <DiscoverySearch copy={copy.search} initialPurpose={initialPurpose} key={initialPurpose} locale={locale} useCustomSelects />
           </div>
         </section>
 
         <section aria-labelledby="pathways-title" className="premium-home__section home-pathways-v2">
           <div className="premium-home__heading">
             <p>{copy.discovery.eyebrow}</p>
-            <h2 id="pathways-title">{copy.discovery.title}</h2>
+            <h2 id="pathways-title">
+              {locale === "en" ? (
+                <>
+                  <span>{pathwayTitleLead}</span>
+                  <span>{pathwayTitleEnd}</span>
+                </>
+              ) : (
+                <>
+                  <span>{pathwayTitleLead}</span>
+                  <br />
+                  <span>{pathwayTitleEnd}</span>
+                </>
+              )}
+            </h2>
             <span>{copy.discovery.description}</span>
           </div>
           <div className="home-pathways-v2__grid home-pathways-v2__grid--image-led">
-            {copy.journeys.map((journey, index) => (
-              <Link href={journey.purpose === "off-plan" ? `/${locale}/off-plan` : `/${locale}/properties?purpose=${journey.purpose}`} key={journey.purpose}>
+            {copy.journeys.map((journey) => (
+              <Link className={journey.className} href={journey.purpose === "off-plan" ? `/${locale}/off-plan` : `/${locale}/properties?purpose=${journey.purpose}`} key={journey.purpose}>
                 <Image
-                  alt={locale === "ar" ? `صورة توضيحية لمسار ${journey.title}` : `Illustrative residence for the ${journey.title} journey`}
+                  alt={journey.imageAlt}
                   height={1086}
                   sizes="(max-width: 800px) 100vw, 33vw"
                   src={journeyImages[journey.purpose]}
                   width={1448}
                 />
                 <span className="home-pathways-v2__shade" aria-hidden="true" />
-                <span className="home-pathways-v2__number">{String(index + 1).padStart(2, "0")}</span>
                 <div>
-                  <p>{journey.eyebrow}</p>
+                  <p aria-hidden="true">{journey.eyebrow}</p>
                   <h3>{journey.title}</h3>
                   <small>{journey.text}</small>
                   <strong>{journey.linkLabel} <i aria-hidden="true">→</i></strong>
@@ -172,7 +192,7 @@ async function LocalizedHome({ locale, initialPurpose }: Readonly<{ locale: Loca
                   <div><dt>{content.developer.source}</dt><dd>{featuredDeveloper.verification_note}</dd></div>
                 </dl>
                 <div className="premium-home__actions">
-                  <Link className="button button--primary" href={`/${locale}/developers/${featuredDeveloper.slug}`}>{content.developer.details}</Link>
+                  <Link className="button button--primary animated-gold-border" href={`/${locale}/developers/${featuredDeveloper.slug}`}>{content.developer.details}</Link>
                   <Link className="button button--secondary" href={`/${locale}/contact?topic=developer&developer=${featuredDeveloper.slug}`}>{content.developer.enquire}</Link>
                 </div>
               </div>
@@ -217,7 +237,7 @@ async function LocalizedHome({ locale, initialPurpose }: Readonly<{ locale: Loca
           <span className="home-closing-v2__shade" aria-hidden="true" />
           <div className="home-closing-v2__content"><p>{content.cta.eyebrow}</p><h2 id="home-closing-title">{content.cta.title}</h2><span>{content.cta.text}</span></div>
           <div className="premium-home__actions home-closing-v2__actions">
-            <Link className="button button--primary" href={`/${locale}/contact`}>{content.cta.enquire}</Link>
+            <Link className="button button--primary animated-gold-border" href={`/${locale}/contact`}>{content.cta.enquire}</Link>
             <a className="button button--secondary" href="https://wa.me/971569157576" rel="noreferrer" target="_blank">{content.cta.whatsapp}</a>
           </div>
         </section>

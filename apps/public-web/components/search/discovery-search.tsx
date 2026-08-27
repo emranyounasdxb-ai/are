@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { PublicSelect } from "../forms/public-select";
 import type { Locale, Purpose, SearchCopy } from "../../lib/home-copy";
 
 type DiscoverySearchProps = Readonly<{
@@ -12,6 +13,7 @@ type DiscoverySearchProps = Readonly<{
   initialPropertyType?: string;
   locale: Locale;
   purposes?: ReadonlyArray<Purpose>;
+  useCustomSelects?: boolean;
 }>;
 
 export function DiscoverySearch({
@@ -21,6 +23,7 @@ export function DiscoverySearch({
   initialPropertyType = "",
   locale,
   purposes = ["buy", "rent", "off-plan"],
+  useCustomSelects = false,
 }: DiscoverySearchProps) {
   const router = useRouter();
   const [location, setLocation] = useState(initialLocation);
@@ -56,49 +59,79 @@ export function DiscoverySearch({
       onSubmit={handleSubmit}
     >
       <div className="search-panel__grid">
-        <label className="search-field">
-          <span>{copy.locationLabel}</span>
-          <select
-            aria-invalid={showLocationError}
-            onChange={(event) => {
-              setLocation(event.target.value);
+        {useCustomSelects ? (
+          <PublicSelect
+            invalid={showLocationError}
+            label={copy.locationLabel}
+            onChange={(nextValue) => {
+              setLocation(nextValue);
               resetMessage();
             }}
+            options={copy.locations}
+            placeholder={copy.locationPlaceholder}
             required
             value={location}
-          >
-            <option disabled value="">
-              {copy.locationPlaceholder}
-            </option>
-            {copy.locations.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
+          />
+        ) : (
+          <label className="search-field">
+            <span>{copy.locationLabel}</span>
+            <select
+              aria-invalid={showLocationError}
+              onChange={(event) => {
+                setLocation(event.target.value);
+                resetMessage();
+              }}
+              required
+              value={location}
+            >
+              <option disabled value="">
+                {copy.locationPlaceholder}
               </option>
-            ))}
-          </select>
-        </label>
+              {copy.locations.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
 
-        <label className="search-field">
-          <span>{copy.propertyTypeLabel}</span>
-          <select
-            aria-invalid={showPropertyTypeError}
-            onChange={(event) => {
-              setPropertyType(event.target.value);
+        {useCustomSelects ? (
+          <PublicSelect
+            invalid={showPropertyTypeError}
+            label={copy.propertyTypeLabel}
+            onChange={(nextValue) => {
+              setPropertyType(nextValue);
               resetMessage();
             }}
+            options={copy.propertyTypes}
+            placeholder={copy.propertyTypePlaceholder}
             required
             value={propertyType}
-          >
-            <option disabled value="">
-              {copy.propertyTypePlaceholder}
-            </option>
-            {copy.propertyTypes.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
+          />
+        ) : (
+          <label className="search-field">
+            <span>{copy.propertyTypeLabel}</span>
+            <select
+              aria-invalid={showPropertyTypeError}
+              onChange={(event) => {
+                setPropertyType(event.target.value);
+                resetMessage();
+              }}
+              required
+              value={propertyType}
+            >
+              <option disabled value="">
+                {copy.propertyTypePlaceholder}
               </option>
-            ))}
-          </select>
-        </label>
+              {copy.propertyTypes.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
 
         <fieldset className="purpose-field">
           <legend>{copy.purposeLabel}</legend>
@@ -120,7 +153,7 @@ export function DiscoverySearch({
           </div>
         </fieldset>
 
-        <button className="search-submit" type="submit">
+        <button className="search-submit animated-gold-border" type="submit">
           <span>{copy.searchButton}</span>
           <span aria-hidden="true" className="directional-icon">
             →

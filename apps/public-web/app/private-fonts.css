@@ -1,0 +1,87 @@
+/* Runtime URLs expose only the web-enabled font assets, never private storage. */
+@font-face {
+  font-family: "Hennigar";
+  src: url("/font-assets/v1/h1-regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Hennigar";
+  src: url("/font-assets/v1/h1-italic.woff2") format("woff2");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Aeternus Nano";
+  src: url("/font-assets/v1/headings.ttf") format("truetype");
+  font-weight: 100 856;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Auren";
+  src: url("/font-assets/v1/body.woff2") format("woff2");
+  font-weight: 100 800;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Aeternus Tall";
+  src: url("/font-assets/v1/decorative.ttf") format("truetype");
+  font-weight: 100 856;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Hoftman";
+  src: url("/font-assets/v1/signature.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "True Arabic";
+  src: url("/font-assets/v1/arabic-h1.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+/* Reserved only for existing approved short signature accents, never Arabic. */
+html[lang="en"] .are-signature-accent { font-family: "Hoftman", "Auren", sans-serif; font-weight: 400; }
+
+/* Measured emergency swap metrics, not a substitute for the startup font gate. */
+@font-face {
+  font-family: "ARE Hennigar Fallback";
+  src: local("Arial");
+  size-adjust: 72.13%;
+  ascent-override: 154.62%;
+  descent-override: 45.8%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: "ARE Nano Fallback";
+  src: local("Arial");
+  size-adjust: 43.49%;
+  ascent-override: 99.34%;
+  descent-override: 25.99%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: "ARE Auren Fallback";
+  src: local("Arial");
+  size-adjust: 124.52%;
+  ascent-override: 62.64%;
+  descent-override: 20.08%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: "ARE Arabic H1 Fallback";
+  src: local("Tahoma Bold");
+  font-weight: 700;
+  size-adjust: 85.83%;
+  ascent-override: 122.68%;
+  descent-override: 47.65%;
+  line-gap-override: 11.3%;
+}

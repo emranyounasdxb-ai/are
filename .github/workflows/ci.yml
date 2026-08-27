@@ -104,8 +104,18 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Private font boundary and binary-free validation tests
+        run: |
+          node apps/public-web/scripts/check-public-font-boundary.mjs
+          npm run test:fonts --workspace=@are/public-web
+
       - name: Type-check
         run: npm run typecheck
 
-      - name: Build
+      - name: Code-only build (commercial typography NOT verified)
+        env:
+          ARE_FONT_BUILD_MODE: code-only
         run: npm run build
+
+      - name: Record typography verification boundary
+        run: echo "Code-only CI passed. No commercial fonts were retrieved. Actual typography requires the owner-controlled runtime and local visual checks." >> "$GITHUB_STEP_SUMMARY"

@@ -65,7 +65,7 @@ async function LocalizedCareers({ jobSlug, locale }: Readonly<{ jobSlug?: string
 
         <section aria-labelledby="opportunities-title" className="career-opportunities">
           <div className="career-opportunities__heading"><p>{copy.opportunities.eyebrow}</p><h2 id="opportunities-title">{copy.opportunities.title}</h2></div>
-          {careerVacancies.length === 0 ? <div className="career-opportunities__empty"><span aria-hidden="true">00</span><div><h3>{copy.opportunities.emptyTitle}</h3><p>{copy.opportunities.emptyText}</p><Link className="button button--primary" href="#application">{copy.opportunities.action}</Link></div></div> : <div className="career-vacancy-grid">{careerVacancies.map((job)=><article key={job.id}><span>{job.department}</span><h3>{job.title}</h3><p>{job.location} · {job.employment_type}</p><Link className="text-link" href={`/${locale}/careers/${job.slug}`}>{isArabic?"عرض الوظيفة":"View role"}</Link></article>)}</div>}
+          {careerVacancies.length === 0 ? <div className="career-opportunities__empty"><span aria-hidden="true">00</span><div><h3>{copy.opportunities.emptyTitle}</h3><p>{copy.opportunities.emptyText}</p><Link className="button button--primary animated-gold-border" href="#application">{copy.opportunities.action}</Link></div></div> : <div className="career-vacancy-grid">{careerVacancies.map((job)=><article key={job.id}><span>{job.department}</span><h3>{job.title}</h3><p>{job.location} · {job.employment_type}</p><Link className="text-link" href={`/${locale}/careers/${job.slug}`}>{isArabic?"عرض الوظيفة":"View role"}</Link></article>)}</div>}
         </section>
 
         <section aria-labelledby="general-interest-title" className="content-section content-section--dark">

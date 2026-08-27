@@ -168,7 +168,7 @@ export function ProjectDetailPresentation({
           {normalized.construction ? <span><HardHat aria-hidden size={15}/>{t.construction}: {normalized.construction}</span> : null}
         </div> : null}
         <div className="project-presentation__hero-actions">
-          <Link className="button button--primary" href={enquiryHref}><Send aria-hidden size={17}/>{t.enquire}</Link>
+          <Link className="button button--primary animated-gold-border" href={enquiryHref}><Send aria-hidden size={17}/>{t.enquire}</Link>
           <a className="button star-action--outline" href={whatsappHref} rel="noreferrer" target="_blank"><MessageCircle aria-hidden size={17}/>{t.whatsapp}</a>
         </div>
       </div>
@@ -248,7 +248,7 @@ export function ProjectDetailPresentation({
 
     <section className="project-presentation__enquiry" id="project-enquire" aria-labelledby="project-enquire-title">
       <div><p>{t.ctaEyebrow}</p><h2 id="project-enquire-title">{t.ctaTitle}</h2><span>{t.ctaText}</span></div>
-      <div><Link className="button button--primary" href={enquiryHref}><Send aria-hidden size={17}/>{t.enquire}</Link><a className="button star-action--outline" href={whatsappHref} rel="noreferrer" target="_blank"><MessageCircle aria-hidden size={17}/>{t.whatsapp}</a></div>
+      <div><Link className="button button--primary animated-gold-border" href={enquiryHref}><Send aria-hidden size={17}/>{t.enquire}</Link><a className="button star-action--outline" href={whatsappHref} rel="noreferrer" target="_blank"><MessageCircle aria-hidden size={17}/>{t.whatsapp}</a></div>
     </section>
 
     <Link className="article-back" href={`/${locale}/off-plan`}>← {t.back}</Link>

@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, BriefcaseBusiness, Building2, Factory, FileSearch, FileText, FolderKanban, Gauge, Inbox, LogOut, Menu, ScrollText, ShieldCheck, Stethoscope, Users, X } from "lucide-react";
+import { Activity, BriefcaseBusiness, Building2, Factory, FileSearch, FileText, FolderKanban, Gauge, Inbox, LogOut, Menu, ScrollText, ShieldCheck, Users, X } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
@@ -12,7 +12,6 @@ const links = [
   ["/dashboard", "Dashboard", Gauge], ["/properties", "Properties", Building2],
   ["/projects", "Projects", FolderKanban], ["/project-imports", "Project imports", FileSearch],
   ["/project-processing", "Processing jobs", Activity],
-  ["/project-recovery", "Recovery queue", Stethoscope],
   ["/developers", "Developers", Factory],
   ["/insights", "Insights", FileText], ["/careers/jobs", "Career jobs", BriefcaseBusiness],
   ["/enquiries", "Enquiries", Inbox], ["/careers/applications", "Applications", Users],
