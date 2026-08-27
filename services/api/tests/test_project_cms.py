@@ -291,9 +291,8 @@ async def test_project_rbac_publication_and_public_field_boundaries(
     assert preview.status_code == 200, preview.text
     preview_record = preview.json()
     assert preview_record["official_name"] == "QA Off-Plan Project"
-    assert preview_record["media"][0]["url"].endswith(
-        f"/admin/projects/{project_id}/preview-media/{media_id}"
-    )
+    assert preview_record["media"] == []  # No documented permission receipt yet.
+    assert "construction_status" not in preview_record
     assert "priority" not in preview_record
     assert "internal_notes" not in preview_record
     assert "sources" not in preview_record
@@ -301,8 +300,7 @@ async def test_project_rbac_publication_and_public_field_boundaries(
     preview_media = await client.get(
         f"/api/v1/admin/projects/{project_id}/preview-media/{media_id}"
     )
-    assert preview_media.status_code == 200
-    assert preview_media.headers["cache-control"] == "private, no-store, max-age=0"
+    assert preview_media.status_code == 404  # Metadata approval alone grants no binary access.
     submitted = await client.post(
         f"/api/v1/admin/projects/{project_id}/submit-review",
         headers={"X-CSRF-Token": csrf},
@@ -362,6 +360,15 @@ async def test_project_rbac_publication_and_public_field_boundaries(
     )
     assert approved.status_code == 200, approved.text
     assert approved.json()["workflow_status"] == "approved"
+    reviewed_preview = await client.get(f"/api/v1/admin/projects/{project_id}/preview?locale=en")
+    assert reviewed_preview.json()["media"][0]["url"].endswith(
+        f"/admin/projects/{project_id}/preview-media/{media_id}"
+    )
+    permitted_media = await client.get(
+        f"/api/v1/admin/projects/{project_id}/preview-media/{media_id}"
+    )
+    assert permitted_media.status_code == 200
+    assert permitted_media.headers["cache-control"] == "private, no-store, max-age=0"
     receipt = (await client.get(f"/api/v1/admin/projects/{project_id}/approval-review")).json()[
         "receipt"
     ]

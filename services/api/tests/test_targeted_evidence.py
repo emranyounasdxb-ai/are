@@ -160,7 +160,10 @@ def test_even_complete_payment_is_hidden_when_applicability_conflicts():
         "payment_plan": {
             "is_complete": True,
             "verified_at": "2026-01-01",
-            "milestones": [{"percentage": 20}, {"percentage": 80}],
+            "milestones": [
+                {"percentage": 20, "label": "Booking", "due_trigger": "On booking"},
+                {"percentage": 80, "label": "Handover", "due_trigger": "On handover"},
+            ],
         },
         "down_payment_percentage": 20,
     }
