@@ -10,6 +10,7 @@ from PIL import Image
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
+from app.acquisition.targeted_evidence import persist_targeted_review, review_observations
 from app.db import SessionLocal
 from app.import_review import sync_linked_draft_from_candidate
 from app.models import (
@@ -207,6 +208,67 @@ async def test_project_rbac_publication_and_public_field_boundaries(
     assert created.status_code == 201, created.text
     project_id = created.json()["id"]
     media_id = created.json()["media"][0]["id"]
+    async with SessionLocal() as db:
+        review_batch = ProjectImportBatch(
+            name="QA private targeted review",
+            source_reference="QA",
+            manifest_hash=uuid.uuid4().hex * 2,
+            adapter_version="qa",
+        )
+        db.add(review_batch)
+        await db.flush()
+        review_candidate = ProjectImportCandidate(
+            batch_id=review_batch.id,
+            manifest_row_id=1,
+            raw_source_payload={},
+            owner_manifest_values={},
+            normalized_payload={},
+            content_hash="f" * 64,
+            review_status=ImportReviewStatus.NEEDS_REVIEW,
+            linked_project_id=uuid.UUID(project_id),
+        )
+        db.add(review_candidate)
+        await db.flush()
+        preview = review_observations(
+            [],
+            {},
+            exact_context="QA exact project context",
+            requested_fields={"construction_status"},
+        )
+        assert await persist_targeted_review(
+            db, review_candidate, preview, expected_version=review_candidate.review_version
+        )
+        await db.commit()
+        assert not await persist_targeted_review(
+            db, review_candidate, preview, expected_version=review_candidate.review_version
+        )
+        assert review_candidate.normalized_payload == {}
+        with pytest.raises(ValueError, match="stale or has been altered"):
+            await persist_targeted_review(
+                db,
+                review_candidate,
+                {**preview, "review_hash": "0" * 64},
+                expected_version=review_candidate.review_version,
+            )
+        with pytest.raises(ValueError, match="stale or has been altered"):
+            await persist_targeted_review(
+                db,
+                review_candidate,
+                {**preview, "states": {"construction_status": "verified"}},
+                expected_version=review_candidate.review_version,
+            )
+        assert (
+            len(
+                (
+                    await db.scalars(
+                        select(AuditLog).where(AuditLog.entity_id == review_candidate.id)
+                    )
+                ).all()
+            )
+            == 1
+        )
+        await db.delete(review_candidate)
+        await db.commit()
     assert (await client.get("/api/v1/public/projects?locale=en")).json()["meta"]["total"] == 0
     image = io.BytesIO()
     Image.new("RGB", (1600, 900), "#745238").save(image, "WEBP")
@@ -361,7 +423,7 @@ async def test_project_rbac_publication_and_public_field_boundaries(
     public_record = public.json()
     assert public_record["emirate"] == "Dubai"
     assert public_record["area"]["emirate"] == "Dubai"
-    assert public_record["construction_status"] is None
+    assert "construction_status" not in public_record
     assert public_record["cta"] == "register-interest"
     assert "priority" not in public_record
     assert "internal_notes" not in public_record
@@ -381,6 +443,65 @@ async def test_project_rbac_publication_and_public_field_boundaries(
     assert (await client.get("/api/v1/admin/projects?emirate=Dubai")).json()["meta"]["total"] == 1
     fujairah = await client.get("/api/v1/admin/projects?emirate=Fujairah")
     assert fujairah.json()["meta"]["total"] == 0
+    # Public reads must recheck an imported identity hold and media permission,
+    # even when an older Project publication exists. Private source data stays private.
+    async with SessionLocal() as db:
+        evidence_batch = ProjectImportBatch(
+            name="QA targeted visibility",
+            source_reference="QA private evidence",
+            manifest_hash=uuid.uuid4().hex * 2,
+            adapter_version="qa",
+        )
+        db.add(evidence_batch)
+        await db.flush()
+        evidence_candidate = ProjectImportCandidate(
+            batch_id=evidence_batch.id,
+            manifest_row_id=1,
+            raw_source_payload={},
+            owner_manifest_values={},
+            normalized_payload={},
+            content_hash="d" * 64,
+            review_status=ImportReviewStatus.NEEDS_REVIEW,
+            linked_project_id=uuid.UUID(project_id),
+            acquisition_summary={"targeted_field_review": {"identity_hold": True}},
+        )
+        db.add(evidence_candidate)
+        await db.commit()
+        candidate_id = evidence_candidate.id
+    for locale in ("en", "ar"):
+        assert (
+            await client.get(f"/api/v1/public/projects/qa-offplan-project?locale={locale}")
+        ).status_code == 404
+        assert (await client.get(f"/api/v1/public/projects?locale={locale}")).json()["meta"][
+            "total"
+        ] == 0
+    assert (
+        await client.get(f"/api/v1/public/projects/qa-offplan-project/media/{media_id}")
+    ).status_code == 404
+    async with SessionLocal() as db:
+        evidence_candidate = await db.get(ProjectImportCandidate, candidate_id)
+        evidence_candidate.acquisition_summary = {
+            "targeted_field_review": {
+                "states": {
+                    "payment_plan": "conflict",
+                    "size_min": "unconfirmed",
+                    "availability_status": "unconfirmed",
+                }
+            }
+        }
+        await db.commit()
+    for locale in ("en", "ar"):
+        safe_public = (
+            await client.get(f"/api/v1/public/projects/qa-offplan-project?locale={locale}")
+        ).json()
+        assert "payment_plan" not in safe_public and "down_payment_percentage" not in safe_public
+        assert "size_min" not in safe_public and "size_max" not in safe_public
+        assert "availability_status" not in safe_public
+        assert "targeted_field_review" not in str(safe_public)
+    async with SessionLocal() as db:
+        evidence_candidate = await db.get(ProjectImportCandidate, candidate_id)
+        await db.delete(evidence_candidate)
+        await db.commit()
     in_place = await client.put(
         f"/api/v1/admin/projects/{project_id}",
         json={**payload, "status": "published", "display_order": 99},
