@@ -1,8 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ArrowLeft, RefreshCw } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 
 import { api, type PageResponse } from "../lib/api";
 import {
@@ -16,24 +15,6 @@ import {
 import { useAuth } from "./auth-provider";
 import { GuardedLink } from "./navigation-guard";
 
-type Diagnostic = {
-  id: string;
-  item_id: string;
-  stage: string;
-  error_code: string;
-  explanation: string;
-  affected_reference?: string | null;
-  retryable: boolean;
-  attempt_count: number;
-  next_retry_at?: string | null;
-  last_successful_stage?: string | null;
-  suggested_resolution: string;
-  resolution_status: string;
-  resolution_note?: string | null;
-  correlation_id: string;
-  latest_occurred_at: string;
-};
-
 type ProcessingItem = {
   id: string;
   candidate_id: string;
@@ -42,9 +23,6 @@ type ProcessingItem = {
   current_stage?: string | null;
   completed_stages: string[];
   attempt_count: number;
-  next_retry_at?: string | null;
-  result_summary: Record<string, unknown>;
-  diagnostics: Diagnostic[];
 };
 
 type ProcessingJob = {
@@ -122,14 +100,6 @@ export function ProcessingJobDetail({ id }: Readonly<{ id: string }>) {
     queryFn: () => api<ProcessingJob>(`/admin/project-processing-jobs/${id}`),
     refetchInterval: 3000,
   });
-  const retry = useMutation({
-    mutationFn: (itemIds?: string[]) => api<ProcessingJob>(
-      `/admin/project-processing-jobs/${id}/retry`,
-      { method: "POST", body: JSON.stringify({ item_ids: itemIds ?? null }) },
-      user?.csrf_token,
-    ),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["project-processing-job", id] }),
-  });
   const cancel = useMutation({
     mutationFn: () => api<ProcessingJob>(
       `/admin/project-processing-jobs/${id}/cancel`,
@@ -142,7 +112,6 @@ export function ProcessingJobDetail({ id }: Readonly<{ id: string }>) {
   if (query.error) return <InlineFeedback tone="error">{query.error.message}</InlineFeedback>;
   if (!query.data) return null;
   const job = query.data;
-  const failed = job.items?.filter((item) => item.status === "failed") ?? [];
   const running = ["queued", "running"].includes(job.status);
   return (
     <section>
@@ -153,7 +122,7 @@ export function ProcessingJobDetail({ id }: Readonly<{ id: string }>) {
         title={job.id}
         action={<StatusBadge status={job.status} />}
       />
-      {(retry.error || cancel.error) ? <InlineFeedback tone="error">{retry.error?.message ?? cancel.error?.message}</InlineFeedback> : null}
+      {cancel.error ? <InlineFeedback tone="error">{cancel.error.message}</InlineFeedback> : null}
       <section className="panel processing-summary">
         <div><span>Progress</span><strong>{job.progress_percent}%</strong></div>
         <div><span>Queued</span><strong>{job.queued_count}</strong></div>
@@ -163,65 +132,15 @@ export function ProcessingJobDetail({ id }: Readonly<{ id: string }>) {
         <div><span>Skipped</span><strong>{job.skipped_count}</strong></div>
       </section>
       <div className="row-actions">
-        {failed.length ? <button className="secondary-button" disabled={retry.isPending} onClick={() => retry.mutate()} type="button"><RefreshCw aria-hidden size={15} />Retry eligible failures</button> : null}
         {running ? <button className="action-button action-button--archive" disabled={cancel.isPending} onClick={() => cancel.mutate()} type="button">Cancel between records</button> : null}
         <button className="secondary-button" onClick={() => downloadSummary(job)} type="button">Download operational summary</button>
       </div>
       <DataTableShell label="Per-record processing results">
         <table>
-          <thead><tr><th>Record</th><th>Status</th><th>Stage</th><th>Completed</th><th>Attempts</th><th>Diagnostic</th><th>Action</th></tr></thead>
-          <tbody>{job.items?.map((item) => {
-            const diagnostic = item.diagnostics.at(-1);
-            return <tr key={item.id}><td>#{item.ordinal}</td><td><StatusBadge status={item.status} /></td><td>{humanize(item.current_stage ?? "waiting")}</td><td>{item.completed_stages.length}/15</td><td>{item.attempt_count}</td><td>{diagnostic?.explanation ?? "—"}</td><td>{item.status === "failed" && diagnostic?.retryable ? <button className="table-link" disabled={retry.isPending} onClick={() => retry.mutate([item.id])} type="button">Retry stage</button> : "—"}</td></tr>;
-          })}</tbody>
+          <thead><tr><th>Record</th><th>Status</th><th>Stage</th><th>Completed</th><th>Attempts</th></tr></thead>
+          <tbody>{job.items?.map((item) => <tr key={item.id}><td>#{item.ordinal}</td><td><StatusBadge status={item.status} /></td><td>{humanize(item.current_stage ?? "waiting")}</td><td>{item.completed_stages.length}/15</td><td>{item.attempt_count}</td></tr>)}</tbody>
         </table>
       </DataTableShell>
-      <details className="panel technical-details"><summary>Authenticated technical references</summary><dl className="detail-grid"><Detail label="Correlation ID" value={job.correlation_id} /><Detail label="Requested action" value={job.requested_action} /><Detail label="Started" value={date(job.started_at)} /><Detail label="Completed" value={date(job.completed_at)} /></dl></details>
-    </section>
-  );
-}
-
-export function ProjectRecoveryQueue() {
-  const { user } = useAuth();
-  const queryClient = useQueryClient();
-  const [filters, setFilters] = useState({ stage: "", code: "", kind: "", status: "" });
-  const [notes, setNotes] = useState<Record<string, string>>({});
-  const params = useMemo(() => {
-    const value = new URLSearchParams();
-    if (filters.stage) value.set("stage", filters.stage);
-    if (filters.code) value.set("error_code", filters.code);
-    if (filters.kind) value.set("retryable", filters.kind);
-    if (filters.status) value.set("resolution_status", filters.status);
-    return value.toString();
-  }, [filters]);
-  const query = useQuery({
-    queryKey: ["project-recovery", params],
-    queryFn: () => api<PageResponse<Diagnostic>>(`/admin/project-recovery${params ? `?${params}` : ""}`),
-  });
-  const action = useMutation({
-    mutationFn: ({ id, name }: { id: string; name: string }) => api<Diagnostic>(
-      `/admin/project-recovery/${id}/actions`,
-      { method: "POST", body: JSON.stringify({ action: name, note: notes[id] }) },
-      user?.csrf_token,
-    ),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["project-recovery"] }),
-  });
-  return (
-    <section>
-      <AdminPageHeader
-        description="Review sanitized diagnostics and rerun only eligible failed stages. Recovery never publishes or invents facts."
-        eyebrow="Off-Plan Operations"
-        title="Recovery Queue"
-      />
-      <div className="resource-filters import-filters">
-        <label>Error stage<input value={filters.stage} onChange={(event) => setFilters((current) => ({ ...current, stage: event.target.value }))} /></label>
-        <label>Error code<input value={filters.code} onChange={(event) => setFilters((current) => ({ ...current, code: event.target.value }))} /></label>
-        <label>Recovery type<select value={filters.kind} onChange={(event) => setFilters((current) => ({ ...current, kind: event.target.value }))}><option value="">All</option><option value="true">Retryable</option><option value="false">Human required</option></select></label>
-        <label>Resolution<select value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}><option value="">All</option><option value="open">Open</option><option value="human-input-required">Human input required</option><option value="resolved">Resolved</option><option value="rejected">Rejected</option></select></label>
-        <button className="secondary-button" onClick={() => setFilters({ stage: "", code: "", kind: "", status: "" })} type="button">Reset filters</button>
-      </div>
-      {action.error ? <InlineFeedback tone="error">{action.error.message}</InlineFeedback> : null}
-      {query.isLoading ? <LoadingState label="Loading recovery diagnostics…" /> : query.error ? <InlineFeedback tone="error">{query.error.message}</InlineFeedback> : !query.data?.items.length ? <DataTableShell label="Recovery diagnostics"><EmptyState description="No diagnostic matches the current filters." title="Recovery queue is clear" /></DataTableShell> : <div className="recovery-list">{query.data.items.map((item) => <article className="panel" key={item.id}><div className="recovery-heading"><AlertTriangle aria-hidden size={18} /><div><h2>{humanize(item.error_code)}</h2><p>{humanize(item.stage)} · attempt {item.attempt_count}</p></div><StatusBadge status={item.resolution_status} /></div><p>{item.explanation}</p><p><strong>Suggested resolution:</strong> {item.suggested_resolution}</p><label>Required operator note<textarea rows={2} value={notes[item.id] ?? ""} onChange={(event) => setNotes((current) => ({ ...current, [item.id]: event.target.value }))} /></label><div className="row-actions"><button className="secondary-button" disabled={(notes[item.id]?.trim().length ?? 0) < 3 || action.isPending} onClick={() => action.mutate({ id: item.id, name: "retry-acquisition" })} type="button">Retry acquisition</button><button className="secondary-button" disabled={(notes[item.id]?.trim().length ?? 0) < 3 || action.isPending} onClick={() => action.mutate({ id: item.id, name: "retry-official-source" })} type="button">Retry official source</button><button className="secondary-button" disabled={(notes[item.id]?.trim().length ?? 0) < 3 || action.isPending} onClick={() => action.mutate({ id: item.id, name: "retry-media" })} type="button">Retry media</button><button className="secondary-button" disabled={(notes[item.id]?.trim().length ?? 0) < 3 || action.isPending} onClick={() => action.mutate({ id: item.id, name: "retry-overview" })} type="button">Retry Overview</button><button className="secondary-button" disabled={(notes[item.id]?.trim().length ?? 0) < 3 || action.isPending} onClick={() => action.mutate({ id: item.id, name: "resume-failed-stage" })} type="button">Resume failed stage</button><button className="secondary-button" disabled={(notes[item.id]?.trim().length ?? 0) < 3 || action.isPending} onClick={() => action.mutate({ id: item.id, name: "request-human-input" })} type="button">Request human input</button><button className="action-button action-button--archive" disabled={(notes[item.id]?.trim().length ?? 0) < 3 || action.isPending} onClick={() => action.mutate({ id: item.id, name: "reject" })} type="button">Reject candidate</button></div><details className="technical-details"><summary>Diagnostic references</summary><dl className="detail-grid"><Detail label="Affected item" value={item.affected_reference ?? "—"} /><Detail label="Last successful stage" value={item.last_successful_stage ?? "None"} /><Detail label="Next retry" value={date(item.next_retry_at)} /><Detail label="Correlation ID" value={item.correlation_id} /></dl></details></article>)}</div>}
     </section>
   );
 }
@@ -239,7 +158,6 @@ function downloadSummary(job: ProcessingJob) {
       ordinal: item.ordinal,
       status: item.status,
       stage: item.current_stage,
-      error_code: item.diagnostics.at(-1)?.error_code,
     })),
   };
   const url = URL.createObjectURL(new Blob([JSON.stringify(safe, null, 2)], { type: "application/json" }));
@@ -248,10 +166,6 @@ function downloadSummary(job: ProcessingJob) {
   link.download = `project-processing-${job.id}.json`;
   link.click();
   URL.revokeObjectURL(url);
-}
-
-function Detail({ label, value }: Readonly<{ label: string; value: string }>) {
-  return <div><dt>{label}</dt><dd>{value}</dd></div>;
 }
 
 function date(value?: string | null) {

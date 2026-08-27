@@ -1,0 +1,59 @@
+# Optional owner-local web runtime. Existing API/database services are untouched.
+services:
+  public-web:
+    build:
+      context: .
+      dockerfile: apps/Dockerfile.web
+      target: public-runtime
+      secrets:
+        - h1-regular
+        - h1-italic
+        - headings
+        - body
+        - decorative
+        - signature
+        - arabic-h1
+    environment:
+      ARE_API_URL: http://api:8000/api/v1
+      ARE_PRIVATE_FONT_DIR: /run/are-fonts
+    ports:
+      - "127.0.0.1:50001:50001"
+    volumes:
+      - type: bind
+        source: ./apps/public-web/.private-fonts
+        target: /run/are-fonts
+        read_only: true
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:50001/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+  admin-web:
+    build:
+      context: .
+      dockerfile: apps/Dockerfile.web
+      target: admin-runtime
+    ports:
+      - "127.0.0.1:50002:50002"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:50002/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+secrets:
+  h1-regular:
+    file: ./apps/public-web/.private-fonts/h1-regular.woff2
+  h1-italic:
+    file: ./apps/public-web/.private-fonts/h1-italic.woff2
+  headings:
+    file: ./apps/public-web/.private-fonts/headings.ttf
+  body:
+    file: ./apps/public-web/.private-fonts/body.woff2
+  decorative:
+    file: ./apps/public-web/.private-fonts/decorative.ttf
+  signature:
+    file: ./apps/public-web/.private-fonts/signature.woff2
+  arabic-h1:
+    file: ./apps/public-web/.private-fonts/arabic-h1.woff2

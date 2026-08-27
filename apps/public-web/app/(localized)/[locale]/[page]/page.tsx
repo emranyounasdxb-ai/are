@@ -232,7 +232,7 @@ function CommunitiesContent({ locale }: Readonly<{ locale: Locale }>) {
         ))}
       </div>
       <div className="inner-actions">
-        <Link className="button button--primary" href={`/${locale}/properties`}>{copy.discoveryAction}</Link>
+        <Link className="button button--primary animated-gold-border" href={`/${locale}/properties`}>{copy.discoveryAction}</Link>
         <Link className="text-link" href={`/${locale}/contact`}>{copy.enquiryAction}</Link>
       </div>
     </section>
@@ -259,7 +259,7 @@ async function OffPlanContent({ locale }: Readonly<{ locale: Locale }>) {
         ))}
       </ol>
       <div className="inner-actions">
-        <Link className="button button--primary" href={`/${locale}/contact`}>{copy.enquiryAction}</Link>
+        <Link className="button button--primary animated-gold-border" href={`/${locale}/contact`}>{copy.enquiryAction}</Link>
         <Link className="text-link" href={`/${locale}/properties`}>{copy.searchAction}</Link>
       </div>
     </section>
@@ -287,7 +287,7 @@ function AboutContent({ locale }: Readonly<{ locale: Locale }>) {
         {copy.principles.map((item) => (
           <article key={item.label}><h3>{item.label}</h3><p>{item.text}</p></article>
         ))}
-        <Link className="button button--primary" href={`/${locale}/contact`}>{copy.action}</Link>
+        <Link className="button button--primary animated-gold-border" href={`/${locale}/contact`}>{copy.action}</Link>
       </div>
     </section>
   );

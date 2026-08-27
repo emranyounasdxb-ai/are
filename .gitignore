@@ -14,3 +14,11 @@ __pycache__/
 *.py[cod]
 services/api/private-storage/
 services/api/.coverage
+**/.private-fonts/
+# Owner-only font assets and purchase evidence must never enter public Git.
+apps/public-web/app/fonts/
+apps/public-web/public/fonts/**/*.ttf
+apps/public-web/public/fonts/**/*.otf
+apps/public-web/public/fonts/**/*.woff
+apps/public-web/public/fonts/**/*.woff2
+docs/licenses/fonts/

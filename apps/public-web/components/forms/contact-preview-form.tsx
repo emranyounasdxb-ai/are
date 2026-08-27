@@ -51,7 +51,7 @@ export function ContactPreviewForm({ initialEnquiryType, locale, selectedDevelop
     <label className="contact-form__consent"><input name="contactConsent" required type="checkbox"/><span>{locale === "ar" ? "أوافق على معالجة بياناتي للرد على هذا الطلب." : "I agree to the processing of my data to respond to this request."}</span></label>
     <label className="contact-form__consent"><input name="marketingConsent" type="checkbox"/><span>{locale === "ar" ? "أرغب في تلقي تحديثات تسويقية (اختياري)." : "I would like to receive marketing updates (optional)."}</span></label>
     <p className="contact-form__note">{locale === "ar" ? "تُستخدم بياناتك لإدارة طلبك وفق إشعار الخصوصية." : "Your data is used to manage your request under the privacy notice."}</p>
-    <button className="button button--primary" disabled={state === "submitting"} type="submit">{copy.submit}<span aria-hidden="true" className="directional-icon">→</span></button>
+    <button className="button button--primary animated-gold-border" disabled={state === "submitting"} type="submit">{copy.submit}<span aria-hidden="true" className="directional-icon">→</span></button>
     <p aria-live="polite" className="contact-form__feedback" data-state={state} id="contact-form-feedback" role={state === "error" ? "alert" : "status"}>{message}</p>
   </form>;
 }

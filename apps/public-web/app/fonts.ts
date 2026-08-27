@@ -1,26 +1,16 @@
-import { IBM_Plex_Sans_Arabic, Manrope, Playfair_Display } from "next/font/google";
+import localFont from "next/font/local";
 
-const manrope = Manrope({
+// Preserve the existing Arabic body mapping. Purchased faces are runtime-only;
+// their source files are never imported into the build or public repository.
+const ibmPlexSansArabic = localFont({
   display: "swap",
-  subsets: ["latin"],
-  variable: "--font-body-latin",
-});
-
-const playfairDisplay = Playfair_Display({
-  display: "swap",
-  subsets: ["latin"],
-  variable: "--font-luxury-accent",
-});
-
-const ibmPlexSansArabic = IBM_Plex_Sans_Arabic({
-  display: "swap",
-  subsets: ["arabic"],
+  src: [
+    { path: "../../../node_modules/@fontsource/ibm-plex-sans-arabic/files/ibm-plex-sans-arabic-arabic-400-normal.woff2", weight: "400", style: "normal" },
+    { path: "../../../node_modules/@fontsource/ibm-plex-sans-arabic/files/ibm-plex-sans-arabic-arabic-500-normal.woff2", weight: "500", style: "normal" },
+    { path: "../../../node_modules/@fontsource/ibm-plex-sans-arabic/files/ibm-plex-sans-arabic-arabic-600-normal.woff2", weight: "600", style: "normal" },
+    { path: "../../../node_modules/@fontsource/ibm-plex-sans-arabic/files/ibm-plex-sans-arabic-arabic-700-normal.woff2", weight: "700", style: "normal" },
+  ],
   variable: "--font-arabic",
-  weight: ["400", "500", "600", "700"],
 });
 
-export const publicFontVariables = [
-  manrope.variable,
-  playfairDisplay.variable,
-  ibmPlexSansArabic.variable,
-].join(" ");
+export const publicFontVariables = `are-private-fonts ${ibmPlexSansArabic.variable}`;

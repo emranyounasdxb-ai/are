@@ -106,7 +106,7 @@ function LocalizedDeveloper({ developer, locale }: Readonly<{ developer: PublicD
             <div><dt>{copy.note}</dt><dd>{developer.verification_note}</dd></div>
           </dl>
           <div className="premium-home__actions">
-            <a className="button button--primary" href={developer.official_website} rel="noreferrer" target="_blank">{copy.website}</a>
+            <a className="button button--primary animated-gold-border" href={developer.official_website} rel="noreferrer" target="_blank">{copy.website}</a>
             <a className="button button--secondary" href={developer.source_url} rel="noreferrer" target="_blank">{copy.government}</a>
           </div>
           {developer.additional_source_urls.length ? <div className="developer-profile-sources__additional"><strong>{copy.additional}</strong><ul>{developer.additional_source_urls.map((source, index) => <li key={source}><a href={source} rel="noreferrer" target="_blank">{ar ? `المصدر ${index + 1}` : `Source ${index + 1}`}</a></li>)}</ul></div> : null}
@@ -114,7 +114,7 @@ function LocalizedDeveloper({ developer, locale }: Readonly<{ developer: PublicD
 
         <section aria-labelledby="developer-enquiry-title" className="home-closing-v2 developer-profile-enquiry">
           <div><p>ARE / {ar ? "استفسار المطور" : "DEVELOPER ENQUIRY"}</p><h2 id="developer-enquiry-title">{copy.enquire}</h2><span>{copy.enquireText}</span></div>
-          <Link className="button button--primary" href={`/${locale}/contact?topic=developer&developer=${developer.slug}`}>{copy.enquire}</Link>
+          <Link className="button button--primary animated-gold-border" href={`/${locale}/contact?topic=developer&developer=${developer.slug}`}>{copy.enquire}</Link>
         </section>
 
         <RelatedPages heading={copy.related} items={ar ? [
