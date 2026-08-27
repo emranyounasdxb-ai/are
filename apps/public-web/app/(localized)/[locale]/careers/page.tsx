@@ -3,13 +3,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { CareersApplicationForm } from "../../../../components/careers/careers-application-form";
-import { Breadcrumbs, Checklist, EditorialCards, FaqSection, FinalCta, ProcessList, RelatedPages } from "../../../../components/content/editorial-content";
-import { Reveal } from "../../../../components/motion/reveal";
+import { Checklist, EditorialCards, FaqSection, FinalCta, ProcessList, RelatedPages } from "../../../../components/content/editorial-content";
+import { PageHero } from "../../../../components/hero/page-hero";
 import { SiteFooter } from "../../../../components/navigation/site-footer";
 import { careerInterests, careersCopy } from "../../../../lib/careers-data";
 import { getJobs } from "../../../../lib/api";
 import { homeCopy, isLocale, locales, type Locale } from "../../../../lib/home-copy";
-import { richCopy } from "../../../../lib/rich-copy";
 
 type Props = Readonly<{ params: Promise<{ locale: string }>; searchParams: Promise<{ job?: string }> }>;
 
@@ -40,18 +39,10 @@ async function LocalizedCareers({ jobSlug, locale }: Readonly<{ jobSlug?: string
   return (
     <div className="careers-page" id="top">
       <main id="main-content">
-        <section aria-labelledby="careers-title" className="careers-hero">
-          <div className="careers-hero__grid" aria-hidden="true"><span /><span /><span /></div>
-          <div className="careers-hero__inner">
-            <Breadcrumbs items={[{ href: `/${locale}`, label: richCopy[locale].homeLabel }, { label: copy.breadcrumb }]} label={richCopy[locale].breadcrumb} />
-            <Reveal className="careers-hero__copy" distance={18}>
-              <p>{copy.hero.eyebrow}</p>
-              <h1 id="careers-title">{copy.hero.title}</h1>
-              <span>{copy.hero.text}</span>
-            </Reveal>
-            <div className="careers-hero__note"><span>ARE / CAREERS</span><p>{copy.hero.note}</p></div>
-          </div>
-        </section>
+        <PageHero description={copy.hero.text} eyebrow={copy.hero.eyebrow} image="careers" locale={locale} title={copy.hero.title}
+          primary={{ label: copy.opportunities.action, href: "#application" }}
+          secondary={{ label: homeCopy[locale].hero.secondaryAction, href: `/${locale}/contact` }}
+          note={<><span>ARE / CAREERS</span><p>{copy.hero.note}</p></>} />
 
         <section aria-labelledby="careers-intro-title" className="content-section content-section--intro">
           <div className="content-heading"><p>{copy.intro.eyebrow}</p><h2 id="careers-intro-title">{copy.intro.title}</h2></div>

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { ContactPreviewForm } from "../../../../components/forms/contact-preview-form";
+import { PageHero } from "../../../../components/hero/page-hero";
 import {
   Breadcrumbs,
   Checklist,
@@ -65,11 +66,28 @@ async function LocalizedInnerPage({
   const home = homeCopy[locale];
   const site = siteCopy[locale];
   const copy = site.pages[page];
+  const purpose = firstValue(query.purpose);
+  const journey = page === "properties" ? home.journeys.find((item) => item.purpose === (purpose === "rent" ? "rent" : "buy")) : undefined;
+  const heroAction = page === "properties"
+    ? { label: journey!.linkLabel, href: "#property-search-title" }
+    : page === "communities"
+      ? { label: site.communities.discoveryAction, href: `/${locale}/properties` }
+      : page === "off-plan"
+        ? { label: home.header.offPlan, href: "#published-projects-title" }
+        : { label: site.common.contactAction, href: "#contact-form-title" };
 
   return (
     <div className={`inner-page inner-page--${page}`} id="top">
       <main id="main-content">
-        <section aria-labelledby="page-title" className="inner-hero">
+        {page !== "about" ? <PageHero
+          description={journey?.text ?? copy.description}
+          eyebrow={journey ? `${journey.title} / ${copy.eyebrow}` : copy.eyebrow}
+          image={page === "properties" ? (purpose === "rent" ? "rent" : "buy") : page}
+          locale={locale}
+          primary={heroAction}
+          secondary={page === "contact" ? undefined : { label: home.hero.secondaryAction, href: `/${locale}/contact` }}
+          title={journey ? `${journey.title} — ${copy.title}` : copy.title}
+        /> : <section aria-labelledby="page-title" className="inner-hero">
           <div className="inner-hero__orbit" aria-hidden="true" />
           <div className="inner-hero__grid">
             <div className="inner-hero__copy">
@@ -91,7 +109,7 @@ async function LocalizedInnerPage({
               <small>ARE / {String(pageSlugs.indexOf(page) + 2).padStart(2, "0")}</small>
             </div>
           </div>
-        </section>
+        </section>}
         {await renderPageContent(locale, page, query)}
         <PageEditorial locale={locale} page={page} />
       </main>
