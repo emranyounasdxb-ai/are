@@ -76,6 +76,13 @@ from app.models import (
     PublicationStatus,
     UAEEmirate,
 )
+from app.project_approval import (
+    RECEIPT_VERSION,
+    ProjectApprovalInput,
+    approval_state,
+    require_current_receipt,
+    validate_review,
+)
 from app.project_processing import (
     cancel_processing_job,
     create_processing_job,
@@ -151,7 +158,9 @@ def project_options() -> tuple[Any, ...]:
     )
 
 
-async def project_or_404(record_id: uuid.UUID, db: AsyncSession) -> Project:
+async def project_or_404(record_id: uuid.UUID, db: AsyncSession, *, lock: bool = False) -> Project:
+    if lock:
+        await db.execute(select(Project.id).where(Project.id == record_id).with_for_update())
     record = await db.scalar(
         select(Project).where(Project.id == record_id).options(*project_options())
     )
@@ -512,6 +521,15 @@ async def preview_project(
     return project_preview_dict(await project_or_404(record_id, db), locale)
 
 
+@admin_router.get("/projects/{record_id}/approval-review")
+async def get_project_approval_review(
+    record_id: uuid.UUID,
+    _: AuthContext = Depends(require_permission("project.read")),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    return await approval_state(await project_or_404(record_id, db), db)
+
+
 @admin_router.get("/projects/{record_id}/preview-media/{media_id}")
 async def preview_project_media(
     record_id: uuid.UUID,
@@ -600,7 +618,7 @@ async def update_project(
     context: AuthContext = Depends(require_mutation_permission("project.update")),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
-    record = await project_or_404(record_id, db)
+    record = await project_or_404(record_id, db, lock=True)
     if record.status == PublicationStatus.PUBLISHED:
         if payload.status == PublicationStatus.ARCHIVED:
             record.status = PublicationStatus.ARCHIVED
@@ -653,6 +671,7 @@ async def update_project(
         await db.flush()
         refreshed = await project_or_404(record.id, db)
         validate_publication(refreshed)
+        await require_current_receipt(refreshed, db)
         record.published_at = datetime.now(UTC)
         record.archived_at = None
         baseline_number = (
@@ -1018,7 +1037,7 @@ async def submit_project_for_review(
     context: AuthContext = Depends(require_mutation_permission("project.update")),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
-    record = await project_or_404(record_id, db)
+    record = await project_or_404(record_id, db, lock=True)
     if record.status != PublicationStatus.DRAFT:
         raise HTTPException(
             status.HTTP_409_CONFLICT,
@@ -1045,12 +1064,16 @@ async def submit_project_for_review(
 @admin_router.post("/projects/{record_id}/approve")
 async def approve_project(
     record_id: uuid.UUID,
+    payload: ProjectApprovalInput,
     request: Request,
     context: AuthContext = Depends(require_mutation_permission("project.publish")),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
-    record = await project_or_404(record_id, db)
-    if record.workflow_status != ProjectWorkflowStatus.IN_REVIEW:
+    record = await project_or_404(record_id, db, lock=True)
+    if (
+        record.status != PublicationStatus.DRAFT
+        or record.workflow_status != ProjectWorkflowStatus.IN_REVIEW
+    ):
         raise HTTPException(
             status.HTTP_409_CONFLICT,
             detail={
@@ -1059,6 +1082,7 @@ async def approve_project(
             },
         )
     validate_approval(record)
+    await validate_review(record, payload, db)
     record.workflow_status = ProjectWorkflowStatus.APPROVED
     record.updated_by = context.user.id
     await write_audit(
@@ -1069,6 +1093,13 @@ async def approve_project(
         actor_user_id=context.user.id,
         correlation_id=request_correlation_id(request),
         after={"workflow_status": record.workflow_status.value},
+        metadata={
+            "version": RECEIPT_VERSION,
+            "content_version": payload.content_version,
+            "reviewer": context.user.display_name,
+            "checks": {key: value.model_dump() for key, value in payload.checks.items()},
+            "media_permissions": payload.media_permissions,
+        },
     )
     await db.commit()
     return project_dict(await project_or_404(record.id, db))
@@ -1084,7 +1115,7 @@ async def upload_project_media(
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
-    record = await project_or_404(record_id, db)
+    record = await project_or_404(record_id, db, lock=True)
     media = next((item for item in record.media if item.id == media_id), None)
     if not media:
         raise HTTPException(

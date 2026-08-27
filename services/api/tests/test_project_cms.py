@@ -247,12 +247,109 @@ async def test_project_rbac_publication_and_public_field_boundaries(
     )
     assert submitted.status_code == 200, submitted.text
     assert submitted.json()["workflow_status"] == "in-review"
+    review = (await client.get(f"/api/v1/admin/projects/{project_id}/approval-review")).json()
+    review_payload = {
+        "content_version": review["content_version"],
+        "checks": {
+            key: {"confirmed": True, "evidence_reference": "Private synthetic QA review evidence"}
+            for key in review["required_checks"]
+        },
+        "media_permissions": {
+            item["sha256"]: "Synthetic QA licence; web use permitted" for item in review["media"]
+        },
+    }
+    no_csrf = await client.post(f"/api/v1/admin/projects/{project_id}/approve", json=review_payload)
+    assert no_csrf.status_code == 403
+    incomplete = await client.post(
+        f"/api/v1/admin/projects/{project_id}/approve",
+        json={**review_payload, "checks": {}},
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert incomplete.status_code == 422
+    stale = await client.post(
+        f"/api/v1/admin/projects/{project_id}/approve",
+        json={**review_payload, "content_version": "0" * 64},
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert stale.status_code == 409
+    no_permission_evidence = await client.post(
+        f"/api/v1/admin/projects/{project_id}/approve",
+        json={**review_payload, "media_permissions": {}},
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert no_permission_evidence.status_code == 422
+    for invalid_reference in (
+        "   Automatically approved by scraping pipeline",
+        "https://developer.example.com/project/image.webp",
+    ):
+        inferred_permission = await client.post(
+            f"/api/v1/admin/projects/{project_id}/approve",
+            json={
+                **review_payload,
+                "media_permissions": {
+                    item["sha256"]: invalid_reference for item in review["media"]
+                },
+            },
+            headers={"X-CSRF-Token": csrf},
+        )
+        assert inferred_permission.status_code == 422
     approved = await client.post(
         f"/api/v1/admin/projects/{project_id}/approve",
+        json=review_payload,
         headers={"X-CSRF-Token": csrf},
     )
     assert approved.status_code == 200, approved.text
     assert approved.json()["workflow_status"] == "approved"
+    receipt = (await client.get(f"/api/v1/admin/projects/{project_id}/approval-review")).json()[
+        "receipt"
+    ]
+    assert receipt["current"] is True
+    assert receipt["reviewer"] and receipt["reviewed_at"]
+    assert (await client.get("/api/v1/public/projects?locale=en")).json()["meta"]["total"] == 0
+    changed_image = io.BytesIO()
+    Image.new("RGB", (1600, 900), "#335533").save(changed_image, "WEBP")
+    replaced_image = await client.post(
+        f"/api/v1/admin/projects/{project_id}/media/{media_id}",
+        files={"image": ("replacement.webp", changed_image.getvalue(), "image/webp")},
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert replaced_image.status_code == 200
+    changed_receipt = (
+        await client.get(f"/api/v1/admin/projects/{project_id}/approval-review")
+    ).json()["receipt"]
+    assert changed_receipt["current"] is False
+    replaced_publish = await client.put(
+        f"/api/v1/admin/projects/{project_id}",
+        json={**payload, "status": "published"},
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert replaced_publish.status_code == 422
+    restored_image = await client.post(
+        f"/api/v1/admin/projects/{project_id}/media/{media_id}",
+        files={"image": ("project.webp", image.getvalue(), "image/webp")},
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert restored_image.status_code == 200
+    # Re-uploading even identical bytes creates a new private asset version.
+    # It must be reviewed again, not silently inherit the previous receipt.
+    resubmitted = await client.post(
+        f"/api/v1/admin/projects/{project_id}/submit-review",
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert resubmitted.status_code == 200
+    fresh_review = (await client.get(f"/api/v1/admin/projects/{project_id}/approval-review")).json()
+    reapproved = await client.post(
+        f"/api/v1/admin/projects/{project_id}/approve",
+        json={**review_payload, "content_version": fresh_review["content_version"]},
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert reapproved.status_code == 200, reapproved.text
+    changed_publish = await client.put(
+        f"/api/v1/admin/projects/{project_id}",
+        json={**payload, "status": "published", "display_order": 55},
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert changed_publish.status_code == 422
     published = await client.put(
         f"/api/v1/admin/projects/{project_id}",
         json={**payload, "status": "published"},
@@ -272,6 +369,8 @@ async def test_project_rbac_publication_and_public_field_boundaries(
     assert "raw_source_payload" not in public_record
     assert "sources" not in public_record
     assert "workflow_status" not in public_record
+    assert "receipt" not in public_record
+    assert "media_permissions" not in public_record
     assert "down_payment_source_value" not in public_record
     assert "source_id" not in public_record["payment_plan"]
     assert "source_value" not in public_record["payment_plan"]["milestones"][0]
