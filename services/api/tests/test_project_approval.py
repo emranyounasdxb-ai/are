@@ -41,6 +41,7 @@ async def test_import_review_gates_are_independent_of_populated_fields() -> None
         payment_plan=None,
     )
     candidate = SimpleNamespace(
+        acquisition_summary={},
         validation_errors=[{"field": "handover", "code": "missing_source_evidence"}],
         conflict_reasons=["Synthetic source disagreement"],
         human_review_completed=False,
@@ -49,9 +50,8 @@ async def test_import_review_gates_are_independent_of_populated_fields() -> None
     )
     db = SimpleNamespace(scalars=AsyncMock(return_value=Mock(all=lambda: [candidate])))
     blockers = await technical_blockers(record, db)
-    assert len(blockers) == 4
-    assert any("missing/unverified" in item for item in blockers)
-    assert "Unresolved source conflicts" in blockers
+    assert len(blockers) == 3
+    assert "Unresolved Project identity or unclassified source conflict" in blockers
     assert "Imported facts and Arabic require human review" in blockers
     assert "Imported bilingual Overview requires editorial approval" in blockers
     candidate.validation_errors = []
@@ -60,3 +60,27 @@ async def test_import_review_gates_are_independent_of_populated_fields() -> None
     candidate.arabic_review_required = False
     candidate.editorial_draft.approval_status = EditorialApprovalStatus.APPROVED
     assert await technical_blockers(record, db) == []
+    candidate.validation_errors = [
+        {"field": field, "code": "missing_source_evidence"}
+        for field in (
+            "availability_status",
+            "construction_status",
+            "handover",
+            "bedrooms",
+            "size_range",
+            "amenities",
+            "payment_plan",
+            "down_payment",
+        )
+    ]
+    candidate.conflict_reasons = ["Source disagreement for down_payment_percentage: 4 | 5."]
+    record.payment_plan = SimpleNamespace(verified_at=None)
+    assert await technical_blockers(record, db) == []
+    assert candidate.conflict_reasons  # Omission never clears the retained disagreement.
+    candidate.acquisition_summary = {"targeted_field_review": {"identity_hold": True}}
+    assert any("identity" in item for item in await technical_blockers(record, db))
+    candidate.acquisition_summary = {}
+    record.media = []
+    assert "Prepared landscape Cover with bilingual metadata required" in await technical_blockers(
+        record, db
+    )

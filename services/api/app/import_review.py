@@ -45,12 +45,12 @@ from app.models import (
     ProjectUnitType,
     PublicationStatus,
 )
+from app.project_field_policy import critical_candidate_errors
 from app.schemas import ImportBulkActionInput
 
 
 def eligibility_errors(candidate: ProjectImportCandidate) -> list[str]:
     errors: list[str] = []
-    proposal = candidate.normalized_payload or {}
     if not candidate.proposed_developer_id:
         errors.append("Canonical Developer is required.")
     if not candidate.proposed_area_id:
@@ -59,17 +59,17 @@ def eligibility_errors(candidate: ProjectImportCandidate) -> list[str]:
         errors.append("An official source is required.")
     if not candidate.normalized_project_name:
         errors.append("A source-grounded project name is required.")
-    if candidate.validation_errors:
-        errors.append("Missing source-grounded fields must be resolved.")
-    if candidate.conflict_reasons:
-        errors.append("Source conflicts must be resolved.")
+    errors.extend(
+        critical_candidate_errors(
+            candidate.acquisition_summary,
+            candidate.validation_errors,
+            candidate.conflict_reasons,
+        )
+    )
     if candidate.arabic_review_required:
         errors.append("Arabic evidence requires human review.")
     if not candidate.human_review_completed:
         errors.append("Human review must be completed.")
-    for key in ("property_types", "bedrooms", "availability_status", "construction_status"):
-        if proposal.get(key) in (None, [], {}):
-            errors.append(f"{key.replace('_', ' ').title()} is required.")
     return errors
 
 

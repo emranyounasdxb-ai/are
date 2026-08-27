@@ -119,7 +119,7 @@ function CandidateReviewContent({ areas, batchId, candidateId, developers, item 
   const overviewApproval = useMutation({ mutationFn: (approved: boolean) => api<CandidateDetail>(`/admin/project-imports/candidates/${candidateId}/overview-approval`, { method: "POST", body: JSON.stringify({ approved, expected_source_version: item.editorial_draft?.source_version }) }, user?.csrf_token), onSuccess: invalidate });
   const facts = item.normalized_payload ?? {};
   const missing = item.missing_fields.map(humanize);
-  const blockers = [...missing, ...item.conflict_reasons, ...item.eligibility_errors];
+  const blockers = item.eligibility_errors;
   const tabs = [["summary", "Summary"], ["facts", "Project Facts"], ["overview", "Overview EN/AR"], ["media", "Media"], ["sources", "Sources & Evidence"], ["changes", "Changes"], ["diagnostics", "Diagnostics"]] as const;
   const developerName = optionName(developers, item.proposed_developer_id) ?? item.owner_developer;
   const areaName = optionName(areas, item.proposed_area_id) ?? item.owner_area;

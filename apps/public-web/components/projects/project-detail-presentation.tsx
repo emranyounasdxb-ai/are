@@ -319,8 +319,8 @@ function normalizeProject(project: PresentationProject, locale: Locale, mediaBas
     developer: project.developer.name,
     emirate: project.emirate,
     area,
-    propertyTypes: project.property_types,
-    bedrooms: project.bedroom_options,
+    propertyTypes: project.property_types ?? [],
+    bedrooms: project.bedroom_options ?? [],
     unitTypes: project.unit_types?.map((item) => item.label) ?? [],
     size: sizeLabel(project.size_min, project.size_max, project.size_unit, locale),
     downPayment: project.down_payment_percentage == null ? null : `${project.down_payment_percentage}%`,
@@ -397,7 +397,7 @@ function mediaUrl(baseUrl: string, path: string) {
 }
 
 function sizeLabel(minimum: string | number | null | undefined, maximum: string | number | null | undefined, unit: string | null | undefined, locale: Locale) {
-  if (minimum == null && maximum == null) return null;
+  if (!unit || !(Number(minimum) > 0) || !(Number(maximum) > 0)) return null;
   const format = (value: string | number) => Number(value).toLocaleString(locale === "ar" ? "ar-AE" : "en-AE");
   const range = minimum != null && maximum != null ? `${format(minimum)}–${format(maximum)}` : format((minimum ?? maximum) as string | number);
   const localizedUnit = locale === "ar" && unit === "sqft" ? "قدم²" : unit ?? "";
@@ -430,9 +430,8 @@ function statusLabel(value: string, locale: Locale) {
     "near-completion": ["Near completion", "قرب الاكتمال"],
     completed: ["Completed", "مكتمل"],
     "on-hold": ["On hold", "متوقف مؤقتاً"],
-    "not-confirmed": ["Not confirmed", "غير مؤكد"],
   };
-  return labels[value]?.[locale === "ar" ? 1 : 0] ?? value.replaceAll("-", " ");
+  return labels[value]?.[locale === "ar" ? 1 : 0] ?? null;
 }
 
 function whatsappUrl(projectName: string, locale: Locale) {

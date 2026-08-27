@@ -422,8 +422,6 @@ def project_dict(record: Project, locale: str | None = None) -> dict[str, Any]:
 def project_preview_dict(record: Project, locale: str) -> dict[str, Any]:
     """Return the public allowlist for an authenticated canonical Project preview."""
     data = project_dict(record, locale)
-    data["availability_status"] = record.availability_status.value
-    data["construction_status"] = record.construction_status.value
     data["media"] = [
         {
             **item,
@@ -759,7 +757,7 @@ def candidate_public_preview_dict(
 
 
 def import_candidate_summary_dict(record: ProjectImportCandidate) -> dict[str, Any]:
-    from app.import_review import draft_eligibility_errors
+    from app.import_review import draft_eligibility_errors, eligibility_errors
 
     missing = [
         str(item.get("field", "Unknown"))
@@ -772,23 +770,8 @@ def import_candidate_summary_dict(record: ProjectImportCandidate) -> dict[str, A
     ]
     media_statuses = [item.stage_status for item in record.staged_media]
     accepted_media = [item for item in record.staged_media if item.stage_status == "downloaded"]
-    blockers = [_review_message(item) for item in record.validation_errors]
-    blockers.extend(str(item) for item in record.conflict_reasons)
-    if not record.proposed_developer_id:
-        blockers.append("Select the canonical Developer.")
-    if not record.proposed_area_id:
-        blockers.append("Select the canonical Area.")
-    if not record.official_source_url:
-        blockers.append("Official evidence is incomplete.")
-    proposal = record.normalized_payload or {}
-    for key in ("property_types", "bedrooms", "availability_status", "construction_status"):
-        if proposal.get(key) in (None, [], {}):
-            blockers.append(f"Review the source-grounded {key.replace('_', ' ')}.")
-    if record.arabic_review_required:
-        blockers.append("Arabic evidence requires human review.")
-    if not record.human_review_completed:
-        blockers.append("Complete the human field review.")
-    ready = not blockers and bool(record.official_source_url)
+    blockers = eligibility_errors(record)
+    ready = not blockers
     status = record.review_status
     eligibility = {
         "retry-acquisition": status == ImportReviewStatus.FAILED,
@@ -846,19 +829,6 @@ def import_candidate_summary_dict(record: ProjectImportCandidate) -> dict[str, A
         "processing_eligibility_errors": processing_eligibility_errors(record),
         "updated_at": record.updated_at,
     }
-
-
-def _review_message(value: dict[str, Any]) -> str:
-    code = str(value.get("code", ""))
-    field = str(value.get("field", "evidence")).replace("_", " ")
-    messages = {
-        "official_source_not_found": "No matching public official Project page was found.",
-        "missing_official_evidence": f"Official evidence is incomplete for {field}.",
-        "missing_canonical_area": "Select the canonical Area.",
-        "missing_canonical_developer": "Select the canonical Developer.",
-        "name_conflict": "Manifest and official Project names differ.",
-    }
-    return messages.get(code, str(value.get("message") or f"Review {field}."))
 
 
 def insight_dict(record: InsightPost, locale: str | None = None) -> dict[str, Any]:

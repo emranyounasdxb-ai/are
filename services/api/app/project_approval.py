@@ -20,6 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import AuditLog, EditorialApprovalStatus, Project, ProjectImportCandidate
+from app.project_field_policy import critical_candidate_errors
 from app.serializers import project_dict
 
 CHECKS = ("facts", "english", "arabic", "media_rights", "seo", "disclaimer", "preview")
@@ -118,8 +119,6 @@ async def technical_blockers(record: Project, db: AsyncSession) -> list[str]:
         blockers.append(
             "Every attached media asset requires preparation, metadata and rights review"
         )
-    if record.payment_plan and not record.payment_plan.verified_at:
-        blockers.append("Payment-plan applicability and verification required")
     candidates = (
         await db.scalars(
             select(ProjectImportCandidate).where(
@@ -128,10 +127,14 @@ async def technical_blockers(record: Project, db: AsyncSession) -> list[str]:
         )
     ).all()
     for candidate in candidates:
-        if candidate.validation_errors:
-            blockers.append("Imported missing/unverified fields require resolution before approval")
-        if candidate.conflict_reasons:
-            blockers.append("Unresolved source conflicts")
+        blockers.extend(
+            critical_candidate_errors(
+                candidate.acquisition_summary,
+                candidate.validation_errors,
+                candidate.conflict_reasons,
+                canonical_cover_checked=True,
+            )
+        )
         if not candidate.human_review_completed or candidate.arabic_review_required:
             blockers.append("Imported facts and Arabic require human review")
         if (

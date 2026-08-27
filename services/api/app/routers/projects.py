@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import math
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -93,6 +94,7 @@ from app.project_processing import (
     resolve_diagnostic,
     retry_failed_items,
 )
+from app.public_project_evidence import public_evidenced_project
 from app.schemas import (
     AreaInput,
     DiagnosticResolutionInput,
@@ -116,7 +118,6 @@ from app.serializers import (
     import_candidate_dict,
     import_candidate_summary_dict,
     project_dict,
-    project_preview_dict,
 )
 from app.storage import PrivateStorage
 
@@ -518,7 +519,18 @@ async def preview_project(
     _: AuthContext = Depends(require_permission("project.read")),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
-    return project_preview_dict(await project_or_404(record_id, db), locale)
+    data = await public_evidenced_project(
+        await project_or_404(record_id, db), locale, db, preview=True
+    )
+    if data is None:
+        raise HTTPException(
+            409,
+            detail={
+                "code": "preview_identity_hold",
+                "message": "Project identity requires review.",
+            },
+        )
+    return data
 
 
 @admin_router.get("/projects/{record_id}/approval-review")
@@ -538,12 +550,18 @@ async def preview_project_media(
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> Response:
-    media = await db.scalar(
-        select(ProjectMedia).where(
-            ProjectMedia.id == media_id,
-            ProjectMedia.project_id == record_id,
-            ProjectMedia.rights_status == MediaRightsStatus.APPROVED,
-        )
+    record = await project_or_404(record_id, db)
+    projection = await public_evidenced_project(record, "en", db, preview=True)
+    allowed = {str(item["id"]) for item in (projection or {}).get("media", [])}
+    media = next(
+        (
+            item
+            for item in record.media
+            if item.id == media_id
+            and str(item.id) in allowed
+            and item.rights_status == MediaRightsStatus.APPROVED
+        ),
+        None,
     )
     if not media or not media.storage_key or not media.mime_type:
         raise HTTPException(
@@ -551,6 +569,11 @@ async def preview_project_media(
             detail={"code": "not_found", "message": "Approved preview media not found."},
         )
     content = await asyncio.to_thread(PrivateStorage(settings).read, media.storage_key)
+    if hashlib.sha256(content).hexdigest() != media.sha256:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            detail={"code": "not_found", "message": "Approved preview media not found."},
+        )
     return Response(
         content=content,
         media_type=media.mime_type,
@@ -2270,10 +2293,12 @@ async def public_projects(
         .unique()
         .all()
     )
-    return {
-        "items": [project_dict(item, locale) for item in records],
-        "meta": meta(1, max(1, len(records)), len(records)),
-    }
+    items = [
+        data
+        for item in records
+        if (data := await public_evidenced_project(item, locale, db)) is not None
+    ]
+    return {"items": items, "meta": meta(1, max(1, len(items)), len(items))}
 
 
 @public_router.get("/projects/{slug}")
@@ -2291,7 +2316,10 @@ async def public_project_detail(
         raise HTTPException(
             status.HTTP_404_NOT_FOUND, detail={"code": "not_found", "message": "Project not found."}
         )
-    return project_dict(record, locale)
+    data = await public_evidenced_project(record, locale, db)
+    if data is None:
+        raise HTTPException(404, detail={"code": "not_found", "message": "Project not found."})
+    return data
 
 
 @public_router.get("/projects/{slug}/media/{media_id}")
@@ -2304,11 +2332,14 @@ async def public_project_media(
     record = await db.scalar(
         select(Project)
         .where(Project.slug == slug, Project.status == PublicationStatus.PUBLISHED)
-        .options(selectinload(Project.media))
+        .options(*project_options())
     )
     media = next((item for item in record.media if item.id == media_id), None) if record else None
+    public_data = await public_evidenced_project(record, "en", db) if record else None
+    allowed_ids = {str(item["id"]) for item in public_data["media"]} if public_data else set()
     if (
         not media
+        or str(media_id) not in allowed_ids
         or media.rights_status != MediaRightsStatus.APPROVED
         or not media.storage_key
         or not media.mime_type

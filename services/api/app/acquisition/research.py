@@ -42,6 +42,7 @@ from app.models import (
     ProjectSourceType,
     PublicationStatus,
 )
+from app.project_field_policy import critical_candidate_errors
 from app.storage import PrivateStorage
 
 RESEARCH_VERSION = "official-readiness-v1"
@@ -175,8 +176,11 @@ def readiness_report(candidate: ProjectImportCandidate) -> dict[str, Any]:
         or item.rights_basis.startswith("Automatically approved exact-Project")
     ]
     approved_media = [item for item in media if item not in rights_unclear]
-    blockers = [f"Not Confirmed: {field}" for field in sorted(missing)]
-    blockers.extend(candidate.conflict_reasons)
+    blockers = critical_candidate_errors(
+        candidate.acquisition_summary,
+        [{"field": field} for field in missing],
+        candidate.conflict_reasons,
+    )
     draft = candidate.editorial_draft
     if not draft or draft.approval_status != EditorialApprovalStatus.APPROVED:
         blockers.append("Bilingual Overview requires editorial approval")
