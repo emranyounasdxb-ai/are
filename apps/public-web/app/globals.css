@@ -2664,7 +2664,8 @@ main > article + .content-section {
   --are-font-display: "Aeternus Nano", "ARE Nano Fallback", Arial, sans-serif;
   --are-font-decorative: "Aeternus Tall", "ARE Auren Fallback", Arial, sans-serif;
   --are-font-heading: var(--are-font-decorative);
-  --are-font-arabic: var(--font-arabic), "IBM Plex Sans Arabic", Tahoma, Arial, sans-serif;
+  --are-heading-tracking: normal;
+  --are-font-arabic: var(--font-arabic-latin), var(--font-arabic), "IBM Plex Sans Arabic", Tahoma, Arial, sans-serif;
   --are-font-arabic-h1: "True Arabic", "ARE Arabic H1 Fallback", var(--are-font-arabic);
   --are-gold: #c7a66a;
   --are-gold-light: #e2c98f;
@@ -6001,6 +6002,7 @@ html[lang="en"] body.are-site h1 {
   font-family: var(--are-font-h1);
   font-style: normal;
   font-weight: 400;
+  letter-spacing: var(--are-heading-tracking);
 }
 
 html[lang="en"] body.are-site h1 em,
@@ -6012,6 +6014,12 @@ html[lang="en"] body.are-site h2,
 html[lang="en"] body.are-site h3 {
   font-family: var(--are-font-display);
   font-weight: 600;
+}
+
+/* Condensed purchased faces do not need the legacy sans-face tightening.
+   Keep the homepage's owner-approved optical adjustments unchanged. */
+html[lang="en"] body.are-site :is(h2, h3):not(:where(.premium-home *)) {
+  letter-spacing: var(--are-heading-tracking);
 }
 
 html[lang="en"] body.are-site h4,
@@ -6069,6 +6077,12 @@ html[lang="ar"] body.are-site h6 {
 html[lang="ar"] body.are-site h1 {
   font-family: var(--are-font-arabic-h1);
   font-weight: 700;
+}
+
+/* Language labels keep their own script even inside the English UI. */
+html[lang="en"] body.are-site a[hreflang="ar"] {
+  font-family: var(--are-font-arabic);
+  letter-spacing: normal;
 }
 
 /* Homepage Hero: bounded premium composition and search-panel integration. */

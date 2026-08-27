@@ -75,3 +75,47 @@ test('direct runtime instrumentation exits on missing fonts rather than staying 
     assert.ok(!result.stderr.includes(directory));
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
+
+test('approved Arabic family covers mixed-script copy at every loaded weight', async () => {
+  const sample = 'العربية الإمارات أسئلة خياراتك ونظّم ALIYAS Real Estate EN 0123456789 + / : . , — · © ()';
+  for (const weight of [400, 500, 600, 700]) {
+    const faces = await Promise.all(['arabic', 'latin'].map(async subset => {
+      const face = create(await readFile(require.resolve(`@fontsource/ibm-plex-sans-arabic/files/ibm-plex-sans-arabic-${subset}-${weight}-normal.woff2`)));
+      const expectedFamily = weight === 500 ? 'IBM Plex Sans Arabic Medium' : weight === 600 ? 'IBM Plex Sans Arabic SemiBold' : 'IBM Plex Sans Arabic';
+      assert.equal(face.familyName, expectedFamily);
+      assert.equal(face['OS/2'].usWeightClass, weight);
+      return face;
+    }));
+    for (const character of sample) {
+      assert.ok(faces.some(face => face.hasGlyphForCodePoint(character.codePointAt(0))), `Missing glyph ${character} at ${weight}`);
+    }
+  }
+});
+
+test('same-family Latin subset precedes system fallback and language labels retain Arabic typography', async () => {
+  const [source, css] = await Promise.all([
+    readFile(new URL('../app/fonts.ts', import.meta.url), 'utf8'),
+    readFile(new URL('../app/globals.css', import.meta.url), 'utf8'),
+  ]);
+  assert.match(source, /const ibmPlexSansArabicLatin = localFont\(\{[\s\S]*?adjustFontFallback: false/);
+  assert.match(source, /publicFontVariables = [^;]*ibmPlexSansArabicLatin\.variable/);
+  for (const weight of [400, 500, 600, 700]) {
+    assert.ok(source.includes(`ibm-plex-sans-arabic-latin-${weight}-normal.woff2`));
+  }
+  assert.match(css, /--are-font-arabic: var\(--font-arabic-latin\), var\(--font-arabic\)/);
+  assert.match(css, /html\[lang="en"\] body\.are-site a\[hreflang="ar"\] \{\s*font-family: var\(--are-font-arabic\);\s*letter-spacing: normal;/);
+});
+
+test('shared heading roles and private font gates remain independent of route content', async () => {
+  const css = await readFile(new URL('../app/globals.css', import.meta.url), 'utf8');
+  assert.match(css, /html\[lang="en"\] body\.are-site h1 \{\s*font-family: var\(--are-font-h1\);\s*font-style: normal;\s*font-weight: 400;/);
+  assert.match(css, /html\[lang="en"\] body\.are-site h2,\s*html\[lang="en"\] body\.are-site h3 \{\s*font-family: var\(--are-font-display\);\s*font-weight: 600;/);
+  assert.match(css, /html\[lang="ar"\] body\.are-site h1 \{\s*font-family: var\(--are-font-arabic-h1\);\s*font-weight: 700;/);
+  assert.match(css, /--are-heading-tracking: normal;/);
+  assert.match(css, /html\[lang="en"\] body\.are-site h1 \{[^}]*letter-spacing: var\(--are-heading-tracking\);/);
+  assert.match(css, /html\[lang="en"\] body\.are-site :is\(h2, h3\):not\(:where\(\.premium-home \*\)\) \{\s*letter-spacing: var\(--are-heading-tracking\);/);
+  const layout = await readFile(new URL('../app/(localized)/[locale]/layout.tsx', import.meta.url), 'utf8');
+  assert.match(layout, /<html className=\{publicFontVariables\} lang=\{locale\}/);
+  assert.match(layout, /href="\/font-assets\/v1\/h1-regular\.woff2" as="font"/);
+  assert.match(layout, /href="\/font-assets\/v1\/arabic-h1\.woff2" as="font"/);
+});
