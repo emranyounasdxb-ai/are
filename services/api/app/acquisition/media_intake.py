@@ -434,7 +434,11 @@ def _synchronize_owner_authorized_tanami_rights(
         and manifest.get("disposition") == "accepted"
     )
     if not dom_discovered_tanami_media:
-        if media.rights_basis == TANAMI_OWNER_AUTHORIZED_RIGHTS_BASIS:
+        if media.rights_basis == TANAMI_OWNER_AUTHORIZED_RIGHTS_BASIS or (
+            media.rights_basis == AUTOMATIC_EXACT_PROJECT_RIGHTS_BASIS
+            and media.rights_status == MediaRightsStatus.APPROVED
+        ):
+            media.rights_status = MediaRightsStatus.PENDING
             media.rights_basis = AUTOMATIC_EXACT_PROJECT_RIGHTS_BASIS
             media.rights_confirmed_by = None
             media.rights_confirmed_at = datetime.now(UTC)

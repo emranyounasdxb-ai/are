@@ -96,6 +96,15 @@ async def test_idempotent_tanami_media_rerun_synchronizes_owner_authorization(
             processing_version="project-media-v3",
             discovery_manifest={},
         )
+        stale_media = ProjectImportMedia(
+            category=ProjectMediaCategory.GALLERY,
+            source_url="https://developer.example/stale-gallery.jpg",
+            rights_status=MediaRightsStatus.APPROVED,
+            rights_basis=AUTOMATIC_EXACT_PROJECT_RIGHTS_BASIS,
+            stage_status="downloaded",
+            processing_version="project-media-v3",
+            discovery_manifest={},
+        )
         candidate = ProjectImportCandidate(
             manifest_row_id=1,
             raw_source_payload={},
@@ -107,7 +116,7 @@ async def test_idempotent_tanami_media_rerun_synchronizes_owner_authorization(
             conflict_reasons=[],
             adapter_key=TANAMI_ADAPTER_KEY,
             review_status=ImportReviewStatus.NEEDS_REVIEW,
-            staged_media=[media, legacy_media],
+            staged_media=[media, legacy_media, stale_media],
         )
         db.add(
             ProjectImportBatch(
@@ -125,20 +134,29 @@ async def test_idempotent_tanami_media_rerun_synchronizes_owner_authorization(
         first = await intake_private_media(db, test_settings, batch_id, preserve_review_state=True)
         first_confirmation = media.rights_confirmed_at
         legacy_confirmation = legacy_media.rights_confirmed_at
+        stale_confirmation = stale_media.rights_confirmed_at
 
         assert first["attempted"] == 0
         assert media.rights_basis == TANAMI_OWNER_AUTHORIZED_RIGHTS_BASIS
+        assert media.rights_status == MediaRightsStatus.APPROVED
         assert legacy_media.rights_basis == AUTOMATIC_EXACT_PROJECT_RIGHTS_BASIS
+        assert legacy_media.rights_status == MediaRightsStatus.PENDING
+        assert stale_media.rights_status == MediaRightsStatus.PENDING
         assert first_confirmation is not None
         assert legacy_confirmation is not None
+        assert stale_confirmation is not None
 
         second = await intake_private_media(db, test_settings, batch_id, preserve_review_state=True)
 
         assert second["attempted"] == 0
         assert media.rights_basis == TANAMI_OWNER_AUTHORIZED_RIGHTS_BASIS
+        assert media.rights_status == MediaRightsStatus.APPROVED
         assert media.rights_confirmed_at == first_confirmation
         assert legacy_media.rights_basis == AUTOMATIC_EXACT_PROJECT_RIGHTS_BASIS
+        assert legacy_media.rights_status == MediaRightsStatus.PENDING
+        assert stale_media.rights_status == MediaRightsStatus.PENDING
         assert legacy_media.rights_confirmed_at == legacy_confirmation
+        assert stale_media.rights_confirmed_at == stale_confirmation
 
 
 def test_reconciliation_does_not_recreate_the_generic_nine_conflicts() -> None:
@@ -679,14 +697,15 @@ async def test_private_media_intake_is_sanitized_pending_and_authenticated(
         assert media.thumbnail_storage_key
         assert media.raw_storage_key
         assert media.storage_key
-        assert media.normalized_filename == "qa-media-project-cover-01.webp"
-        assert media.alt_en_draft == "Cover image for QA Media Project"
-        assert media.alt_ar_draft == "الصورة الرئيسية — مشروع الوسائط التجريبي"
-        assert media.title_en == "QA Media Project — Cover image"
-        assert media.title_ar == "مشروع الوسائط التجريبي — الصورة الرئيسية"
-        assert media.description_en == "Cover image for QA Media Project."
-        assert media.description_ar == "الصورة الرئيسية — مشروع الوسائط التجريبي."
-        assert media.tags == ["QA Media Project", "Cover image"]
+        assert media.normalized_filename == "qa-media-project-gallery-01.webp"
+        assert media.category == ProjectMediaCategory.GALLERY
+        assert media.alt_en_draft == "Gallery image for QA Media Project"
+        assert media.alt_ar_draft == "صورة من المعرض — مشروع الوسائط التجريبي"
+        assert media.title_en == "QA Media Project — Gallery image"
+        assert media.title_ar == "مشروع الوسائط التجريبي — صورة من المعرض"
+        assert media.description_en == "Gallery image for QA Media Project."
+        assert media.description_ar == "صورة من المعرض — مشروع الوسائط التجريبي."
+        assert media.tags == ["QA Media Project", "Gallery image"]
         assert {item["format"] for item in media.derivative_manifest} == {"webp", "avif"}
         assert media.change_status == "newly-added"
         sanitized = PrivateStorage(test_settings).read(media.storage_key)
