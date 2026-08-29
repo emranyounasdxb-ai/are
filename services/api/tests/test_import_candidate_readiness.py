@@ -28,7 +28,7 @@ def candidate() -> ProjectImportCandidate:
         proposed_area_id=uuid4(),
         official_source_url="https://developer.example/project",
         source_urls=["https://developer.example/project"],
-        normalized_payload={},
+        normalized_payload={"project_name_ar": "مشروع تجريبي خاضع للمراجعة"},
         acquisition_summary={
             "source_first_research": {
                 "exact_documents": ["https://developer.example/project"],

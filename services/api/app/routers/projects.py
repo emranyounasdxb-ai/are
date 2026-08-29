@@ -1685,7 +1685,13 @@ async def import_candidate_public_preview(
             status.HTTP_409_CONFLICT,
             detail={"code": "preview_not_ready", "message": "Canonical mappings are unavailable."},
         )
-    return candidate_public_preview_dict(candidate, developer, area, locale)
+    try:
+        return candidate_public_preview_dict(candidate, developer, area, locale)
+    except ValueError as exc:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail={"code": "localized_project_name_required", "message": str(exc)},
+        ) from exc
 
 
 @admin_router.get("/project-imports/candidates/{candidate_id}/preview-media/{media_id}")

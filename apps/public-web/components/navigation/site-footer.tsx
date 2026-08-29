@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
 import { footerStackCopy } from "../../lib/footer-copy";
+import { localizedBrand, toArabicIndicDigits } from "../../lib/arabic-localization";
 import type { HeaderCopy, Locale } from "../../lib/home-copy";
 import { isNavigationHrefActive } from "../../lib/navigation";
 import { siteCopy } from "../../lib/site-copy";
@@ -17,6 +18,7 @@ export function SiteFooter({ copy, locale }: Readonly<{ copy: HeaderCopy; locale
   const common = siteCopy[locale].common;
   const footerCopy = footerStackCopy[locale].footer;
   const currentYear = new Date().getFullYear();
+  const brandName = localizedBrand(locale);
   const contactNavigationLabel = locale === "ar" ? "التواصل" : "Contact";
   const groups = [
     { heading: locale === "ar" ? "اكتشف" : "Discover", links: [
@@ -81,9 +83,9 @@ export function SiteFooter({ copy, locale }: Readonly<{ copy: HeaderCopy; locale
         <MobileAppPanel locale={locale} />
         <div className="site-footer__inner">
           <div className="site-footer__identity">
-            <Link aria-label="ALIYAS Real Estate" className="site-footer__brand" href={`/${locale}`} onClick={(event) => resetCurrentRoute(event, `/${locale}`)}>
-              <span><Image alt="ALIYAS Real Estate" height={2885} sizes="68px" src="/brand/aliyas-real-estate-logo.png" width={2885} /></span>
-              <strong>ALIYAS Real Estate</strong>
+            <Link aria-label={brandName} className="site-footer__brand" href={`/${locale}`} onClick={(event) => resetCurrentRoute(event, `/${locale}`)}>
+              <span><Image alt={locale === "ar" ? "شعار علياس العقارية" : brandName} height={2885} sizes="68px" src="/brand/aliyas-real-estate-logo.png" width={2885} /></span>
+              <strong>{brandName}</strong>
             </Link>
             <p>{common.footerLabel}</p>
             <small>{footerCopy.brandStatement}</small>
@@ -97,7 +99,7 @@ export function SiteFooter({ copy, locale }: Readonly<{ copy: HeaderCopy; locale
           </div>
         </div>
         <div className="site-footer__bottom">
-          <p>© {currentYear} ALIYAS Real Estate · {footerCopy.rights}</p>
+          <p>© {locale === "ar" ? toArabicIndicDigits(currentYear) : currentYear} {brandName} · {footerCopy.rights}</p>
           <nav aria-label={common.language} className="site-footer__languages">
             <Link
               aria-current={locale === "en" ? "page" : undefined}

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import type { Locale } from "../../lib/home-copy";
+import { localizedDisplayText, normalizeArabicUserFacingText } from "../../lib/arabic-localization";
 import type { InsightArticle, InsightCategory, VerifiedUpdate } from "../../lib/insights-data";
 
 type Filter = "all" | InsightCategory | "news";
@@ -45,19 +46,19 @@ export function InsightsExplorer({ articles, locale, updates }: Readonly<{
         </div>
         <button className="reset-button" disabled={filter === "all" && !query} onClick={reset} type="button">{copy.reset}</button>
       </div>
-      <p aria-live="polite" className="results-status">{hasResults ? `${visibleArticles.length + visibleUpdates.length} ${locale === "ar" ? "نتيجة" : "results"}` : copy.empty}</p>
+      <p aria-live="polite" className="results-status">{hasResults ? `${localizedDisplayText((visibleArticles.length + visibleUpdates.length).toString(), locale)} ${locale === "ar" ? "نتيجة" : "results"}` : copy.empty}</p>
       {hasResults ? <div className="insight-card-grid">
         {visibleArticles.map((article) => {
           const content = article.content[locale];
           return <article className="insight-card" key={article.slug}>
-            <div><span>{content.categoryLabel}</span><time dateTime={article.updated}>{copy.updated}: {article.updated}</time></div>
+            <div><span>{content.categoryLabel}</span><time dateTime={article.updated}>{copy.updated}: {localizedDisplayText(article.updated, locale)}</time></div>
             <h3>{content.title}</h3><p>{content.introduction}</p>
             <Link href={`/${locale}/insights/${article.slug}`}>{copy.read}</Link>
           </article>;
         })}
         {visibleUpdates.map((update) => <article className="insight-card insight-card--news" key={update.id}>
-          <div><span>{copy.news}</span><time dateTime={update.published}>{update.published}</time></div>
-          <h3>{update.title[locale]}</h3><p>{update.summary[locale]}</p><small>{update.sourceName} · {copy.updated} {update.verified}</small>
+          <div><span>{copy.news}</span><time dateTime={update.published}>{localizedDisplayText(update.published, locale)}</time></div>
+          <h3>{locale === "ar" ? normalizeArabicUserFacingText(update.title[locale]) : update.title[locale]}</h3><p>{locale === "ar" ? normalizeArabicUserFacingText(update.summary[locale]) : update.summary[locale]}</p><small>{locale === "ar" ? "المصدر الرسمي" : update.sourceName} · {copy.updated} {localizedDisplayText(update.verified, locale)}</small>
           <a href={update.sourceUrl} rel="noreferrer" target="_blank">{copy.source}<span aria-hidden="true">↗</span></a>
         </article>)}
       </div> : null}

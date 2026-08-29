@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, Expand, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import type { Locale } from "../../lib/home-copy";
+import { localizedDisplayText, toArabicIndicDigits } from "../../lib/arabic-localization";
 
 export type ProjectPresentationMedia = {
   id: string;
@@ -35,7 +36,7 @@ const copy = {
     next: "الصورة التالية",
     previous: "الصورة السابقة",
     open: "فتح الصورة بالحجم الكامل",
-    position: (current: number, total: number) => `الصورة ${current} من ${total}`,
+    position: (current: number, total: number) => `الصورة ${toArabicIndicDigits(current)} من ${toArabicIndicDigits(total)}`,
   },
 } as const;
 
@@ -111,7 +112,7 @@ export function ProjectMediaViewer({
         }}
         role="tab"
         type="button"
-      >{item.label}<span>{item.items.length}</span></button>)}
+      >{item.label}<span>{localizedDisplayText(item.items.length.toString(), locale)}</span></button>)}
     </div>
 
     <div aria-labelledby={`project-media-tab-${category.id}`} className="project-media-viewer__grid" id={`project-media-panel-${category.id}`} role="tabpanel">

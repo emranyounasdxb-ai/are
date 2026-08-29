@@ -19,6 +19,7 @@ import { homeCopy, isLocale, locales, type Locale, type Purpose } from "../../..
 import { isPageSlug, pageSlugs, siteCopy, type PageSlug } from "../../../../lib/site-copy";
 import { richCopy } from "../../../../lib/rich-copy";
 import { getDeveloper, getProjects, getProperties } from "../../../../lib/api";
+import { localizedDisplayText, normalizeArabicUserFacingText } from "../../../../lib/arabic-localization";
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
@@ -106,7 +107,7 @@ async function LocalizedInnerPage({
               <span />
               <span />
               <span />
-              <small>ARE / {String(pageSlugs.indexOf(page) + 2).padStart(2, "0")}</small>
+              <small>{locale === "ar" ? "علياس العقارية" : "ARE"} / {localizedDisplayText(String(pageSlugs.indexOf(page) + 2).padStart(2, "0"), locale)}</small>
             </div>
           </div>
         </section>}
@@ -209,7 +210,7 @@ async function PropertiesContent({ locale, query }: Readonly<{ locale: Locale; q
         />
       </div>
       <aside className="criteria-summary">
-        <p>ARE / FILTER</p>
+        <p>{locale === "ar" ? "علياس العقارية / التصفية" : "ARE / FILTER"}</p>
         <h2>{copy.criteriaHeading}</h2>
         <span>{copy.criteriaIntro}</span>
         {hasCriteria ? (
@@ -224,8 +225,8 @@ async function PropertiesContent({ locale, query }: Readonly<{ locale: Locale; q
         <small>{copy.inventoryNote}</small>
       </aside>
       <div className="cms-property-results">
-        <div className="inner-section__heading"><p>ARE / LIVE CMS</p><h2>{locale === "ar" ? "العقارات المنشورة" : "Published properties"}</h2></div>
-        {properties.length ? <div className="cms-property-grid">{properties.map((property) => <article key={property.id}><div className="cms-media-neutral" aria-hidden="true">ARE</div><div><span>{property.emirate} · {property.property_type}</span><h3>{property.title}</h3><p>{property.description}</p><dl><div><dt>{locale === "ar" ? "الغرض" : "Purpose"}</dt><dd>{property.purpose}</dd></div><div><dt>{locale === "ar" ? "السعر" : "Price"}</dt><dd>{property.price_on_request ? (locale === "ar" ? "السعر عند الطلب" : "Price on request") : `${property.currency} ${property.price}`}</dd></div></dl><Link className="text-link" href={`/${locale}/properties/${property.slug}`}>{locale === "ar" ? "عرض التفاصيل" : "View details"}</Link></div></article>)}</div> : <div className="career-opportunities__empty"><span aria-hidden="true">00</span><div><h3>{locale === "ar" ? "لا توجد عقارات منشورة حالياً" : "No published properties yet"}</h3><p>{locale === "ar" ? "لن تظهر هنا إلا السجلات المنشورة والمعتمدة." : "Only approved, published CMS records will appear here."}</p></div></div>}
+        <div className="inner-section__heading"><p>{locale === "ar" ? "علياس العقارية / السجلات المنشورة" : "ARE / LIVE CMS"}</p><h2>{locale === "ar" ? "العقارات المنشورة" : "Published properties"}</h2></div>
+        {properties.length ? <div className="cms-property-grid">{properties.map((property) => <article key={property.id}><div className="cms-media-neutral" aria-hidden="true">{locale === "ar" ? "علياس" : "ARE"}</div><div><span>{locale === "ar" ? normalizeArabicUserFacingText(`${property.emirate} · ${property.property_type}`) : `${property.emirate} · ${property.property_type}`}</span><h3>{localizedDisplayText(property.title, locale)}</h3><p>{locale === "ar" ? normalizeArabicUserFacingText(property.description) : property.description}</p><dl><div><dt>{locale === "ar" ? "الغرض" : "Purpose"}</dt><dd>{locale === "ar" ? normalizeArabicUserFacingText(property.purpose) : property.purpose}</dd></div><div><dt>{locale === "ar" ? "السعر" : "Price"}</dt><dd>{property.price_on_request ? (locale === "ar" ? "السعر عند الطلب" : "Price on request") : localizedDisplayText(`${property.currency} ${property.price}`, locale)}</dd></div></dl><Link className="text-link" href={`/${locale}/properties/${property.slug}`}>{locale === "ar" ? "عرض التفاصيل" : "View details"}</Link></div></article>)}</div> : <div className="career-opportunities__empty"><span aria-hidden="true">{locale === "ar" ? "٠٠" : "00"}</span><div><h3>{locale === "ar" ? "لا توجد عقارات منشورة حالياً" : "No published properties yet"}</h3><p>{locale === "ar" ? "لن تظهر هنا إلا السجلات المنشورة والمعتمدة." : "Only approved, published CMS records will appear here."}</p></div></div>}
       </div>
     </section>
   );
@@ -237,13 +238,13 @@ function CommunitiesContent({ locale }: Readonly<{ locale: Locale }>) {
   return (
     <section aria-labelledby="communities-title" className="inner-section communities-editorial">
       <div className="communities-editorial__title">
-        <p>ARE / PLACE</p>
+        <p>{locale === "ar" ? "علياس العقارية / المكان" : "ARE / PLACE"}</p>
         <h2 id="communities-title">{copy.sectionTitle}</h2>
       </div>
       <div className="community-lenses">
         {copy.categories.map((item, index) => (
           <article key={item.label}>
-            <span>{String(index + 1).padStart(2, "0")}</span>
+            <span>{localizedDisplayText(String(index + 1).padStart(2, "0"), locale)}</span>
             <h3>{item.label}</h3>
             <p>{item.text}</p>
           </article>
@@ -265,13 +266,13 @@ async function OffPlanContent({ locale }: Readonly<{ locale: Locale }>) {
     <>
     <section aria-labelledby="off-plan-title" className="inner-section off-plan-pathway">
       <div className="off-plan-pathway__heading">
-        <p>ARE / PATHWAY</p>
+        <p>{locale === "ar" ? "علياس العقارية / المسار" : "ARE / PATHWAY"}</p>
         <h2 id="off-plan-title">{copy.sectionTitle}</h2>
       </div>
       <ol>
         {copy.steps.map((item, index) => (
           <li key={item.label}>
-            <span>{String(index + 1).padStart(2, "0")}</span>
+            <span>{localizedDisplayText(String(index + 1).padStart(2, "0"), locale)}</span>
             <div><h3>{item.label}</h3><p>{item.text}</p></div>
           </li>
         ))}
@@ -283,10 +284,10 @@ async function OffPlanContent({ locale }: Readonly<{ locale: Locale }>) {
     </section>
     <section aria-labelledby="published-projects-title" className="inner-section">
       <div className="inner-section__heading">
-        <p>ARE / {locale === "ar" ? "المشاريع المنشورة" : "PUBLISHED PROJECTS"}</p>
+        <p>{locale === "ar" ? "علياس العقارية / المشاريع المنشورة" : "ARE / PUBLISHED PROJECTS"}</p>
         <h2 id="published-projects-title">{locale === "ar" ? "مشاريع على المخطط معتمدة" : "Approved Off-Plan projects"}</h2>
       </div>
-      {projects.length ? <div className="cms-property-grid">{projects.map((project) => <article key={project.id}><div className="cms-media-neutral" aria-hidden="true">ARE</div><div><span>{project.emirate} · {project.area.name_ar && locale === "ar" ? project.area.name_ar : project.area.name_en}</span><h3>{project.official_name}</h3><p>{project.short_summary}</p><Link className="text-link" href={`/${locale}/off-plan/${project.slug}`}>{locale === "ar" ? "عرض المشروع" : "View project"}</Link></div></article>)}</div> : <div className="career-opportunities__empty"><span aria-hidden="true">00</span><div><h3>{locale === "ar" ? "لا توجد مشاريع منشورة حالياً" : "No published projects yet"}</h3><p>{locale === "ar" ? "لن تظهر هنا إلا المشاريع المعتمدة والمنشورة." : "Only approved, published Project records will appear here."}</p></div></div>}
+      {projects.length ? <div className="cms-property-grid">{projects.map((project) => <article key={project.id}><div className="cms-media-neutral" aria-hidden="true">{locale === "ar" ? "علياس" : "ARE"}</div><div><span>{locale === "ar" ? normalizeArabicUserFacingText(`${project.emirate} · ${project.area.name_ar}`) : `${project.emirate} · ${project.area.name_en}`}</span><h3>{localizedDisplayText(project.official_name, locale)}</h3><p>{locale === "ar" ? normalizeArabicUserFacingText(project.short_summary) : project.short_summary}</p><Link className="text-link" href={`/${locale}/off-plan/${project.slug}`}>{locale === "ar" ? "عرض المشروع" : "View project"}</Link></div></article>)}</div> : <div className="career-opportunities__empty"><span aria-hidden="true">{locale === "ar" ? "٠٠" : "00"}</span><div><h3>{locale === "ar" ? "لا توجد مشاريع منشورة حالياً" : "No published projects yet"}</h3><p>{locale === "ar" ? "لن تظهر هنا إلا المشاريع المعتمدة والمنشورة." : "Only approved, published Project records will appear here."}</p></div></div>}
     </section>
     </>
   );
@@ -298,7 +299,7 @@ function AboutContent({ locale }: Readonly<{ locale: Locale }>) {
   return (
     <section aria-labelledby="about-title" className="inner-section about-manifesto">
       <div className="about-manifesto__statement">
-        <p>ALIYAS / APPROACH</p>
+        <p>{locale === "ar" ? "علياس العقارية / المنهج" : "ALIYAS / APPROACH"}</p>
         <h2 id="about-title">{copy.sectionTitle}</h2>
       </div>
       <div className="about-principles">
@@ -324,7 +325,7 @@ async function ContactContent({ locale, query }: Readonly<{ locale: Locale; quer
   return (
     <section aria-labelledby="contact-form-title" className="inner-section contact-experience">
       <div className="contact-experience__context">
-        <p>ARE / ENQUIRY</p>
+        <p>{locale === "ar" ? "علياس العقارية / الاستفسار" : "ARE / ENQUIRY"}</p>
         <h2 id="contact-form-title">{locale === "ar" ? "معاينة استفسار واضحة وآمنة" : "A clear, safe enquiry preview"}</h2>
         <span>{copy.intro}</span>
       </div>

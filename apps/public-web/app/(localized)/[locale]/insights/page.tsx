@@ -16,7 +16,7 @@ export function generateStaticParams() { return locales.map((locale) => ({ local
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale } = await params; if (!isLocale(locale)) notFound();
-  return locale === "ar" ? { title: "الرؤى | ALIYAS Real Estate", description: "أدلة عقارية ورؤى سوقية وأخبار رسمية موثقة تساعد على تنظيم البحث العقاري في الإمارات." } : { title: "Insights | ALIYAS Real Estate", description: "Practical property guides, market perspectives and verified official updates for a clearer UAE property search." };
+  return locale === "ar" ? { title: "الرؤى | علياس العقارية", description: "أدلة عقارية ورؤى سوقية وأخبار رسمية موثقة تساعد على تنظيم البحث العقاري في الإمارات." } : { title: "Insights | ALIYAS Real Estate", description: "Practical property guides, market perspectives and verified official updates for a clearer UAE property search." };
 }
 
 export default async function InsightsPage({ params }: Props) { const { locale } = await params; if (!isLocale(locale)) notFound(); return <LocalizedInsights locale={locale} />; }
@@ -32,7 +32,7 @@ async function LocalizedInsights({ locale }: Readonly<{ locale: Locale }>) {
   return <div className="insights-page" id="top"><main id="main-content">
     <PageHero description={copy.intro} eyebrow={copy.eyebrow} image="insights" locale={locale} title={copy.title}
       primary={{ label: copy.library, href: "#insights-library-title" }} secondary={{ label: copy.contactAction, href: `/${locale}/contact` }} />
-    <section className="featured-insight"><div><p>{copy.featured}</p><h2>{copy.featuredTitle}</h2><span>{copy.featuredText}</span><Link className="button button--primary animated-gold-border" href={`/${locale}/insights/choosing-a-uae-community`}>{copy.featuredAction}</Link></div><div aria-hidden="true" className="featured-insight__monogram"><span>ARE</span><small>01 / GUIDE</small></div></section>
+    <section className="featured-insight"><div><p>{copy.featured}</p><h2>{copy.featuredTitle}</h2><span>{copy.featuredText}</span><Link className="button button--primary animated-gold-border" href={`/${locale}/insights/choosing-a-uae-community`}>{copy.featuredAction}</Link></div><div aria-hidden="true" className="featured-insight__monogram"><span>{ar ? "علياس" : "ARE"}</span><small>{ar ? "٠١ / دليل" : "01 / GUIDE"}</small></div></section>
     <section aria-labelledby="insights-library-title" className="content-section insights-library"><div className="content-heading"><p>{copy.library}</p><h2 id="insights-library-title">{copy.libraryTitle}</h2></div><InsightsExplorer articles={insightArticles} locale={locale} updates={verifiedUpdates} /></section>
     <section className="content-section content-section--split content-section--dark"><div className="content-heading"><p>{copy.standards}</p><h2>{copy.standardsTitle}</h2></div><p className="content-lead">{copy.standardsText}</p></section>
     <section className="insights-contact"><div><h2>{copy.contactTitle}</h2><p>{copy.contactText}</p></div><Link className="button button--secondary" href={`/${locale}/contact`}>{copy.contactAction}</Link></section>

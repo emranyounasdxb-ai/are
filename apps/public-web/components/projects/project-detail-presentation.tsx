@@ -20,6 +20,13 @@ import {
 } from "lucide-react";
 
 import type { CandidateProjectPreview, PublicProject } from "../../lib/api";
+import {
+  localizedArabicList,
+  localizedDisplayText,
+  isArabicUserFacingText,
+  normalizeArabicUserFacingText,
+  toArabicIndicDigits,
+} from "../../lib/arabic-localization";
 import type { Locale } from "../../lib/home-copy";
 import {
   ProjectMediaViewer,
@@ -64,7 +71,7 @@ const copy = {
     previewNote: "Private noindex preview — this Project is not publicly published.",
   },
   ar: {
-    eyebrow: "ARE / مشروع على الخارطة",
+    eyebrow: "علياس العقارية / مشروع على الخارطة",
     details: "لمحة عن المشروع",
     overview: "نظرة عامة",
     homes: "المنازل والمساحات",
@@ -91,7 +98,7 @@ const copy = {
     nav: "أقسام المشروع",
     enquire: "استفسر",
     whatsapp: "واتساب",
-    ctaEyebrow: "استشارات ALIYAS",
+    ctaEyebrow: "استشارات علياس العقارية",
     ctaTitle: "راجع هذا المشروع مع مستشار",
     ctaText: "استفسر عن الحالة الحالية وتحقق من التفاصيل المرتبطة بالمنزل الذي تفضله.",
     back: "العودة إلى المشاريع على الخارطة",
@@ -181,12 +188,12 @@ export function ProjectDetailPresentation({
     </nav>
 
     {normalized.overview ? <section className="project-presentation__section project-presentation__section--split" id="project-overview" aria-labelledby="project-overview-title">
-      <Heading eyebrow="01" id="project-overview-title" title={t.overview}/>
+      <Heading eyebrow={localizedDisplayText("01", locale)} id="project-overview-title" title={t.overview}/>
       <div className="project-presentation__overview">{editorialParagraphs(normalized.overview).map((paragraph) => <p key={paragraph}>{paragraph}</p>)}</div>
     </section> : null}
 
     <section className="project-presentation__section" id="project-details" aria-labelledby="project-details-title">
-      <Heading eyebrow="02" id="project-details-title" title={t.details}/>
+      <Heading eyebrow={localizedDisplayText("02", locale)} id="project-details-title" title={t.details}/>
       <dl className="project-presentation__fact-grid">
         <IconFact icon={Landmark} label={t.developer} value={normalized.developer}/>
         <IconFact icon={MapPin} label={t.location} value={`${normalized.area}, ${normalized.emirate}`}/>
@@ -203,7 +210,7 @@ export function ProjectDetailPresentation({
     </section>
 
     {hasHomes ? <section className="project-presentation__section" id="project-homes" aria-labelledby="project-homes-title">
-      <Heading eyebrow="03" id="project-homes-title" title={t.homes}/>
+      <Heading eyebrow={localizedDisplayText("03", locale)} id="project-homes-title" title={t.homes}/>
       <dl className="project-presentation__home-grid">
         <HomeDetail icon={Building2} label={t.types} values={normalized.propertyTypes}/>
         <HomeDetail icon={House} label={t.unitTypes} values={normalized.unitTypes}/>
@@ -213,35 +220,35 @@ export function ProjectDetailPresentation({
     </section> : null}
 
     {hasPayment ? <section className="project-presentation__section project-presentation__section--split" id="project-payment" aria-labelledby="project-payment-title">
-      <Heading eyebrow="04" id="project-payment-title" title={t.plan}/>
+      <Heading eyebrow={localizedDisplayText("04", locale)} id="project-payment-title" title={t.plan}/>
       <div className="project-presentation__payment">
         {normalized.paymentPlan ? <strong className="project-presentation__plan-ratio">{normalized.paymentPlan}</strong> : null}
         {normalized.downPayment ? <p><Percent aria-hidden size={18}/><span>{t.down}</span><strong>{normalized.downPayment}</strong></p> : null}
         {normalized.milestones.length ? <ol className="project-presentation__milestones">{normalized.milestones.map((item) => <li key={`${item.sequence}-${item.stage}`}>
-          <span>{item.sequence.toString().padStart(2, "0")}</span>
+          <span>{localizedDisplayText(item.sequence.toString().padStart(2, "0"), locale)}</span>
           <strong>{item.label || stageLabel(item.stage, locale)}</strong>
-          {item.percentage == null ? null : <em>{item.percentage}%</em>}
+          {item.percentage == null ? null : <em>{localizedDisplayText(`${item.percentage}%`, locale)}</em>}
         </li>)}</ol> : null}
       </div>
     </section> : null}
 
     {hasAmenities ? <section className="project-presentation__section" id="project-amenities" aria-labelledby="project-amenities-title">
-      <Heading eyebrow="05" id="project-amenities-title" title={t.amenities}/>
+      <Heading eyebrow={localizedDisplayText("05", locale)} id="project-amenities-title" title={t.amenities}/>
       <ul className="project-presentation__amenity-grid">{normalized.amenities.map((value) => <li key={value}><Sparkles aria-hidden size={20}/><span>{value}</span></li>)}</ul>
     </section> : null}
 
     {mediaCategories.length ? <section className="project-presentation__section motion-section--visible" id="project-media" aria-labelledby="project-media-title">
-      <Heading eyebrow="06" id="project-media-title" title={t.media}/>
+      <Heading eyebrow={localizedDisplayText("06", locale)} id="project-media-title" title={t.media}/>
       <ProjectMediaViewer categories={mediaCategories} locale={locale}/>
     </section> : null}
 
     {hasLocation ? <section className="project-presentation__section project-presentation__section--split" id="project-location" aria-labelledby="project-location-title">
-      <Heading eyebrow="07" id="project-location-title" title={t.locationSection}/>
+      <Heading eyebrow={localizedDisplayText("07", locale)} id="project-location-title" title={t.locationSection}/>
       <div className="project-presentation__location-panel">
         <div><MapPin aria-hidden size={22}/><span>{t.location}</span><strong>{normalized.area}, {normalized.emirate}</strong></div>
         {normalized.nearby.length ? <ul>{normalized.nearby.map((item) => <li key={item.name}>
           <MapPin aria-hidden size={18}/><strong>{item.name}</strong>
-          {item.travelTime == null ? null : <span><Clock3 aria-hidden size={15}/>{locale === "ar" ? `${item.travelTime} دقيقة تقريباً` : `Approximately ${item.travelTime} min`}</span>}
+          {item.travelTime == null ? null : <span><Clock3 aria-hidden size={15}/>{locale === "ar" ? `${toArabicIndicDigits(item.travelTime)} دقيقة تقريباً` : `Approximately ${item.travelTime} min`}</span>}
         </li>)}</ul> : null}
       </div>
     </section> : null}
@@ -283,56 +290,67 @@ function normalizeProject(project: PresentationProject, locale: Locale, mediaBas
   const ar = locale === "ar";
   if (candidate) {
     const plan = project.payment_plan;
-    const milestones = plan?.milestones ?? project.payment_milestones ?? [];
+    const paymentEligible = Boolean(
+      plan?.is_complete
+      && !plan.requires_review
+      && plan.milestones?.length,
+    );
+    const milestones = paymentEligible ? plan?.milestones ?? [] : [];
     return {
-    name: project.project_name,
-    overview: project.overview,
-    developer: project.developer.name,
+    name: localizedDisplayText(project.project_name, locale),
+    overview: ar && project.overview ? normalizeArabicUserFacingText(project.overview) : project.overview,
+    developer: ar ? normalizeArabicUserFacingText(project.developer.name) : project.developer.name,
     emirate: project.emirate,
-    area: project.area,
+    area: ar ? normalizeArabicUserFacingText(project.area) : project.area,
     enquiryKey: project.project_name,
-    propertyTypes: project.property_types ?? [],
-    bedrooms: project.bedrooms ?? [],
-    unitTypes: project.unit_types ?? [],
+    propertyTypes: ar ? localizedArabicList(project.property_types) : project.property_types ?? [],
+    bedrooms: ar ? (project.bedrooms ?? []).map((value) => value.toLowerCase() === "studio" ? "استوديو" : toArabicIndicDigits(value)) : project.bedrooms ?? [],
+    unitTypes: ar ? localizedArabicList(project.unit_types) : project.unit_types ?? [],
     size: sizeLabel(project.size_min, project.size_max, project.size_unit, locale),
-    downPayment: project.down_payment_percentage == null ? null : `${project.down_payment_percentage}%`,
+    downPayment: paymentEligible && project.down_payment_percentage != null
+      ? localizedDisplayText(`${project.down_payment_percentage}%`, locale)
+      : null,
     handover: project.handover_quarter && project.handover_year ? handoverLabel(project.handover_quarter, project.handover_year, locale) : null,
     handoverNote: project.handover_quarter && project.handover_year ? copy[locale].verification : null,
     availability: project.availability_status ? statusLabel(project.availability_status, locale) : null,
     construction: project.construction_status ? statusLabel(project.construction_status, locale) : null,
-    paymentPlan: plan?.raw_source_text?.trim() || null,
+    paymentPlan: paymentEligible && !ar ? plan?.raw_source_text?.trim() || null : null,
     milestones: milestones.map((item, index) => ({
       sequence: item.sequence ?? index + 1,
       stage: item.stage ?? "other",
       label: "label_ar" in item ? (ar ? item.label_ar : item.label_en) : null,
       percentage: item.percentage ?? null,
     })),
-    amenities: project.amenities ?? [],
-    nearby: (project.nearby_places ?? []).map((item) => ({ name: item.name, travelTime: item.travel_time_minutes })),
+    amenities: ar ? localizedArabicList(project.amenities) : project.amenities ?? [],
+    nearby: (project.nearby_places ?? [])
+      .filter((item) => !ar || localizedArabicList([item.name]).length > 0)
+      .map((item) => ({ name: localizedDisplayText(item.name, locale), travelTime: item.travel_time_minutes })),
     media: (project.media ?? []).map((item) => ({
       id: item.id,
       category: item.category,
       thumbnailUrl: mediaUrl(mediaBaseUrl, item.thumbnail_url),
       fullUrl: mediaUrl(mediaBaseUrl, item.full_url),
-      alt: item.alt || project.project_name,
+      alt: localizedMediaAlt(item.alt, project.project_name, locale),
       width: item.width ?? 1200,
       height: item.height ?? 900,
     })),
     };
   }
-  const area = ar ? project.area.name_ar : project.area.name_en;
+  const area = ar ? normalizeArabicUserFacingText(project.area.name_ar) : project.area.name_en;
   return {
-    name: project.official_name,
-    overview: project.full_description || project.short_summary || null,
+    name: localizedDisplayText(project.official_name, locale),
+    overview: ar
+      ? normalizeArabicUserFacingText(project.full_description || project.short_summary || "") || null
+      : project.full_description || project.short_summary || null,
     enquiryKey: project.slug,
-    developer: project.developer.name,
+    developer: ar ? normalizeArabicUserFacingText(project.developer.name) : project.developer.name,
     emirate: project.emirate,
     area,
-    propertyTypes: project.property_types ?? [],
-    bedrooms: project.bedroom_options ?? [],
-    unitTypes: project.unit_types?.map((item) => item.label) ?? [],
+    propertyTypes: ar ? localizedArabicList(project.property_types) : project.property_types ?? [],
+    bedrooms: ar ? (project.bedroom_options ?? []).map((value) => value.toLowerCase() === "studio" ? "استوديو" : toArabicIndicDigits(value)) : project.bedroom_options ?? [],
+    unitTypes: ar ? localizedArabicList(project.unit_types?.map((item) => item.label)) : project.unit_types?.map((item) => item.label) ?? [],
     size: sizeLabel(project.size_min, project.size_max, project.size_unit, locale),
-    downPayment: project.down_payment_percentage == null ? null : `${project.down_payment_percentage}%`,
+    downPayment: project.down_payment_percentage == null ? null : localizedDisplayText(`${project.down_payment_percentage}%`, locale),
     handover: project.handover_quarter && project.handover_year ? handoverLabel(project.handover_quarter, project.handover_year, locale) : null,
     handoverNote: null,
     availability: project.availability_status ? statusLabel(project.availability_status, locale) : null,
@@ -344,18 +362,27 @@ function normalizeProject(project: PresentationProject, locale: Locale, mediaBas
       label: item.label,
       percentage: item.percentage == null ? null : Number(item.percentage),
     })) ?? [],
-    amenities: project.amenities?.map((item) => item.label) ?? [],
-    nearby: project.nearby_places?.map((item) => ({ name: item.name, travelTime: item.travel_time_minutes })) ?? [],
+    amenities: ar ? localizedArabicList(project.amenities?.map((item) => item.label)) : project.amenities?.map((item) => item.label) ?? [],
+    nearby: (project.nearby_places ?? [])
+      .filter((item) => !ar || localizedArabicList([item.name]).length > 0)
+      .map((item) => ({ name: ar ? normalizeArabicUserFacingText(item.name) : item.name, travelTime: item.travel_time_minutes })),
     media: project.media?.map((item) => ({
       id: item.id,
       category: item.category,
       thumbnailUrl: mediaUrl(mediaBaseUrl, item.url),
       fullUrl: mediaUrl(mediaBaseUrl, item.url),
-      alt: item.alt || project.official_name,
+      alt: localizedMediaAlt(item.alt, project.official_name, locale),
       width: item.width ?? 1200,
       height: item.height ?? 900,
     })) ?? [],
   };
+}
+
+function localizedMediaAlt(value: string | null | undefined, projectName: string, locale: Locale): string {
+  const fallback = localizedDisplayText(projectName, locale);
+  if (locale === "en") return value?.trim() || fallback;
+  const localized = normalizeArabicUserFacingText(value?.trim() || fallback);
+  return isArabicUserFacingText(localized) ? localized : fallback;
 }
 
 function IconFact({ icon: Icon, label, value }: Readonly<{ icon: LucideIcon; label: string; value?: string | null }>) {
@@ -409,7 +436,8 @@ function mediaUrl(baseUrl: string, path: string) {
 function sizeLabel(minimum: string | number | null | undefined, maximum: string | number | null | undefined, unit: string | null | undefined, locale: Locale) {
   if (!unit || !(Number(minimum) > 0) || !(Number(maximum) > 0)) return null;
   const format = (value: string | number) => Number(value).toLocaleString(locale === "ar" ? "ar-AE" : "en-AE");
-  const range = minimum != null && maximum != null ? `${format(minimum)}–${format(maximum)}` : format((minimum ?? maximum) as string | number);
+  const formatLocalized = (value: string | number) => localizedDisplayText(format(value), locale);
+  const range = minimum != null && maximum != null ? `${formatLocalized(minimum)}–${formatLocalized(maximum)}` : formatLocalized((minimum ?? maximum) as string | number);
   const localizedUnit = locale === "ar" && unit === "sqft" ? "قدم²" : unit ?? "";
   return `${range} ${localizedUnit}`.trim();
 }
@@ -425,7 +453,7 @@ function stageLabel(stage: string, locale: Locale) {
 
 function handoverLabel(quarter: string, year: number, locale: Locale) {
   const arQuarter: Record<string, string> = { Q1: "الربع الأول", Q2: "الربع الثاني", Q3: "الربع الثالث", Q4: "الربع الرابع" };
-  return locale === "ar" ? `${arQuarter[quarter] ?? quarter} ${year}` : `${quarter} ${year}`;
+  return locale === "ar" ? `${arQuarter[quarter] ?? quarter} ${toArabicIndicDigits(year)}` : `${quarter} ${year}`;
 }
 
 function statusLabel(value: string, locale: Locale) {

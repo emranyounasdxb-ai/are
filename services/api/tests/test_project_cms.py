@@ -637,6 +637,7 @@ async def test_import_review_summary_bulk_readiness_and_draft_are_safe(
                 raw_source_payload={"owner_project_name": "Unverified QA candidate"},
                 normalized_payload={
                     "project_name": "QA Source-Grounded Project",
+                    "project_name_ar": "مشروع اختبار موثق المصدر",
                     "property_types": ["apartment"],
                     "bedrooms": ["1"],
                     "handover_quarter": "Q4",
@@ -775,6 +776,11 @@ async def test_import_review_summary_bulk_readiness_and_draft_are_safe(
         "conflict_reasons",
         "priority",
     } & set(preview_data)
+    arabic_preview = await client.get(
+        f"/api/v1/admin/project-imports/{batch_id}/candidates/{candidate_id}/preview?locale=ar"
+    )
+    assert arabic_preview.status_code == 200, arabic_preview.text
+    assert arabic_preview.json()["project_name"] == "مشروع اختبار موثق المصدر"
 
     missing_csrf = await client.post(
         f"/api/v1/admin/project-imports/{batch_id}/bulk",

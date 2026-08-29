@@ -32,6 +32,16 @@ EMIRATE_LABELS = {
     },
 }
 
+ARABIC_EMIRATE_TEXT = {
+    "Dubai": "دبي",
+    "Abu Dhabi": "أبوظبي",
+    "Sharjah": "الشارقة",
+    "Ajman": "عجمان",
+    "Umm Al Quwain": "أم القيوين",
+    "Ras Al Khaimah": "رأس الخيمة",
+    "Fujairah": "الفجيرة",
+}
+
 
 def developer_dict(record: Developer, locale: str | None = None) -> dict[str, Any]:
     translations = {
@@ -63,6 +73,15 @@ def developer_dict(record: Developer, locale: str | None = None) -> dict[str, An
     }
     if locale:
         data.update(translations.get(locale, {}))
+        if locale == "ar":
+            data["primary_emirate"] = ARABIC_EMIRATE_TEXT.get(record.primary_emirate, "")
+            data["other_presence"] = [
+                ARABIC_EMIRATE_TEXT[value]
+                for value in record.other_presence
+                if value in ARABIC_EMIRATE_TEXT
+            ]
+            # Project references need explicit approved Arabic names; never fall back to English.
+            data["selected_projects"] = []
     else:
         data["legal_name"] = record.legal_name
         data["source_name"] = record.source_name
@@ -331,7 +350,7 @@ def project_dict(record: Project, locale: str | None = None) -> dict[str, Any]:
         data["area"]["emirate"] = EMIRATE_LABELS[locale][record.area.emirate]
         data["developer"]["name"] = next(
             (item.name for item in record.developer.translations if item.locale == locale),
-            record.developer.slug,
+            "" if locale == "ar" else record.developer.slug,
         )
         data["cta"] = {
             "not-confirmed": "request-current-status",
@@ -674,13 +693,15 @@ def candidate_public_preview_dict(
         candidate_evidence_state,
         candidate_media_is_preview_eligible,
     )
+    from app.project_localization import approved_arabic_project_name
     from app.public_project_evidence import omit_unresolved
 
     proposal = record.normalized_payload or {}
     ar = locale == "ar"
     labels = _PREVIEW_LABELS.get(locale, {})
     developer_name = next(
-        (item.name for item in developer.translations if item.locale == locale), developer.slug
+        (item.name for item in developer.translations if item.locale == locale),
+        "" if ar else developer.slug,
     )
     overview = record.editorial_draft
     approved_overview = (
@@ -720,11 +741,25 @@ def candidate_public_preview_dict(
         record.validation_errors,
         record.conflict_reasons,
     )
+    project_name = (
+        approved_arabic_project_name(proposal, record.normalized_project_name)
+        if ar
+        else proposal.get("project_name") or record.normalized_project_name
+    )
+    if not project_name:
+        raise ValueError("An approved localized Project name is required for this preview.")
+    if ar and not developer_name:
+        raise ValueError("An approved localized Developer name is required for this preview.")
+    localized_amenities = proposal.get("localized_amenities", [])
+    arabic_amenities = [
+        str(item.get("label_ar", "")).strip()
+        for item in localized_amenities
+        if isinstance(item, dict) and str(item.get("label_ar", "")).strip()
+    ]
     data = {
         "candidate_id": record.id,
         "locale": locale,
-        "project_name": proposal.get("project_name_ar" if ar else "project_name")
-        or record.normalized_project_name,
+        "project_name": project_name,
         "developer": {"name": developer_name},
         "emirate": EMIRATE_LABELS[locale][area.emirate],
         "area": area.name_ar if ar else area.name_en,
@@ -759,9 +794,11 @@ def candidate_public_preview_dict(
         "handover_verification": "requires-verification",
         "availability_status": proposal.get("availability_status"),
         "construction_status": proposal.get("construction_status"),
-        "amenities": [
-            labels.get(str(value), str(value)) for value in proposal.get("amenities", [])
-        ],
+        "amenities": (
+            arabic_amenities
+            if ar
+            else [labels.get(str(value), str(value)) for value in proposal.get("amenities", [])]
+        ),
         "nearby_places": [
             {
                 "name": labels.get(str(value.get("name")), str(value.get("name"))),

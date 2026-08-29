@@ -6,6 +6,7 @@ import { RelatedPages } from "../../../../../components/content/editorial-conten
 import { Reveal } from "../../../../../components/motion/reveal";
 import { SiteFooter } from "../../../../../components/navigation/site-footer";
 import { getDeveloper, type PublicDeveloper } from "../../../../../lib/api";
+import { localizedBrand, toArabicIndicDigits } from "../../../../../lib/arabic-localization";
 import { homeCopy, isLocale, type Locale } from "../../../../../lib/home-copy";
 
 type Props = Readonly<{ params: Promise<{ locale: string; slug: string }> }>;
@@ -18,7 +19,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const developer = await getDeveloper(locale, slug);
   if (!developer) return {};
   return {
-    title: `${developer.name} | ${locale === "ar" ? "دليل المطورين" : "Developer Directory"} | ALIYAS Real Estate`,
+    title: `${developer.name} | ${locale === "ar" ? "دليل المطورين" : "Developer Directory"} | ${localizedBrand(locale)}`,
     description: developer.description,
   };
 }
@@ -94,13 +95,13 @@ function LocalizedDeveloper({ developer, locale }: Readonly<{ developer: PublicD
 
         {developer.selected_projects.length ? (
           <section aria-labelledby="developer-projects-title" className="developer-profile-section developer-project-references">
-            <div><p>ARE / {ar ? "مراجع الهوية" : "IDENTITY REFERENCES"}</p><h2 id="developer-projects-title">{copy.projects}</h2><span>{copy.projectsNote}</span></div>
+            <div><p>{ar ? "علياس العقارية / مراجع الهوية" : "ARE / IDENTITY REFERENCES"}</p><h2 id="developer-projects-title">{copy.projects}</h2><span>{copy.projectsNote}</span></div>
             <ul>{developer.selected_projects.map((project) => <li key={project}>{project}</li>)}</ul>
           </section>
         ) : null}
 
         <section aria-labelledby="developer-sources-title" className="developer-profile-section developer-profile-sources">
-          <div><p>ARE / {ar ? "المصادر" : "SOURCES"}</p><h2 id="developer-sources-title">{copy.verification}</h2></div>
+          <div><p>{ar ? "علياس العقارية / المصادر" : "ARE / SOURCES"}</p><h2 id="developer-sources-title">{copy.verification}</h2></div>
           <dl>
             <div><dt>{copy.verified}</dt><dd><time dateTime={developer.verification_date}>{developer.verification_date}</time></dd></div>
             <div><dt>{copy.note}</dt><dd>{developer.verification_note}</dd></div>
@@ -109,11 +110,11 @@ function LocalizedDeveloper({ developer, locale }: Readonly<{ developer: PublicD
             <a className="button button--primary animated-gold-border" href={developer.official_website} rel="noreferrer" target="_blank">{copy.website}</a>
             <a className="button button--secondary" href={developer.source_url} rel="noreferrer" target="_blank">{copy.government}</a>
           </div>
-          {developer.additional_source_urls.length ? <div className="developer-profile-sources__additional"><strong>{copy.additional}</strong><ul>{developer.additional_source_urls.map((source, index) => <li key={source}><a href={source} rel="noreferrer" target="_blank">{ar ? `المصدر ${index + 1}` : `Source ${index + 1}`}</a></li>)}</ul></div> : null}
+          {developer.additional_source_urls.length ? <div className="developer-profile-sources__additional"><strong>{copy.additional}</strong><ul>{developer.additional_source_urls.map((source, index) => <li key={source}><a href={source} rel="noreferrer" target="_blank">{ar ? `المصدر ${toArabicIndicDigits(index + 1)}` : `Source ${index + 1}`}</a></li>)}</ul></div> : null}
         </section>
 
         <section aria-labelledby="developer-enquiry-title" className="home-closing-v2 developer-profile-enquiry">
-          <div><p>ARE / {ar ? "استفسار المطور" : "DEVELOPER ENQUIRY"}</p><h2 id="developer-enquiry-title">{copy.enquire}</h2><span>{copy.enquireText}</span></div>
+          <div><p>{ar ? "علياس العقارية / استفسار المطور" : "ARE / DEVELOPER ENQUIRY"}</p><h2 id="developer-enquiry-title">{copy.enquire}</h2><span>{copy.enquireText}</span></div>
           <Link className="button button--primary animated-gold-border" href={`/${locale}/contact?topic=developer&developer=${developer.slug}`}>{copy.enquire}</Link>
         </section>
 
