@@ -796,6 +796,7 @@ def import_candidate_summary_dict(record: ProjectImportCandidate) -> dict[str, A
         "retry-acquisition": status == ImportReviewStatus.FAILED,
         "assign-developer": status == ImportReviewStatus.NEEDS_REVIEW,
         "assign-area": status == ImportReviewStatus.NEEDS_REVIEW,
+        "return-to-review": status == ImportReviewStatus.READY_FOR_APPROVAL,
         "reject": status
         in {
             ImportReviewStatus.FAILED,

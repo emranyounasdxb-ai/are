@@ -350,6 +350,14 @@ def test_fact_guard_and_public_metadata_boundaries() -> None:
     assert not unsupported_entity["passed"]
     assert unsupported_entity["unsupported_locations"] == ["Palm Jumeirah"]
     assert "Imaginary Developer" in unsupported_entity["unsupported_names"]
+    localized_location = overview_fact_guard(
+        (
+            "Synthetic Project is presented using verified facts.",
+            "يقع المشروع في الشارقة ويستند إلى المعلومات المؤكدة.",
+        ),
+        {"project_name": "Synthetic Project", "emirate": "Sharjah"},
+    )
+    assert localized_location["passed"]
     metadata = public_media_metadata(
         project_name="Synthetic Project",
         category="Exterior",

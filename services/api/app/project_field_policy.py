@@ -108,3 +108,91 @@ def candidate_media_is_preview_eligible(media: Any) -> bool:
         and {"webp", "avif"} <= formats
         and classify_media_dimensions(width, height, category or "gallery").public_eligible
     )
+
+
+def candidate_readiness_missing_fields(candidate: Any) -> list[str]:
+    """Return independently hidden optional fields used by every readiness surface."""
+    from app.acquisition.reconciliation import _missing
+
+    proposal = getattr(candidate, "normalized_payload", None) or {}
+    missing = {
+        str(item.get("field"))
+        for item in (getattr(candidate, "validation_errors", None) or [])
+        if isinstance(item, dict) and item.get("field")
+    }
+    for field in ("property_types", "unit_types"):
+        if _missing(proposal.get(field)):
+            missing.add(field)
+    plan = proposal.get("payment_plan")
+    if (
+        not isinstance(plan, dict)
+        or not plan.get("milestones")
+        or not plan.get("is_complete")
+        or plan.get("requires_review")
+    ):
+        missing.add("payment_plan")
+    return sorted(missing)
+
+
+def candidate_readiness_blockers(candidate: Any, missing: list[str] | None = None) -> list[str]:
+    """Keep CMS Mark Ready aligned with the evidence-led readiness report."""
+    from app.models import EditorialApprovalStatus, ProjectMediaCategory
+
+    resolved_missing = (
+        missing if missing is not None else candidate_readiness_missing_fields(candidate)
+    )
+    blockers = critical_candidate_errors(
+        getattr(candidate, "acquisition_summary", None),
+        [{"field": field} for field in resolved_missing],
+        list(getattr(candidate, "conflict_reasons", None) or []),
+    )
+    draft = getattr(candidate, "editorial_draft", None)
+    if not draft or draft.approval_status != EditorialApprovalStatus.APPROVED:
+        blockers.append("Bilingual Overview requires editorial approval")
+    if getattr(candidate, "arabic_review_required", True):
+        blockers.append("Arabic review required")
+    if not getattr(candidate, "human_review_completed", False):
+        blockers.append("Human source review required")
+    media = [
+        item
+        for item in (getattr(candidate, "staged_media", None) or [])
+        if getattr(item, "stage_status", None) == "downloaded"
+    ]
+    approved_media = [item for item in media if candidate_media_is_preview_eligible(item)]
+    if any(
+        item.category == ProjectMediaCategory.COVER and item not in approved_media for item in media
+    ):
+        blockers.append("Documented media reuse permission required")
+    if not any(item.category == ProjectMediaCategory.COVER for item in approved_media):
+        blockers.append("Rights-cleared landscape Cover required")
+    for item in approved_media:
+        if not all(
+            getattr(item, key, None)
+            for key in (
+                "alt_en_draft",
+                "alt_ar_draft",
+                "title_en",
+                "title_ar",
+                "description_en",
+                "description_ar",
+                "tags",
+                "normalized_filename",
+                "processed_sha256",
+            )
+        ):
+            blockers.append("Complete verified bilingual media metadata required")
+        formats = {
+            entry.get("format")
+            for entry in (getattr(item, "derivative_manifest", None) or [])
+            if isinstance(entry, dict)
+        }
+        if not {"webp", "avif"} <= formats:
+            blockers.append("Clean WebP and AVIF derivatives required")
+    research = (getattr(candidate, "acquisition_summary", None) or {}).get(
+        "source_first_research", {}
+    )
+    if not research.get("exact_documents"):
+        blockers.append("Exact official Project document requires verification")
+    if not research.get("context_review_completed"):
+        blockers.append("Project-specific factual context and source freshness require review")
+    return list(dict.fromkeys(blockers))

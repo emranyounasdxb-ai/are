@@ -23,7 +23,6 @@ from app.acquisition.adapters import adapter_for, official_url_matches_project
 from app.acquisition.contracts import ManifestCandidate, SourceFetcher
 from app.acquisition.parser import normalize_evidence, normalize_name, parse_html
 from app.acquisition.reconciliation import (
-    _missing,
     reconcile_candidate_quality,
     source_disagreement,
 )
@@ -32,7 +31,6 @@ from app.acquisition.tanami import _store_snapshot
 from app.audit import write_audit
 from app.config import Settings
 from app.models import (
-    EditorialApprovalStatus,
     ImportReviewStatus,
     Project,
     ProjectImportCandidate,
@@ -41,7 +39,11 @@ from app.models import (
     ProjectSourceType,
     PublicationStatus,
 )
-from app.project_field_policy import candidate_media_is_preview_eligible, critical_candidate_errors
+from app.project_field_policy import (
+    candidate_media_is_preview_eligible,
+    candidate_readiness_blockers,
+    candidate_readiness_missing_fields,
+)
 from app.storage import PrivateStorage
 
 RESEARCH_VERSION = "official-readiness-v1"
@@ -154,67 +156,13 @@ def readiness_report(candidate: ProjectImportCandidate) -> dict[str, Any]:
     """Report evidence and editorial/rights gates separately from Draft existence."""
     reconcile_candidate_quality(candidate)
     proposal = candidate.normalized_payload or {}
-    missing = sorted({str(item.get("field")) for item in candidate.validation_errors})
-    for field in ("property_types", "unit_types"):
-        if _missing(proposal.get(field)) and field not in missing:
-            missing.append(field)
-    plan = proposal.get("payment_plan")
-    if (
-        not isinstance(plan, dict)
-        or not plan.get("milestones")
-        or not plan.get("is_complete")
-        or plan.get("requires_review")
-    ) and "payment_plan" not in missing:
-        missing.append("payment_plan")
+    missing = candidate_readiness_missing_fields(candidate)
     media = [item for item in candidate.staged_media if item.stage_status == "downloaded"]
     rights_unclear = [item for item in media if not candidate_media_is_preview_eligible(item)]
     approved_media = [item for item in media if item not in rights_unclear]
-    blockers = critical_candidate_errors(
-        candidate.acquisition_summary,
-        [{"field": field} for field in missing],
-        candidate.conflict_reasons,
-    )
+    blockers = candidate_readiness_blockers(candidate, missing)
     draft = candidate.editorial_draft
-    if not draft or draft.approval_status != EditorialApprovalStatus.APPROVED:
-        blockers.append("Bilingual Overview requires editorial approval")
-    if candidate.arabic_review_required:
-        blockers.append("Arabic review required")
-    if not candidate.human_review_completed:
-        blockers.append("Human source review required")
-    if rights_unclear:
-        blockers.append("Documented media reuse permission required")
-    if not any(item.category == ProjectMediaCategory.COVER for item in approved_media):
-        blockers.append("Rights-cleared landscape Cover required")
-    for item in approved_media:
-        if not all(
-            getattr(item, key, None)
-            for key in (
-                "alt_en_draft",
-                "alt_ar_draft",
-                "title_en",
-                "title_ar",
-                "description_en",
-                "description_ar",
-                "tags",
-                "normalized_filename",
-                "processed_sha256",
-            )
-        ):
-            blockers.append("Complete verified bilingual media metadata required")
-        formats = {entry.get("format") for entry in getattr(item, "derivative_manifest", [])}
-        if not {"webp", "avif"} <= formats:
-            blockers.append("Clean WebP and AVIF derivatives required")
-        if item.category == ProjectMediaCategory.COVER and not (
-            (getattr(item, "width", 0) or 0) >= 1600
-            and (getattr(item, "height", 0) or 0) >= 900
-            and (getattr(item, "width", 0) or 0) > (getattr(item, "height", 0) or 0)
-        ):
-            blockers.append("Cover must meet the existing landscape resolution requirement")
     research = (candidate.acquisition_summary or {}).get("source_first_research", {})
-    if not research.get("exact_documents"):
-        blockers.append("Exact official Project document requires verification")
-    if not research.get("context_review_completed"):
-        blockers.append("Project-specific factual context and source freshness require review")
     return {
         "candidate_id": str(candidate.id),
         "project_id": str(candidate.linked_project_id) if candidate.linked_project_id else None,
@@ -356,8 +304,17 @@ async def research_existing_batch(
                             for heading in [parsed.title or "", *parsed.headings[:2]]
                         )
                         document["url_identity"] = official_url_matches_project(name, result.url)
-                        if document["exact_identity"]:
+                        if document["exact_identity"] or (
+                            discovery
+                            and discovery.match_kind == "deterministic"
+                            and document["url_identity"]
+                            and not (candidate.acquisition_summary or {})
+                            .get("targeted_field_review", {})
+                            .get("identity_hold")
+                        ):
                             research["exact_documents"].append(result.url)
+                            if not candidate.official_source_url:
+                                candidate.official_source_url = result.url
                         # Parsed proposals are private research only. Whole-page facts can
                         # include related Projects and require contextual adjudication.
                         document["unreviewed_proposal"] = normalize_evidence(

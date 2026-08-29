@@ -45,7 +45,7 @@ from app.models import (
     ProjectUnitType,
     PublicationStatus,
 )
-from app.project_field_policy import critical_candidate_errors
+from app.project_field_policy import candidate_readiness_blockers
 from app.schemas import ImportBulkActionInput
 
 
@@ -59,17 +59,7 @@ def eligibility_errors(candidate: ProjectImportCandidate) -> list[str]:
         errors.append("An official source is required.")
     if not candidate.normalized_project_name:
         errors.append("A source-grounded project name is required.")
-    errors.extend(
-        critical_candidate_errors(
-            candidate.acquisition_summary,
-            candidate.validation_errors,
-            candidate.conflict_reasons,
-        )
-    )
-    if candidate.arabic_review_required:
-        errors.append("Arabic evidence requires human review.")
-    if not candidate.human_review_completed:
-        errors.append("Human review must be completed.")
+    errors.extend(candidate_readiness_blockers(candidate))
     return errors
 
 
@@ -175,6 +165,10 @@ async def apply_bulk_action(
         item.review_status != ImportReviewStatus.NEEDS_REVIEW for item in candidates
     ):
         raise _invalid("Canonical mappings can be changed only while a candidate Needs Review.")
+    if payload.action == "return-to-review" and any(
+        item.review_status != ImportReviewStatus.READY_FOR_APPROVAL for item in candidates
+    ):
+        raise _invalid("Only Ready candidates can return to Needs Review.")
 
     if payload.action == "assign-developer":
         if not await db.get(Developer, payload.developer_id):
@@ -192,6 +186,10 @@ async def apply_bulk_action(
             _remove_mapping_issue(item, "area")
             item.human_review_completed = False
             item.review_status = ImportReviewStatus.NEEDS_REVIEW
+    elif payload.action == "return-to-review":
+        for item in candidates:
+            item.review_status = ImportReviewStatus.NEEDS_REVIEW
+            item.reviewed_by = context.user.id
     elif payload.action == "reject":
         for item in candidates:
             item.review_status = ImportReviewStatus.REJECTED
