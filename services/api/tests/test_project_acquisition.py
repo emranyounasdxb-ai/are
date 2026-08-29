@@ -24,6 +24,7 @@ from app.acquisition.media import (
     validate_raster,
 )
 from app.acquisition.media_intake import (
+    AUTOMATIC_EXACT_PROJECT_RIGHTS_BASIS,
     TANAMI_OWNER_AUTHORIZED_RIGHTS_BASIS,
     _select_best_cover,
     intake_private_media,
@@ -77,11 +78,23 @@ async def test_idempotent_tanami_media_rerun_synchronizes_owner_authorization(
             category=ProjectMediaCategory.GALLERY,
             source_url="https://www.tanamiproperties.com/project-media/gallery.jpg",
             rights_status=MediaRightsStatus.APPROVED,
-            rights_basis=(
-                "Automatically approved exact-Project image from a validated candidate source."
-            ),
+            rights_basis=AUTOMATIC_EXACT_PROJECT_RIGHTS_BASIS,
             stage_status="downloaded",
             processing_version="project-media-v3",
+            discovery_manifest={
+                "project_url": "https://www.tanamiproperties.com/Projects/QA-Tanami-Project",
+                "source_url": "https://www.tanamiproperties.com/project-media/gallery.jpg",
+                "disposition": "accepted",
+            },
+        )
+        legacy_media = ProjectImportMedia(
+            category=ProjectMediaCategory.FLOOR_PLAN,
+            source_url="https://developer.example/legacy-floor-plan.jpg",
+            rights_status=MediaRightsStatus.APPROVED,
+            rights_basis=TANAMI_OWNER_AUTHORIZED_RIGHTS_BASIS,
+            stage_status="downloaded",
+            processing_version="project-media-v3",
+            discovery_manifest={},
         )
         candidate = ProjectImportCandidate(
             manifest_row_id=1,
@@ -94,7 +107,7 @@ async def test_idempotent_tanami_media_rerun_synchronizes_owner_authorization(
             conflict_reasons=[],
             adapter_key=TANAMI_ADAPTER_KEY,
             review_status=ImportReviewStatus.NEEDS_REVIEW,
-            staged_media=[media],
+            staged_media=[media, legacy_media],
         )
         db.add(
             ProjectImportBatch(
@@ -111,16 +124,21 @@ async def test_idempotent_tanami_media_rerun_synchronizes_owner_authorization(
 
         first = await intake_private_media(db, test_settings, batch_id, preserve_review_state=True)
         first_confirmation = media.rights_confirmed_at
+        legacy_confirmation = legacy_media.rights_confirmed_at
 
         assert first["attempted"] == 0
         assert media.rights_basis == TANAMI_OWNER_AUTHORIZED_RIGHTS_BASIS
+        assert legacy_media.rights_basis == AUTOMATIC_EXACT_PROJECT_RIGHTS_BASIS
         assert first_confirmation is not None
+        assert legacy_confirmation is not None
 
         second = await intake_private_media(db, test_settings, batch_id, preserve_review_state=True)
 
         assert second["attempted"] == 0
         assert media.rights_basis == TANAMI_OWNER_AUTHORIZED_RIGHTS_BASIS
         assert media.rights_confirmed_at == first_confirmation
+        assert legacy_media.rights_basis == AUTOMATIC_EXACT_PROJECT_RIGHTS_BASIS
+        assert legacy_media.rights_confirmed_at == legacy_confirmation
 
 
 def test_reconciliation_does_not_recreate_the_generic_nine_conflicts() -> None:
@@ -199,6 +217,7 @@ def test_best_cover_selection_uses_only_a_valid_high_resolution_landscape() -> N
         category=ProjectMediaCategory.COVER,
         stage_status="downloaded",
         rights_status=MediaRightsStatus.APPROVED,
+        rights_basis=AUTOMATIC_EXACT_PROJECT_RIGHTS_BASIS,
         storage_key="invalid.webp",
         width=1620,
         height=600,
@@ -208,6 +227,7 @@ def test_best_cover_selection_uses_only_a_valid_high_resolution_landscape() -> N
         category=ProjectMediaCategory.GALLERY,
         stage_status="downloaded",
         rights_status=MediaRightsStatus.APPROVED,
+        rights_basis=TANAMI_OWNER_AUTHORIZED_RIGHTS_BASIS,
         storage_key="selected.webp",
         width=2400,
         height=1350,
