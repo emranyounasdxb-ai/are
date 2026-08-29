@@ -6,7 +6,11 @@ from datetime import UTC, datetime
 import pytest
 from sqlalchemy import func, select
 
-from app.acquisition.adapters import adapter_for, official_url_matches_project
+from app.acquisition.adapters import (
+    adapter_for,
+    official_announcement_url_matches_project,
+    official_url_matches_project,
+)
 from app.acquisition.contracts import FetchResult
 from app.acquisition.tanami import (
     _ambiguous_cross_candidate_media_ids,
@@ -595,6 +599,52 @@ def test_official_project_url_requires_phase_tokens_and_rejects_broad_pages() ->
     )
     assert not official_url_matches_project(
         "The Boulevard 3", "https://www.arada.com/en/property/the-boulevard-3-bedroom/"
+    )
+    assert official_url_matches_project(
+        "Areej Apartments", "https://www.arada.com/en/property_category/areej/"
+    )
+    assert official_url_matches_project(
+        "The Riff Apartments", "https://www.arada.com/en/property_category/the-riff/"
+    )
+    assert not official_url_matches_project(
+        "Nest at Aljada", "https://www.arada.com/en/property_category/nest-8/"
+    )
+    assert not official_url_matches_project(
+        "Nasma Residences", "https://www.arada.com/en/nasma-central/"
+    )
+    assert official_url_matches_project(
+        "Nesba 1 at Aljada", "https://www.arada.com/en/property_category/nesba-1/"
+    )
+    assert official_url_matches_project(
+        "The Boulevard at Aljada",
+        "https://www.arada.com/en/property_category/the-boulevard/",
+    )
+
+
+def test_official_announcement_match_requires_every_multi_token_identity_part() -> None:
+    assert official_announcement_url_matches_project(
+        "Al Mamsha Hamsa 2",
+        "https://www.alefgroup.ae/press/alef-launches-hamsa-2-in-al-mamsha-sharjah/",
+    )
+    assert official_announcement_url_matches_project(
+        "Masaar Robinia",
+        "https://www.arada.com/en/latest-news/arada-launches-robinia-the-third-phase-of-masaar/",
+    )
+    assert not official_announcement_url_matches_project(
+        "Al Mamsha Hamsa 2",
+        "https://www.alefgroup.ae/press/alef-launches-hamsa-3-in-al-mamsha-sharjah/",
+    )
+    assert not official_announcement_url_matches_project(
+        "Al Mamsha Hamsa",
+        "https://www.alefgroup.ae/press/alef-launches-hamsa-2-in-al-mamsha-sharjah/",
+    )
+    assert not official_announcement_url_matches_project(
+        "Olfah 2 by Alef",
+        "https://www.alefgroup.ae/press/alef-group-launches-olfah-project-valued-at-aed-2-5-billion/",
+    )
+    assert not official_announcement_url_matches_project(
+        "Hayyan",
+        "https://www.alefgroup.ae/press/alef-announces-new-hayyan-phase/",
     )
 
 

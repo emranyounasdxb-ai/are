@@ -6,12 +6,14 @@ from uuid import uuid4
 import pytest
 from sqlalchemy import delete, func, select
 
-from app.acquisition.contracts import FetchResult
+from app.acquisition.contracts import DiscoveryResult, FetchResult
 from app.acquisition.research import (
+    discovery_inspection_urls,
     exact_document_identity,
     readiness_report,
     recalculate_stored_conflicts,
     research_existing_batch,
+    research_fingerprint,
 )
 from app.acquisition.security import AcquisitionSecurityError, host_is_allowed, validate_public_url
 from app.db import SessionLocal
@@ -78,9 +80,64 @@ def candidate():
 def test_identity_does_not_fuzzily_merge_phases_or_unit_counts():
     assert exact_document_identity("Nama 2 at Al Mamsha", "Nama 2")
     assert exact_document_identity("Nama 2 at Al Mamsha", "Nama 2 at Al Mamsha by Alef Group")
+    assert exact_document_identity(
+        "Al Mamsha Hamsa 2",
+        "Alef Launches Al Mamsha Hamsa 2 in Al Mamsha Sharjah",
+    )
+    assert exact_document_identity(
+        "Nama 5 at Al Mamsha",
+        "Alef Group launches Nama 5 at Al Mamsha Raseel in Sharjah",
+    )
+    assert exact_document_identity("The Riff Apartments", "About The Riff")
+    assert exact_document_identity("Safa at Aljada", "Safa Apartments")
+    assert exact_document_identity("Olfah by Alef", "Olfah By Alef")
+    assert exact_document_identity(
+        "Hayyan", "Hayyan - Buy Modern Luxury Villas & Townhouses in Sharjah by Alef"
+    )
     assert not exact_document_identity("Nama 2 at Al Mamsha", "Nama 3")
+    assert not exact_document_identity("Al Mamsha Hamsa 2", "Al Mamsha Hamsa 3 launched")
+    assert not exact_document_identity("Al Mamsha Hamsa", "Al Mamsha Hamsa 2 launched")
+    assert not exact_document_identity(
+        "Olfah 2 by Alef", "Olfah Residential Project AED 2.5 Billion Launch"
+    )
+    assert not exact_document_identity("Nasma Residences", "Nasma Central")
     assert not exact_document_identity("The Boulevard 3", "The Boulevard 3 Bedroom")
     assert not exact_document_identity("Abu Dhabi Tower", "Renad Tower")
+
+
+def test_fuzzy_discovery_is_bounded_to_private_document_identity_inspection():
+    suggestion = "https://www.arada.com/en/property_category/areej/"
+    discovery = DiscoveryResult(
+        source_url=suggestion,
+        match_kind="fuzzy-suggestion",
+        suggested_url=suggestion,
+    )
+    assert discovery_inspection_urls(discovery) == [suggestion]
+    assert discovery_inspection_urls(DiscoveryResult(source_url=None, match_kind="not-found")) == []
+
+
+def test_research_fingerprint_ignores_observation_times_only():
+    original = {
+        "checked_at": "2026-08-29T10:00:00+00:00",
+        "documents": [
+            {
+                "source_url": "https://example.com/project",
+                "retrieved_at": "2026-08-29T10:00:00+00:00",
+                "sha256": "a" * 64,
+            }
+        ],
+    }
+    repeated = {
+        **original,
+        "checked_at": "2026-08-29T11:00:00+00:00",
+        "documents": [{**original["documents"][0], "retrieved_at": "2026-08-29T11:00:00+00:00"}],
+    }
+    changed = {
+        **repeated,
+        "documents": [{**repeated["documents"][0], "sha256": "b" * 64}],
+    }
+    assert research_fingerprint(original) == research_fingerprint(repeated)
+    assert research_fingerprint(original) != research_fingerprint(changed)
 
 
 def test_malformed_source_hostname_is_rejected_without_network_or_batch_crash():
@@ -253,17 +310,26 @@ async def test_bounded_research_is_private_idempotent_and_keeps_success_on_retry
         await db.commit()
         fetcher = Fetcher()
         try:
-            for _ in range(2):
-                result = await research_existing_batch(
-                    db,
-                    test_settings,
-                    batch.id,
-                    fetcher=fetcher,
-                    discover=False,
-                    candidate_ids=[record.id],
-                    extra_urls={1: [url]},
-                )
-                assert result["count"] == 1 and result["ready"] == 0
+            first = await research_existing_batch(
+                db,
+                test_settings,
+                batch.id,
+                fetcher=fetcher,
+                discover=False,
+                candidate_ids=[record.id],
+                extra_urls={1: [url]},
+            )
+            repeated = await research_existing_batch(
+                db,
+                test_settings,
+                batch.id,
+                fetcher=fetcher,
+                discover=False,
+                candidate_ids=[record.id],
+                extra_urls={1: [url]},
+            )
+            assert first["count"] == 1 and first["ready"] == 0 and first["mutated"] == 1
+            assert repeated["count"] == 1 and repeated["mutated"] == 0
             assert (
                 await db.scalar(
                     select(func.count())
@@ -275,6 +341,17 @@ async def test_bounded_research_is_private_idempotent_and_keeps_success_on_retry
             assert record.normalized_payload == {}
             assert record.linked_project_id is None
             assert not record.human_review_completed
+            assert (
+                await db.scalar(
+                    select(func.count())
+                    .select_from(AuditLog)
+                    .where(
+                        AuditLog.entity_id == str(record.id),
+                        AuditLog.action == "project.import.official_research",
+                    )
+                )
+                == 1
+            )
             fetcher.failed = True
             await research_existing_batch(
                 db,

@@ -18,6 +18,13 @@ from app.acquisition.security import host_is_allowed
 
 ADAPTER_VERSION = "1.0"
 STOP_TOKENS = {"at", "by", "the", "phase", "tower", "and"}
+PROJECT_FORM_SUFFIXES = {
+    "apartments",
+    "plots",
+    "residences",
+    "townhouses",
+    "villas",
+}
 
 
 @dataclass(frozen=True)
@@ -129,19 +136,25 @@ def _xml_locations(body: bytes) -> set[str]:
 
 def _best_url(project_name: str, urls: set[str]) -> tuple[str | None, str | None]:
     exact: list[str] = []
+    announcements: list[str] = []
     fuzzy: list[tuple[float, str]] = []
     for url in urls:
         path = normalize_name(urlsplit(url).path.replace("-", " "))
-        if not path or any(value in path for value in ("privacy", "terms", "career", "news")):
+        if not path or any(value in path for value in ("privacy", "terms", "career")):
             continue
         if official_url_matches_project(project_name, url):
             exact.append(url)
+            continue
+        if official_announcement_url_matches_project(project_name, url):
+            announcements.append(url)
             continue
         score = name_similarity(path, project_name)
         if score >= 0.5:
             fuzzy.append((score, url))
     if exact:
         return sorted(exact, key=lambda value: (len(urlsplit(value).path), value))[0], None
+    if announcements:
+        return sorted(announcements, key=lambda value: (len(urlsplit(value).path), value))[0], None
     if fuzzy:
         return None, sorted(fuzzy, key=lambda value: (-value[0], len(value[1])))[0][1]
     return None, None
@@ -164,12 +177,9 @@ def _localized_exact_urls(project_name: str, urls: set[str], primary: str) -> tu
 def official_url_matches_project(project_name: str, url: str) -> bool:
     """Require every meaningful Project token, including phase numbers, in the URL."""
     project_identity = re.split(r"\s+by\s+", project_name, maxsplit=1, flags=re.IGNORECASE)[0]
-    target_tokens = normalize_name(project_identity).split()
-    important = {
-        value
-        for value in target_tokens
-        if value not in STOP_TOKENS and (len(value) > 2 or value.isdigit())
-    }
+    identities = [project_identity]
+    if re.search(r"\s+at\s+", project_identity, flags=re.IGNORECASE):
+        identities.append(re.split(r"\s+at\s+", project_identity, maxsplit=1, flags=re.I)[0])
     # Identity must occur in the document slug, not across unrelated location
     # folders (for example /abu-dhabi/towers/renad-tower).
     path = normalize_name(urlsplit(url).path.replace("-", " "))
@@ -179,7 +189,47 @@ def official_url_matches_project(project_name: str, url: str) -> bool:
     # A bedroom count is not a numbered building or phase.
     leaf = re.sub(r"\b\d+[-_ ]?(?:br|bedroom|bedrooms)\b", "", leaf, flags=re.I)
     leaf_tokens = set(normalize_name(leaf.replace("-", " ")).split())
-    return bool(important) and not (path_tokens & excluded_sections) and important <= leaf_tokens
+    semantic_leaf_tokens = leaf_tokens - STOP_TOKENS - PROJECT_FORM_SUFFIXES
+    if path_tokens & excluded_sections:
+        return False
+    for identity in identities:
+        target_tokens = normalize_name(identity).split()
+        while target_tokens and target_tokens[-1] in PROJECT_FORM_SUFFIXES:
+            target_tokens.pop()
+        important = {
+            value
+            for value in target_tokens
+            if value not in STOP_TOKENS and (len(value) > 2 or value.isdigit())
+        }
+        extra_numbers = {value for value in leaf_tokens if value.isdigit()} - important
+        single_token_mismatch = len(important) == 1 and semantic_leaf_tokens != important
+        if (
+            important
+            and not single_token_mismatch
+            and not extra_numbers
+            and important <= leaf_tokens
+        ):
+            return True
+    return False
+
+
+def official_announcement_url_matches_project(project_name: str, url: str) -> bool:
+    """Accept exact multi-token Project identities in official news/press slugs."""
+    identity = re.split(r"\s+(?:at|by)\s+", project_name, maxsplit=1, flags=re.IGNORECASE)[0]
+    important = [
+        value
+        for value in normalize_name(identity).split()
+        if value not in STOP_TOKENS and (len(value) > 2 or value.isdigit())
+    ]
+    path_tokens = normalize_name(urlsplit(url).path.replace("-", " ")).split()
+    section_tokens = set(path_tokens)
+    if len(important) < 2 or not section_tokens.intersection({"latest", "news", "press"}):
+        return False
+    expected_numbers = {value for value in important if value.isdigit()}
+    path_numbers = {value for value in path_tokens if value.isdigit()}
+    if path_numbers != expected_numbers:
+        return False
+    return set(important) <= set(path_tokens)
 
 
 OFFICIAL_ADAPTERS = (
