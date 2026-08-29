@@ -29,7 +29,7 @@ export default async function CandidateProjectPreviewPage({ params }: Props) {
   const mediaPrefix = `/${locale}/preview/project-imports/${encodeURIComponent(batchId)}/candidates/${encodeURIComponent(candidateId)}/media`;
   const previewProject = {
     ...project,
-    media: project.media.map((item) => ({
+    media: (project.media ?? []).map((item) => ({
       ...item,
       thumbnail_url: `${mediaPrefix}/${item.id}?size=thumbnail`,
       full_url: `${mediaPrefix}/${item.id}?size=full`,

@@ -34,7 +34,6 @@ from app.config import Settings
 from app.models import (
     EditorialApprovalStatus,
     ImportReviewStatus,
-    MediaRightsStatus,
     Project,
     ProjectImportCandidate,
     ProjectMediaCategory,
@@ -42,7 +41,7 @@ from app.models import (
     ProjectSourceType,
     PublicationStatus,
 )
-from app.project_field_policy import critical_candidate_errors
+from app.project_field_policy import candidate_media_is_preview_eligible, critical_candidate_errors
 from app.storage import PrivateStorage
 
 RESEARCH_VERSION = "official-readiness-v1"
@@ -168,13 +167,7 @@ def readiness_report(candidate: ProjectImportCandidate) -> dict[str, Any]:
     ) and "payment_plan" not in missing:
         missing.append("payment_plan")
     media = [item for item in candidate.staged_media if item.stage_status == "downloaded"]
-    rights_unclear = [
-        item
-        for item in media
-        if item.rights_status != MediaRightsStatus.APPROVED
-        or not item.rights_basis
-        or item.rights_basis.startswith("Automatically approved exact-Project")
-    ]
+    rights_unclear = [item for item in media if not candidate_media_is_preview_eligible(item)]
     approved_media = [item for item in media if item not in rights_unclear]
     blockers = critical_candidate_errors(
         candidate.acquisition_summary,

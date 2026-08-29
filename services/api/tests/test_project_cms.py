@@ -681,6 +681,7 @@ async def test_import_review_summary_bulk_readiness_and_draft_are_safe(
                         category=ProjectMediaCategory.COVER,
                         source_url="https://example.com/qa-approved-cover.webp",
                         rights_status=MediaRightsStatus.APPROVED,
+                        rights_basis="Owner-approved QA fixture permission.",
                         stage_status="downloaded",
                         storage_key=f"qa-{candidate_id}.webp",
                         thumbnail_storage_key=f"qa-thumb-{candidate_id}.webp",
@@ -688,6 +689,7 @@ async def test_import_review_summary_bulk_readiness_and_draft_are_safe(
                         width=1600,
                         height=900,
                         normalized_filename="qa-source-grounded-project-cover-01.webp",
+                        processed_sha256="c" * 64,
                         alt_en_draft="Cover image for QA Source-Grounded Project",
                         alt_ar_draft="الصورة الرئيسية — مشروع اختبار مصدر موثق",
                         title_en="QA Source-Grounded Project — Cover image",
@@ -695,7 +697,16 @@ async def test_import_review_summary_bulk_readiness_and_draft_are_safe(
                         description_en="Cover image for QA Source-Grounded Project.",
                         description_ar="الصورة الرئيسية — مشروع اختبار مصدر موثق.",
                         tags=["QA Source-Grounded Project", "Cover image"],
-                        derivative_manifest=[{"storage_key": f"qa-derivative-{candidate_id}.webp"}],
+                        derivative_manifest=[
+                            {
+                                "format": "webp",
+                                "storage_key": f"qa-derivative-{candidate_id}.webp",
+                            },
+                            {
+                                "format": "avif",
+                                "storage_key": f"qa-derivative-{candidate_id}.avif",
+                            },
+                        ],
                     ),
                     ProjectImportMedia(
                         category=ProjectMediaCategory.GALLERY,
@@ -746,8 +757,8 @@ async def test_import_review_summary_bulk_readiness_and_draft_are_safe(
     assert preview.status_code == 200, preview.text
     preview_data = preview.json()
     assert preview_data["project_name"] == "QA Source-Grounded Project"
-    assert preview_data["availability_status"] == "not-confirmed"
-    assert preview_data["construction_status"] == "not-confirmed"
+    assert preview_data["availability_status"] == "coming-soon"
+    assert preview_data["construction_status"] == "pre-launch"
     assert len(preview_data["media"]) == 1
     assert preview_data["media"][0]["category"] == "cover"
     assert not {

@@ -668,6 +668,12 @@ def candidate_public_preview_dict(
     locale: str,
 ) -> dict[str, Any]:
     """Return an authenticated public-style allowlist without provenance or workflow internals."""
+    from app.project_field_policy import (
+        candidate_evidence_state,
+        candidate_media_is_preview_eligible,
+    )
+    from app.public_project_evidence import omit_unresolved
+
     proposal = record.normalized_payload or {}
     ar = locale == "ar"
     labels = _PREVIEW_LABELS.get(locale, {})
@@ -696,12 +702,20 @@ def candidate_public_preview_dict(
             "display_order": item.display_order,
         }
         for item in sorted(record.staged_media, key=lambda value: value.display_order)
-        if item.stage_status == "downloaded"
-        and item.rights_status.value == "approved"
-        and item.storage_key
+        if candidate_media_is_preview_eligible(item)
     ]
-    milestones = proposal.get("payment_milestones", [])
-    return {
+    payment_plan = proposal.get("payment_plan")
+    milestones = (
+        payment_plan.get("milestones", [])
+        if isinstance(payment_plan, dict)
+        else proposal.get("payment_milestones", [])
+    )
+    hidden_fields, _ = candidate_evidence_state(
+        record.acquisition_summary,
+        record.validation_errors,
+        record.conflict_reasons,
+    )
+    data = {
         "candidate_id": record.id,
         "locale": locale,
         "project_name": proposal.get("project_name_ar" if ar else "project_name")
@@ -725,7 +739,7 @@ def candidate_public_preview_dict(
         "size_unit": proposal.get("size_unit"),
         "size_ranges": proposal.get("size_ranges", []),
         "down_payment_percentage": proposal.get("down_payment_percentage"),
-        "payment_plan": public_candidate_payment(proposal.get("payment_plan")),
+        "payment_plan": payment_plan,
         "payment_milestones": [
             {
                 "sequence": index + 1,
@@ -738,8 +752,8 @@ def candidate_public_preview_dict(
         "handover_quarter": proposal.get("handover_quarter"),
         "handover_year": proposal.get("handover_year"),
         "handover_verification": "requires-verification",
-        "availability_status": "not-confirmed",
-        "construction_status": "not-confirmed",
+        "availability_status": proposal.get("availability_status"),
+        "construction_status": proposal.get("construction_status"),
         "amenities": [
             labels.get(str(value), str(value)) for value in proposal.get("amenities", [])
         ],
@@ -754,6 +768,11 @@ def candidate_public_preview_dict(
         "media": media,
         "has_cover": any(item["category"] == "cover" for item in media),
     }
+    safe = omit_unresolved(data, hidden_fields=hidden_fields)
+    assert safe is not None
+    if "payment_plan" in safe:
+        safe["payment_plan"] = public_candidate_payment(safe["payment_plan"])
+    return safe
 
 
 def import_candidate_summary_dict(record: ProjectImportCandidate) -> dict[str, Any]:

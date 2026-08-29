@@ -84,6 +84,7 @@ from app.project_approval import (
     require_current_receipt,
     validate_review,
 )
+from app.project_field_policy import candidate_media_is_preview_eligible
 from app.project_processing import (
     cancel_processing_job,
     create_processing_job,
@@ -1709,12 +1710,17 @@ async def import_candidate_preview_media(
         if media and size == "thumbnail"
         else (media.storage_key if media else None)
     )
-    if not media or not storage_key:
+    if not media or not candidate_media_is_preview_eligible(media) or not storage_key:
         raise HTTPException(
             status.HTTP_404_NOT_FOUND,
             detail={"code": "not_found", "message": "Approved preview media not found."},
         )
     content = await asyncio.to_thread(PrivateStorage(settings).read, storage_key)
+    if size == "full" and hashlib.sha256(content).hexdigest() != media.processed_sha256:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            detail={"code": "not_found", "message": "Approved preview media not found."},
+        )
     return Response(
         content=content,
         media_type="image/webp" if size == "thumbnail" else media.mime_type,

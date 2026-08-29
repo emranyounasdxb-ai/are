@@ -220,7 +220,7 @@ export function ProjectDetailPresentation({
         {normalized.milestones.length ? <ol className="project-presentation__milestones">{normalized.milestones.map((item) => <li key={`${item.sequence}-${item.stage}`}>
           <span>{item.sequence.toString().padStart(2, "0")}</span>
           <strong>{item.label || stageLabel(item.stage, locale)}</strong>
-          <em>{item.percentage == null ? t.notConfirmed : `${item.percentage}%`}</em>
+          {item.percentage == null ? null : <em>{item.percentage}%</em>}
         </li>)}</ol> : null}
       </div>
     </section> : null}
@@ -281,27 +281,35 @@ type NormalizedProject = {
 function normalizeProject(project: PresentationProject, locale: Locale, mediaBaseUrl: string): NormalizedProject {
   const candidate = "candidate_id" in project;
   const ar = locale === "ar";
-  if (candidate) return {
+  if (candidate) {
+    const plan = project.payment_plan;
+    const milestones = plan?.milestones ?? project.payment_milestones ?? [];
+    return {
     name: project.project_name,
     overview: project.overview,
     developer: project.developer.name,
     emirate: project.emirate,
     area: project.area,
     enquiryKey: project.project_name,
-    propertyTypes: project.property_types,
-    bedrooms: project.bedrooms,
-    unitTypes: project.unit_types,
+    propertyTypes: project.property_types ?? [],
+    bedrooms: project.bedrooms ?? [],
+    unitTypes: project.unit_types ?? [],
     size: sizeLabel(project.size_min, project.size_max, project.size_unit, locale),
     downPayment: project.down_payment_percentage == null ? null : `${project.down_payment_percentage}%`,
     handover: project.handover_quarter && project.handover_year ? handoverLabel(project.handover_quarter, project.handover_year, locale) : null,
     handoverNote: project.handover_quarter && project.handover_year ? copy[locale].verification : null,
     availability: project.availability_status ? statusLabel(project.availability_status, locale) : null,
     construction: project.construction_status ? statusLabel(project.construction_status, locale) : null,
-    paymentPlan: project.payment_plan,
-    milestones: project.payment_milestones,
-    amenities: project.amenities,
-    nearby: project.nearby_places.map((item) => ({ name: item.name, travelTime: item.travel_time_minutes })),
-    media: project.media.map((item) => ({
+    paymentPlan: plan?.raw_source_text?.trim() || null,
+    milestones: milestones.map((item, index) => ({
+      sequence: item.sequence ?? index + 1,
+      stage: item.stage ?? "other",
+      label: "label_ar" in item ? (ar ? item.label_ar : item.label_en) : null,
+      percentage: item.percentage ?? null,
+    })),
+    amenities: project.amenities ?? [],
+    nearby: (project.nearby_places ?? []).map((item) => ({ name: item.name, travelTime: item.travel_time_minutes })),
+    media: (project.media ?? []).map((item) => ({
       id: item.id,
       category: item.category,
       thumbnailUrl: mediaUrl(mediaBaseUrl, item.thumbnail_url),
@@ -310,7 +318,8 @@ function normalizeProject(project: PresentationProject, locale: Locale, mediaBas
       width: item.width ?? 1200,
       height: item.height ?? 900,
     })),
-  };
+    };
+  }
   const area = ar ? project.area.name_ar : project.area.name_en;
   return {
     name: project.official_name,

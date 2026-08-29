@@ -71,3 +71,40 @@ def critical_candidate_errors(
     if identity_hold:
         result.append("Unresolved Project identity or unclassified source conflict")
     return result
+
+
+def candidate_media_is_preview_eligible(media: Any) -> bool:
+    """Allow only fully prepared media with explicit, non-automatic reuse permission."""
+    from app.acquisition.media import classify_media_dimensions
+
+    rights_status = getattr(getattr(media, "rights_status", None), "value", None)
+    category = getattr(getattr(media, "category", None), "value", None)
+    rights_basis = getattr(media, "rights_basis", None) or ""
+    formats = {
+        item.get("format")
+        for item in (getattr(media, "derivative_manifest", None) or [])
+        if isinstance(item, dict)
+    }
+    width = getattr(media, "width", None) or 0
+    height = getattr(media, "height", None) or 0
+    return bool(
+        getattr(media, "stage_status", None) == "downloaded"
+        and rights_status == "approved"
+        and rights_basis
+        and not rights_basis.startswith("Automatically approved exact-Project")
+        and getattr(media, "storage_key", None)
+        and getattr(media, "thumbnail_storage_key", None)
+        and getattr(media, "mime_type", None)
+        in {"image/jpeg", "image/png", "image/webp", "image/avif"}
+        and getattr(media, "processed_sha256", None)
+        and getattr(media, "normalized_filename", None)
+        and getattr(media, "alt_en_draft", None)
+        and getattr(media, "alt_ar_draft", None)
+        and getattr(media, "title_en", None)
+        and getattr(media, "title_ar", None)
+        and getattr(media, "description_en", None)
+        and getattr(media, "description_ar", None)
+        and getattr(media, "tags", None)
+        and {"webp", "avif"} <= formats
+        and classify_media_dimensions(width, height, category or "gallery").public_eligible
+    )
