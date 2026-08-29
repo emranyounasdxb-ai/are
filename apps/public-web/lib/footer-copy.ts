@@ -56,7 +56,7 @@ export const footerStackCopy: Readonly<Record<Locale, FooterStackCopy>> = {
   },
   ar: {
     newsletter: {
-      eyebrow: "ALIYAS / النشرة البريدية",
+      eyebrow: "علياس العقارية / النشرة البريدية",
       heading: "رؤية مدروسة لعقارات الإمارات.",
       text: "إرشادات ثنائية اللغة من حين إلى آخر، ورؤى منشورة حديثاً، وإصدارات عقارية مستقبلية بعد التحقق منها.",
       emailLabel: "البريد الإلكتروني",
@@ -67,12 +67,12 @@ export const footerStackCopy: Readonly<Record<Locale, FooterStackCopy>> = {
     },
     app: {
       eyebrow: "تجربة هاتف قادمة",
-      heading: "ALIYAS معك أينما قادتك رحلتك العقارية.",
-      text: "نعمل على تجربة ALIYAS Real Estate للهواتف بنظامي iOS وAndroid.",
+      heading: "علياس العقارية معك أينما قادتك رحلتك العقارية.",
+      text: "نعمل على تجربة علياس العقارية للهواتف بنظامي آي أو إس وأندرويد.",
       comingSoon: "قريباً",
       plannedLabel: "مخطط للتجربة على الهاتف",
       plannedItems: ["اكتشاف العقارات", "حفظ التفضيلات", "الاستفسارات المباشرة"],
-      deviceLabel: "تجربة ALIYAS القادمة على الهاتف",
+      deviceLabel: "تجربة علياس العقارية القادمة على الهاتف",
     },
     footer: {
       brandStatement: "مسار ثنائي اللغة وواضح لاكتشاف عقارات الإمارات بصورة مدروسة.",

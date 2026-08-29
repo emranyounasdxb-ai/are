@@ -3,6 +3,7 @@ import Link from "next/link";
 import type { CSSProperties, ReactNode } from "react";
 
 import type { Locale } from "../../lib/home-copy";
+import { normalizeArabicUserFacingText } from "../../lib/arabic-localization";
 import { HomeHeroShinyEyebrow } from "../motion/home-hero-shiny-eyebrow";
 import { HomeHeroTypedDescription } from "../motion/home-hero-typed-description";
 import { Reveal } from "../motion/reveal";
@@ -30,6 +31,7 @@ export function PageHero({ locale, image, eyebrow, title, description, primary, 
     "--hero-focus-rtl": asset.rtl,
     "--hero-focus-rtl-mobile": asset.rtlMobile,
   } as CSSProperties;
+  const display = (value: string) => locale === "ar" ? normalizeArabicUserFacingText(value) : value;
 
   return (
     <section aria-labelledby="page-hero-title" className={styles.hero} data-page-hero={image} style={artDirection}>
@@ -39,12 +41,12 @@ export function PageHero({ locale, image, eyebrow, title, description, primary, 
       </div>
       <div className={styles.inner}>
         <Reveal className={styles.copy} distance={18}>
-          <p className={styles.eyebrow}>{locale === "en" ? <HomeHeroShinyEyebrow text={eyebrow} /> : eyebrow}</p>
-          <h1 id="page-hero-title">{title}</h1>
-          <HomeHeroTypedDescription key={`${locale}:${description}`} locale={locale} text={description} />
+          <p className={styles.eyebrow}>{locale === "en" ? <HomeHeroShinyEyebrow text={eyebrow} /> : display(eyebrow)}</p>
+          <h1 id="page-hero-title">{display(title)}</h1>
+          <HomeHeroTypedDescription key={`${locale}:${description}`} locale={locale} text={display(description)} />
           <div className={styles.actions}>
-            <Link className="button button--primary animated-gold-border" href={primary.href}>{primary.label}</Link>
-            {secondary ? <Link className={`button button--secondary ${styles.secondary}`} href={secondary.href}>{secondary.label}</Link> : null}
+            <Link className="button button--primary animated-gold-border" href={primary.href}>{display(primary.label)}</Link>
+            {secondary ? <Link className={`button button--secondary ${styles.secondary}`} href={secondary.href}>{display(secondary.label)}</Link> : null}
           </div>
         </Reveal>
         {note ? <aside className={styles.note}>{note}</aside> : null}

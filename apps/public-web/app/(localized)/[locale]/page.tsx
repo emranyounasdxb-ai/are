@@ -12,6 +12,7 @@ import { DiscoverySearch } from "../../../components/search/discovery-search";
 import { getDeveloper, getInsight } from "../../../lib/api";
 import { homeCopy, isLocale, isPurpose, type Locale } from "../../../lib/home-copy";
 import { homepageCopy } from "../../../lib/homepage-copy";
+import { localizedDisplayText, normalizeArabicContent } from "../../../lib/arabic-localization";
 
 const journeyImages = {
   buy: "/images/home-premium/journey-buy.webp",
@@ -39,8 +40,8 @@ export default async function HomePage({ params, searchParams }: HomePageProps) 
 }
 
 async function LocalizedHome({ locale, initialPurpose }: Readonly<{ locale: Locale; initialPurpose: "buy" | "rent" | "off-plan" }>) {
-  const copy = homeCopy[locale];
-  const content = homepageCopy[locale];
+  const copy = locale === "ar" ? normalizeArabicContent(homeCopy[locale]) : homeCopy[locale];
+  const content = locale === "ar" ? normalizeArabicContent(homepageCopy[locale]) : homepageCopy[locale];
   const pathwayTitleBreakWord = locale === "ar" ? "عقارك" : "your";
   const pathwayTitleBreakIndex = copy.discovery.title.indexOf(pathwayTitleBreakWord);
   const pathwayTitleLead = copy.discovery.title.slice(0, pathwayTitleBreakIndex).trim();
@@ -143,8 +144,8 @@ async function LocalizedHome({ locale, initialPurpose }: Readonly<{ locale: Loca
             <p>{content.approach.eyebrow}</p>
             <h2 id="approach-title">{content.approach.title}</h2>
             <span>{content.approach.text}</span>
-            <ul>{content.approach.points.map((point, index) => <li key={point}><small>{String(index + 1).padStart(2, "0")}</small>{point}</li>)}</ul>
-            <Link className="text-link" href={`/${locale}/about`}>{locale === "ar" ? "تعرّف إلى ALIYAS" : "Discover the ALIYAS approach"}</Link>
+            <ul>{content.approach.points.map((point, index) => <li key={point}><small>{localizedDisplayText(String(index + 1).padStart(2, "0"), locale)}</small>{point}</li>)}</ul>
+            <Link className="text-link" href={`/${locale}/about`}>{locale === "ar" ? "تعرّف إلى علياس العقارية" : "Discover the ALIYAS approach"}</Link>
           </div>
         </section>
 
@@ -163,7 +164,7 @@ async function LocalizedHome({ locale, initialPurpose }: Readonly<{ locale: Loca
               <div className="home-guidance-v2__links">
                 {content.guidance.items.slice(0, 3).map((item, index) => {
                   const href = index === 0 ? `/${locale}/communities` : index === 1 ? `/${locale}/off-plan` : `/${locale}/properties`;
-                  return <Link href={href} key={item.title}><span>{String(index + 1).padStart(2, "0")}</span><div><h3>{item.title}</h3><p>{item.text}</p></div></Link>;
+                  return <Link href={href} key={item.title}><span>{localizedDisplayText(String(index + 1).padStart(2, "0"), locale)}</span><div><h3>{item.title}</h3><p>{item.text}</p></div></Link>;
                 })}
               </div>
             </div>
@@ -181,7 +182,7 @@ async function LocalizedHome({ locale, initialPurpose }: Readonly<{ locale: Loca
               <figcaption>{content.developer.imageNote}</figcaption>
             </figure>
             <article>
-              <div className="home-developer-spotlight__monogram" aria-hidden="true">01</div>
+              <div className="home-developer-spotlight__monogram" aria-hidden="true">{localizedDisplayText("01", locale)}</div>
               <div className="home-developer-spotlight__content">
                 <p>{content.developer.verified}: <time dateTime={featuredDeveloper.verification_date}>{featuredDeveloper.verification_date}</time></p>
                 <h3 dir="ltr">{featuredDeveloper.name}</h3>

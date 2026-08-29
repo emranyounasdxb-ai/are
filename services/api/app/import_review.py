@@ -46,6 +46,7 @@ from app.models import (
     PublicationStatus,
 )
 from app.project_field_policy import candidate_readiness_blockers
+from app.project_localization import approved_arabic_project_name
 from app.schemas import ImportBulkActionInput
 
 
@@ -59,6 +60,10 @@ def eligibility_errors(candidate: ProjectImportCandidate) -> list[str]:
         errors.append("An official source is required.")
     if not candidate.normalized_project_name:
         errors.append("A source-grounded project name is required.")
+    if not approved_arabic_project_name(
+        candidate.normalized_payload or {}, candidate.normalized_project_name
+    ):
+        errors.append("An approved Arabic Project name is required.")
     errors.extend(candidate_readiness_blockers(candidate))
     return errors
 
@@ -74,6 +79,10 @@ def draft_eligibility_errors(candidate: ProjectImportCandidate) -> list[str]:
         errors.append("At least one retained source is required.")
     if not candidate.normalized_project_name:
         errors.append("A source-grounded project name is required.")
+    if not approved_arabic_project_name(
+        candidate.normalized_payload or {}, candidate.normalized_project_name
+    ):
+        errors.append("An approved Arabic Project name is required.")
     overview = candidate.editorial_draft
     if not overview or not overview.overview_en or not overview.overview_ar:
         errors.append("A bilingual Overview draft is required.")
@@ -399,7 +408,9 @@ async def _create_draft(
     overview = candidate.editorial_draft
     if not overview or not overview.overview_en or not overview.overview_ar:
         raise _invalid("A bilingual Overview draft is required.")
-    project_name_ar = str(proposal.get("project_name_ar") or project_name)
+    project_name_ar = approved_arabic_project_name(proposal, project_name)
+    if not project_name_ar:
+        raise _invalid("An approved Arabic Project name is required.")
     record.translations = [
         ProjectTranslation(
             locale="en",

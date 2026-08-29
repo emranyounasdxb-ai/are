@@ -191,9 +191,9 @@ export const homeCopy: Readonly<Record<Locale, HomeCopy>> = {
   },
   ar: {
     meta: {
-      title: "اكتشاف العقارات في الإمارات | ALIYAS Real Estate",
+      title: "اكتشاف العقارات في الإمارات | علياس العقارية",
       description:
-        "استكشف العقارات المنشورة وإرشادات المجتمعات والمطورين والرؤى الواعية بالمصادر في الإمارات مع ALIYAS Real Estate.",
+        "استكشف العقارات المنشورة وإرشادات المجتمعات والمطورين والرؤى الواعية بالمصادر في الإمارات مع علياس العقارية.",
     },
     header: {
       about: "من نحن",
@@ -260,13 +260,13 @@ export const homeCopy: Readonly<Record<Locale, HomeCopy>> = {
       description:
         "سواء كنت مستعداً للشراء، أو تبحث عن عقار للإيجار، أو تستكشف فرصة في مشروع على المخطط، ابدأ بالمسار الذي يتوافق مع أهدافك وتقدّم بوضوح أكبر.",
       eyebrow: "ثلاثة مسارات للبدء",
-      label: "اكتشاف ALIYAS",
+      label: "اكتشاف علياس",
       title: "ثلاثة مسارات واضحة نحو عقارك القادم في الإمارات.",
     },
     journeys: [
       {
         className: "discovery-card--buy",
-        eyebrow: "01 / شراء",
+        eyebrow: "٠١ / شراء",
         imageAlt: "واجهة مسكن عصري تمثل مسار الشراء",
         linkLabel: "استكشف الشراء",
         purpose: "buy",
@@ -275,7 +275,7 @@ export const homeCopy: Readonly<Record<Locale, HomeCopy>> = {
       },
       {
         className: "discovery-card--rent",
-        eyebrow: "02 / إيجار",
+        eyebrow: "٠٢ / إيجار",
         imageAlt: "تصميم داخلي لمسكن عصري يمثل مسار الإيجار",
         linkLabel: "استكشف الإيجار",
         purpose: "rent",
@@ -284,7 +284,7 @@ export const homeCopy: Readonly<Record<Locale, HomeCopy>> = {
       },
       {
         className: "discovery-card--off-plan",
-        eyebrow: "03 / على المخطط",
+        eyebrow: "٠٣ / على المخطط",
         imageAlt: "مجسم معماري يمثل مسار المشاريع على المخطط",
         linkLabel: "افهم مسار على المخطط",
         purpose: "off-plan",
