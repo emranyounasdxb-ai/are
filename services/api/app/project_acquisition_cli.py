@@ -94,6 +94,16 @@ def parser() -> argparse.ArgumentParser:
         help="Refresh only the retained candidates in one existing explicit Tanami batch",
     )
     tanami_refresh.add_argument("--batch-id", required=True, type=uuid.UUID)
+    tanami_media_classify = subcommands.add_parser(
+        "tanami-media-classify",
+        help="Persist DOM-aware media categories for existing mapped Tanami Projects only",
+    )
+    tanami_media_classify.add_argument("--batch-id", required=True, action="append", type=uuid.UUID)
+    tanami_media_acquire = subcommands.add_parser(
+        "tanami-media-acquire",
+        help="Download and sync classified media without changing review state",
+    )
+    tanami_media_acquire.add_argument("--batch-id", required=True, action="append", type=uuid.UUID)
     for command in (
         "acquire",
         "refresh",
@@ -137,6 +147,91 @@ def parser() -> argparse.ArgumentParser:
 
 async def run(args: argparse.Namespace) -> None:
     async with SessionLocal() as db:
+        if args.command == "tanami-media-classify":
+            from app.acquisition.security import BatchCachingFetcher, SecureFetcher
+            from app.acquisition.service import selected_batch
+            from app.acquisition.tanami import classify_existing_candidate_media
+
+            fetcher = BatchCachingFetcher(SecureFetcher())
+            projects: list[dict[str, object]] = []
+            for batch_id in args.batch_id:
+                batch = await selected_batch(db, str(batch_id))
+                for candidate in sorted(batch.candidates, key=lambda item: item.manifest_row_id):
+                    projects.append(
+                        await classify_existing_candidate_media(
+                            db,
+                            get_settings(),
+                            candidate.id,
+                            fetcher=fetcher,
+                        )
+                    )
+            classification_totals: dict[str, int] = {}
+            for project in projects:
+                counts = project.get("counts")
+                if not isinstance(counts, dict):
+                    continue
+                for key, count in counts.items():
+                    classification_totals[str(key)] = classification_totals.get(str(key), 0) + int(
+                        count
+                    )
+            print(json.dumps({"projects": projects, "totals": classification_totals}, indent=2))
+            return
+        if args.command == "tanami-media-acquire":
+            from app.acquisition.media_intake import _remove_media_output, intake_private_media
+            from app.acquisition.service import selected_batch
+            from app.acquisition.tanami import ambiguous_cross_candidate_media_ids
+            from app.import_review import sync_linked_draft_from_candidate
+
+            acquisition_totals: dict[str, int] = {}
+            projects_synced = 0
+            completed_batches: list[ProjectImportBatch] = []
+            for batch_id in args.batch_id:
+                batch = await selected_batch(db, str(batch_id))
+                media_intake_result = await intake_private_media(
+                    db,
+                    get_settings(),
+                    batch.id,
+                    preserve_review_state=True,
+                )
+                for key, count in media_intake_result.items():
+                    acquisition_totals[key] = acquisition_totals.get(key, 0) + count
+                completed_batches.append(await selected_batch(db, str(batch.id)))
+            bounded_candidates = [
+                candidate for batch in completed_batches for candidate in batch.candidates
+            ]
+            ambiguous_ids = ambiguous_cross_candidate_media_ids(bounded_candidates)
+            if ambiguous_ids:
+                from app.storage import PrivateStorage
+
+                storage = PrivateStorage(get_settings())
+                for candidate in bounded_candidates:
+                    for staged_media in candidate.staged_media:
+                        if staged_media.id not in ambiguous_ids:
+                            continue
+                        _remove_media_output(
+                            storage,
+                            staged_media,
+                            "Identical media was shared across exact Project candidates.",
+                        )
+                        staged_media.stage_status = "rejected-unrelated"
+            for completed_batch in completed_batches:
+                for candidate in completed_batch.candidates:
+                    if candidate.linked_project_id:
+                        await sync_linked_draft_from_candidate(db, candidate, fields={"media"})
+                        projects_synced += 1
+            await db.commit()
+            print(
+                json.dumps(
+                    {
+                        "batches": len(args.batch_id),
+                        "projects_synced": projects_synced,
+                        "cross_project_duplicates_rejected": len(ambiguous_ids),
+                        **acquisition_totals,
+                    },
+                    indent=2,
+                )
+            )
+            return
         if args.command == "generate-illustrative-covers":
             from app.acquisition.illustrative_cover import generate_candidate_cover
 
@@ -223,7 +318,7 @@ async def run(args: argparse.Namespace) -> None:
             )
             if not imported_pack:
                 raise ValueError("Overview pack not found.")
-            result = await import_overview_response(
+            overview_import_result = await import_overview_response(
                 db,
                 pack=imported_pack,
                 response=response,
@@ -236,10 +331,13 @@ async def run(args: argparse.Namespace) -> None:
                 entity_id=imported_pack.id,
                 actor_user_id=args.actor_id,
                 correlation_id=args.correlation_id,
-                after={"imported": result["imported"], "failed": result["failed"]},
+                after={
+                    "imported": overview_import_result["imported"],
+                    "failed": overview_import_result["failed"],
+                },
             )
             await db.commit()
-            print(json.dumps(result, default=str, indent=2))
+            print(json.dumps(overview_import_result, default=str, indent=2))
             return
         if args.command == "process-worker":
             processed = 0
@@ -276,8 +374,8 @@ async def run(args: argparse.Namespace) -> None:
         if args.command == "sobha-siniya-official-media":
             from app.acquisition.sobha_siniya_pilot import refresh_sobha_official_media
 
-            result = await refresh_sobha_official_media(db, get_settings())
-            print(json.dumps(result, default=str, indent=2))
+            sobha_media_result = await refresh_sobha_official_media(db, get_settings())
+            print(json.dumps(sobha_media_result, default=str, indent=2))
             return
         if args.command == "tanami-batch":
             from app.acquisition.media_intake import intake_private_media
@@ -504,7 +602,7 @@ async def run(args: argparse.Namespace) -> None:
                             "error": f"{type(exc).__name__}: {str(exc)[:300]}",
                         }
                     )
-            media = await intake_private_media(db, get_settings(), batch.id)
+            refresh_media_result = await intake_private_media(db, get_settings(), batch.id)
             refreshed_batch = await selected_batch(db, str(batch.id))
             for candidate in refreshed_batch.candidates:
                 await sync_linked_draft_from_candidate(db, candidate)
@@ -515,7 +613,7 @@ async def run(args: argparse.Namespace) -> None:
                         "batch_id": str(batch.id),
                         "refreshed": succeeded,
                         "failed": failures,
-                        "media": media,
+                        "media": refresh_media_result,
                     },
                     indent=2,
                 )

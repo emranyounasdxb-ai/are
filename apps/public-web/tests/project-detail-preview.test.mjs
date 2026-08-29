@@ -40,3 +40,21 @@ test("omitted optional candidate collections use empty presentation defaults", (
   }
   assert.match(previewPage, /\(project\.media \?\? \[\]\)\.map/);
 });
+
+test("project media keeps amenities and plan/map categories separate from gallery", () => {
+  assert.match(
+    source,
+    /id: "amenities" as const, label: t\.amenities, categories: \["amenities"\]/,
+  );
+  assert.match(source, /categories: \["floor-plan"\]/);
+  assert.match(source, /categories: \["master-plan"\]/);
+  assert.match(source, /categories: \["location-map"\]/);
+  assert.match(
+    source,
+    /categories: \["gallery", "exterior", "interior", "construction"\]/,
+  );
+  assert.doesNotMatch(
+    source,
+    /categories: \["gallery", "exterior", "interior", "amenities"/,
+  );
+});

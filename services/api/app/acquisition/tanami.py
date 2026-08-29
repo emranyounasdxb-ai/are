@@ -16,6 +16,7 @@ import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from html.parser import HTMLParser
+from typing import Any
 from urllib.parse import parse_qs, urljoin, urlsplit, urlunsplit
 from uuid import UUID
 
@@ -64,7 +65,7 @@ from app.models import (
 from app.storage import PrivateStorage
 
 TANAMI_ADAPTER_KEY = "tanami-explicit-project-list"
-TANAMI_ADAPTER_VERSION = "2.1"
+TANAMI_ADAPTER_VERSION = "2.2"
 TANAMI_DOCUMENT_DOMAINS = ("tanamiproperties.com",)
 TANAMI_MEDIA_DOMAINS = ("tanamiproperties.com", "manage.tanamiproperties.com")
 SHARJAH_LISTING_URL = "https://www.tanamiproperties.com/Offplan-Projects-in-Sharjah"
@@ -183,11 +184,28 @@ class TanamiDocumentSet:
     normalized: NormalizedEvidence
     identity: TanamiIdentity
     media: tuple[tuple[str, ProjectMediaCategory], ...]
+    media_manifest: tuple[DiscoveredMedia, ...]
+
+
+@dataclass(frozen=True)
+class DiscoveredMedia:
+    source_url: str
+    category: ProjectMediaCategory | None
+    disposition: str
+    dom_heading: str | None
+    parent_context: str
+    caption: str | None
+    alt_text: str | None
+    subpage: str
+    category_evidence: tuple[str, ...]
+    source_order: int
+    category_order: int
 
 
 @dataclass(frozen=True)
 class MediaDiscovery:
     media: tuple[tuple[str, ProjectMediaCategory], ...]
+    manifest: tuple[DiscoveredMedia, ...]
     excluded_count: int
     duplicate_count: int
     visible_gallery_count: int
@@ -416,8 +434,15 @@ async def acquire_project_documents(
         area=identity.area_name or "Area not confirmed",
     )
     combined = _combined_normalized(results, manifest)
-    media = exact_project_media(primary_url, tuple(results))
-    return TanamiDocumentSet(primary_url, tuple(results), combined, identity, media)
+    discovery = discover_exact_project_media(primary_url, tuple(results))
+    return TanamiDocumentSet(
+        primary_url,
+        tuple(results),
+        combined,
+        identity,
+        discovery.media,
+        discovery.manifest,
+    )
 
 
 def extract_identity(result: FetchResult) -> TanamiIdentity:
@@ -714,27 +739,82 @@ class _ContextualMediaParser(HTMLParser):
         self.base_url = base_url
         self.primary_path = primary_path
         self.anchor_stack: list[str | None] = []
-        self.media: dict[str, int] = {}
+        self.container_stack: list[dict[str, Any]] = []
+        self.media: dict[str, dict[str, Any]] = {}
         self.duplicate_count = 0
         self.script_type: str | None = None
         self.script_parts: list[str] = []
+        self.heading_parts: list[str] | None = None
+        self.caption_parts: list[str] | None = None
+        self.order = 0
 
-    def _add(self, value: str | None, score: int = 0) -> None:
+    def _context(self) -> str:
+        return clean(
+            " ".join(
+                str(frame["context"]) for frame in self.container_stack[-6:] if frame.get("context")
+            )
+        )
+
+    def _heading(self) -> str | None:
+        for frame in reversed(self.container_stack):
+            heading = clean(str(frame.get("heading") or ""))
+            if heading:
+                return heading
+        return None
+
+    def _add(self, value: str | None, score: int = 0, *, alt_text: str | None = None) -> None:
         if not value:
             return
         absolute = urljoin(self.base_url, value.strip())
         if absolute in self.media:
             self.duplicate_count += 1
-        self.media[absolute] = max(score, self.media.get(absolute, score))
+            if score <= int(self.media[absolute]["score"]):
+                return
+            source_order = int(self.media[absolute]["source_order"])
+        else:
+            source_order = self.order
+            self.order += 1
+        self.media[absolute] = {
+            "score": score,
+            "source_order": source_order,
+            "dom_heading": self._heading(),
+            "parent_context": self._context(),
+            "caption": None,
+            "alt_text": clean(alt_text or "") or None,
+        }
+        for frame in reversed(self.container_stack):
+            if frame.get("tag") == "figure":
+                media_urls = frame.setdefault("media_urls", [])
+                if isinstance(media_urls, list) and absolute not in media_urls:
+                    media_urls.append(absolute)
+                break
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         values = dict(attrs)
+        if tag not in {"img", "source", "input", "meta", "link", "br", "hr"}:
+            context = " ".join(
+                filter(
+                    None,
+                    (
+                        values.get("id"),
+                        values.get("class"),
+                        values.get("role"),
+                        values.get("aria-label"),
+                        values.get("data-section"),
+                    ),
+                )
+            )
+            self.container_stack.append({"tag": tag, "context": clean(context), "media_urls": []})
         if tag == "a":
             href = values.get("href")
             linked = urljoin(self.base_url, href) if href else None
             self.anchor_stack.append(linked)
             if linked and urlsplit(linked).path.casefold().endswith(IMAGE_SUFFIXES):
                 self._add(linked, 60)
+        if tag in {"h1", "h2", "h3", "h4", "h5", "h6"}:
+            self.heading_parts = []
+        if tag == "figcaption":
+            self.caption_parts = []
         if tag == "script":
             self.script_type = values.get("type")
             self.script_parts = []
@@ -756,19 +836,49 @@ class _ContextualMediaParser(HTMLParser):
             ("data-original", 40),
             ("data-echo", 35),
         ):
-            self._add(values.get(attribute), score)
+            self._add(
+                values.get(attribute),
+                score,
+                alt_text=values.get("alt") or values.get("title"),
+            )
         for attribute in ("srcset", "data-srcset"):
             for url, width in _srcset_candidates(values.get(attribute)):
-                self._add(url, 20 + width)
+                self._add(
+                    url,
+                    20 + width,
+                    alt_text=values.get("alt") or values.get("title"),
+                )
 
     def handle_data(self, data: str) -> None:
-        if self.script_type != "application/ld+json":
-            return
-        self.script_parts.append(data)
+        if self.script_type == "application/ld+json":
+            self.script_parts.append(data)
+        if self.heading_parts is not None:
+            self.heading_parts.append(data)
+        if self.caption_parts is not None:
+            self.caption_parts.append(data)
 
     def handle_endtag(self, tag: str) -> None:
         if tag == "a" and self.anchor_stack:
             self.anchor_stack.pop()
+        if tag in {"h1", "h2", "h3", "h4", "h5", "h6"} and self.heading_parts is not None:
+            heading = clean(" ".join(self.heading_parts))
+            if heading:
+                for frame in reversed(self.container_stack):
+                    if frame.get("tag") not in {"h1", "h2", "h3", "h4", "h5", "h6"}:
+                        frame["heading"] = heading
+                        break
+            self.heading_parts = None
+        if tag == "figcaption" and self.caption_parts is not None:
+            caption = clean(" ".join(self.caption_parts))
+            if caption:
+                for frame in reversed(self.container_stack):
+                    if frame.get("tag") != "figure":
+                        continue
+                    for url in frame.get("media_urls", []):
+                        if url in self.media:
+                            self.media[url]["caption"] = caption
+                    break
+            self.caption_parts = None
         if tag == "script" and self.script_type == "application/ld+json":
             text = "".join(self.script_parts).replace("\\/", "/")
             if self.primary_path in text:
@@ -780,6 +890,11 @@ class _ContextualMediaParser(HTMLParser):
                     self._add(match.group(0), 5)
             self.script_type = None
             self.script_parts = []
+        if self.container_stack:
+            for index in range(len(self.container_stack) - 1, -1, -1):
+                if self.container_stack[index].get("tag") == tag:
+                    del self.container_stack[index:]
+                    break
 
 
 def _srcset_candidates(value: str | None) -> tuple[tuple[str, int], ...]:
@@ -810,16 +925,17 @@ def discover_exact_project_media(
 ) -> MediaDiscovery:
     """Collect the best exact-project variants and bounded discovery diagnostics."""
     primary_path = urlsplit(primary_url).path.rstrip("/")
-    selected: dict[str, tuple[str, ProjectMediaCategory, int]] = {}
-    excluded: set[str] = set()
+    selected: dict[str, dict[str, Any]] = {}
     duplicate_count = 0
-    visible_gallery: set[str] = set()
+    global_order = 0
     for result in results:
         parser = _ContextualMediaParser(result.url, primary_path)
         parser.feed(result.body.decode("utf-8", errors="replace"))
         duplicate_count += parser.duplicate_count
-        section = urlsplit(result.url).path.rstrip("/").rsplit("/", 1)[-1].casefold()
-        for url, parser_score in parser.media.items():
+        subpage = _tanami_subpage(primary_url, result.url)
+        for url, observed in sorted(
+            parser.media.items(), key=lambda value: int(value[1]["source_order"])
+        ):
             split = urlsplit(url)
             path = split.path.casefold()
             if (
@@ -827,32 +943,87 @@ def discover_exact_project_media(
                 or not split.hostname
                 or not host_is_allowed(split.hostname, TANAMI_MEDIA_DOMAINS)
                 or not path.endswith(IMAGE_SUFFIXES)
-                or any(token in path for token in REJECTED_CONTENT_TOKENS)
             ):
-                excluded.add(url)
                 continue
-            category = _media_category(path, section)
-            if "/gallery/" in path and "/floor_image/" not in path:
-                visible_gallery.add(_media_identity(url))
+            category, disposition, evidence = _classify_media(
+                url=url,
+                subpage=subpage,
+                heading=str(observed.get("dom_heading") or ""),
+                parent_context=str(observed.get("parent_context") or ""),
+                caption=str(observed.get("caption") or ""),
+                alt_text=str(observed.get("alt_text") or ""),
+            )
             identity = _media_identity(url)
-            score = parser_score + _variant_score(path)
+            score = int(observed["score"]) + _variant_score(path)
             previous = selected.get(identity)
-            if (
-                previous is None
-                or score > previous[2]
-                or (
-                    previous[1] == ProjectMediaCategory.GALLERY
-                    and category != ProjectMediaCategory.GALLERY
-                    and url == previous[0]
-                )
-            ):
-                if previous is not None:
-                    duplicate_count += 1
-                selected[identity] = (url, category, score)
+            record: dict[str, Any] = {
+                "source_url": url,
+                "category": category,
+                "disposition": disposition,
+                "dom_heading": observed.get("dom_heading"),
+                "parent_context": observed.get("parent_context") or "",
+                "caption": observed.get("caption"),
+                "alt_text": observed.get("alt_text"),
+                "subpage": subpage,
+                "category_evidence": evidence,
+                "source_order": global_order,
+                "score": score,
+            }
+            global_order += 1
+            if previous is None:
+                selected[identity] = record
+            elif score > int(previous["score"]):
+                duplicate_count += 1
+                record["source_order"] = previous["source_order"]
+                selected[identity] = record
             else:
                 duplicate_count += 1
-    media = tuple(sorted((url, category) for url, category, _ in selected.values()))
-    return MediaDiscovery(media, len(excluded), duplicate_count, len(visible_gallery))
+    ordered = sorted(selected.values(), key=lambda value: int(value["source_order"]))
+    category_orders: dict[str, int] = {}
+    manifest: list[DiscoveredMedia] = []
+    for item in ordered:
+        category = item["category"]
+        category_key = (
+            category.value if isinstance(category, ProjectMediaCategory) else "unassigned"
+        )
+        category_order = category_orders.get(category_key, 0)
+        category_orders[category_key] = category_order + 1
+        manifest.append(
+            DiscoveredMedia(
+                source_url=str(item["source_url"]),
+                category=category if isinstance(category, ProjectMediaCategory) else None,
+                disposition=str(item["disposition"]),
+                dom_heading=(str(item["dom_heading"]) if item.get("dom_heading") else None),
+                parent_context=str(item["parent_context"]),
+                caption=(str(item["caption"]) if item.get("caption") else None),
+                alt_text=(str(item["alt_text"]) if item.get("alt_text") else None),
+                subpage=str(item["subpage"]),
+                category_evidence=tuple(str(value) for value in item["category_evidence"]),
+                source_order=int(item["source_order"]),
+                category_order=category_order,
+            )
+        )
+    accepted = tuple(
+        (item.source_url, item.category)
+        for item in manifest
+        if item.disposition == "accepted" and item.category is not None
+    )
+    return MediaDiscovery(
+        accepted,
+        tuple(manifest),
+        sum(item.disposition == "reject" for item in manifest),
+        duplicate_count,
+        sum(
+            item.disposition == "accepted"
+            and item.category
+            in {
+                ProjectMediaCategory.GALLERY,
+                ProjectMediaCategory.EXTERIOR,
+                ProjectMediaCategory.INTERIOR,
+            }
+            for item in manifest
+        ),
+    )
 
 
 def _media_identity(url: str) -> str:
@@ -873,21 +1044,116 @@ def _variant_score(path: str) -> int:
     return 1000
 
 
+def _tanami_subpage(primary_url: str, result_url: str) -> str:
+    suffix = result_url.removeprefix(primary_url).lstrip("/-").casefold()
+    return suffix or "summary"
+
+
+def _classify_media(
+    *,
+    url: str,
+    subpage: str,
+    heading: str,
+    parent_context: str,
+    caption: str,
+    alt_text: str,
+) -> tuple[ProjectMediaCategory | None, str, tuple[str, ...]]:
+    """Classify with DOM/subpage evidence before bounded Tanami storage paths."""
+    path = urlsplit(url).path.casefold()
+    context = clean(" ".join((heading, parent_context, caption, alt_text))).casefold()
+    if any(token in path or token in context for token in REJECTED_CONTENT_TOKENS):
+        return None, "reject", ("rejected asset/context token",)
+    if re.search(r"other projects|related projects|more projects|advert", context):
+        return None, "reject", ("related or advertising container",)
+    subpage_categories = {
+        "floorplans": ProjectMediaCategory.FLOOR_PLAN,
+        "floorplan": ProjectMediaCategory.FLOOR_PLAN,
+        "floor-plans": ProjectMediaCategory.FLOOR_PLAN,
+        "floor-plan": ProjectMediaCategory.FLOOR_PLAN,
+        "masterplan": ProjectMediaCategory.MASTER_PLAN,
+        "master-plan": ProjectMediaCategory.MASTER_PLAN,
+        "location": ProjectMediaCategory.LOCATION_MAP,
+        "amenities": ProjectMediaCategory.AMENITIES,
+        "features": ProjectMediaCategory.AMENITIES,
+    }
+    if subpage in subpage_categories:
+        return subpage_categories[subpage], "accepted", (f"exact subpage: {subpage}",)
+    strong: tuple[tuple[ProjectMediaCategory, tuple[str, ...]], ...] = (
+        (
+            ProjectMediaCategory.MASTER_PLAN,
+            ("master plan", "masterplan", "community plan", "site plan"),
+        ),
+        (ProjectMediaCategory.FLOOR_PLAN, ("floor plan", "floorplan", "unit layout")),
+        (ProjectMediaCategory.LOCATION_MAP, ("location map", "project location", "map location")),
+        (ProjectMediaCategory.AMENITIES, ("amenities", "amenity", "facilities", "features")),
+        (ProjectMediaCategory.INTERIOR, ("interior", "bedroom", "living room", "kitchen")),
+        (ProjectMediaCategory.EXTERIOR, ("exterior", "facade", "façade")),
+    )
+    for category, tokens in strong:
+        matched = tuple(token for token in tokens if token in context)
+        if matched:
+            return category, "accepted", ("DOM context: " + ", ".join(matched),)
+    if re.search(r"hero|banner|project summary|summary banner", context) and "/banner/" in path:
+        return (
+            ProjectMediaCategory.COVER,
+            "accepted",
+            (
+                "DOM hero/summary context",
+                "Tanami banner path",
+            ),
+        )
+    for marker, category in (
+        ("/project/floor_image/", ProjectMediaCategory.FLOOR_PLAN),
+        ("/project/layoutplan/", ProjectMediaCategory.MASTER_PLAN),
+        ("/project/location_map/", ProjectMediaCategory.LOCATION_MAP),
+    ):
+        if marker in path:
+            return category, "accepted", (f"Tanami structural path: {marker}",)
+    if subpage in {"summary", "gallery"} and ("/gallery/" in path or "project_index" in path):
+        return (
+            ProjectMediaCategory.GALLERY,
+            "accepted",
+            (
+                f"exact subpage: {subpage}",
+                "Tanami Project gallery storage path",
+            ),
+        )
+    for token, category in (
+        ("interior", ProjectMediaCategory.INTERIOR),
+        ("exterior", ProjectMediaCategory.EXTERIOR),
+        ("facade", ProjectMediaCategory.EXTERIOR),
+    ):
+        if token in path and subpage in {"summary", "gallery"}:
+            return (
+                category,
+                "accepted",
+                (
+                    f"exact subpage: {subpage}",
+                    f"Project image path token: {token}",
+                ),
+            )
+    if subpage == "gallery" or re.search(
+        r"image gallery|project gallery|gallery carousel", context
+    ):
+        return ProjectMediaCategory.GALLERY, "accepted", ("exact Project gallery context",)
+    if ("/banner/" in path or "cover" in path or "hero" in path) and subpage == "summary":
+        return (
+            ProjectMediaCategory.COVER,
+            "accepted",
+            (
+                "summary subpage",
+                "Tanami banner path",
+            ),
+        )
+    return None, "uncertain", ("no deterministic DOM/subpage category evidence",)
+
+
 def _media_category(path: str, section: str) -> ProjectMediaCategory:
-    if "/banner/" in path or any(token in path for token in ("cover", "hero")):
-        return ProjectMediaCategory.COVER
-    if "floor_image" in path:
-        return ProjectMediaCategory.FLOOR_PLAN
-    if "layoutplan" in path or "master-plan" in path:
-        return ProjectMediaCategory.MASTER_PLAN
-    if "location_map" in path:
-        return ProjectMediaCategory.LOCATION_MAP
-    if "project_index" in path:
-        return ProjectMediaCategory.GALLERY
-    value = f"{path} {section}"
+    """Compatibility classifier for non-Tanami official adapters without DOM manifests."""
+    value = f"{path} {section}".casefold()
     if "floor" in value:
         return ProjectMediaCategory.FLOOR_PLAN
-    if "master" in value:
+    if "master" in value or "layoutplan" in value:
         return ProjectMediaCategory.MASTER_PLAN
     if "location" in value or "map" in value:
         return ProjectMediaCategory.LOCATION_MAP
@@ -895,7 +1161,7 @@ def _media_category(path: str, section: str) -> ProjectMediaCategory:
         return ProjectMediaCategory.AMENITIES
     if "interior" in value:
         return ProjectMediaCategory.INTERIOR
-    if "exterior" in value or "facade" in value:
+    if "exterior" in value or "facade" in value or "banner" in value:
         return ProjectMediaCategory.EXTERIOR
     return ProjectMediaCategory.GALLERY
 
@@ -1195,8 +1461,15 @@ def _ambiguous_cross_candidate_media_ids(
     batch: ProjectImportBatch,
 ) -> set[UUID]:
     """Reject raster evidence reused by more than one exact Project candidate."""
+    return ambiguous_cross_candidate_media_ids(batch.candidates)
+
+
+def ambiguous_cross_candidate_media_ids(
+    candidates: list[ProjectImportCandidate],
+) -> set[UUID]:
+    """Find URL or content reuse across any bounded exact-Project candidate set."""
     grouped: dict[tuple[str, str], list[tuple[UUID, UUID]]] = {}
-    for candidate in batch.candidates:
+    for candidate in candidates:
         for media in candidate.staged_media:
             if media.stage_status != "downloaded":
                 continue
@@ -1443,6 +1716,28 @@ async def _update_candidate(
         "official_developer_status": official_status,
         "document_count": len(documents.results),
         "media_discovered": len(documents.media),
+        "media_category_counts": {
+            label: sum(
+                item.disposition == disposition
+                and (
+                    label in {"reject", "uncertain"}
+                    or (item.category is not None and item.category.value == label)
+                )
+                for item in documents.media_manifest
+            )
+            for label, disposition in (
+                ("cover", "accepted"),
+                ("gallery", "accepted"),
+                ("exterior", "accepted"),
+                ("interior", "accepted"),
+                ("amenities", "accepted"),
+                ("floor-plan", "accepted"),
+                ("location-map", "accepted"),
+                ("master-plan", "accepted"),
+                ("reject", "reject"),
+                ("uncertain", "uncertain"),
+            )
+        },
         "media_warning": media_warning,
         "official_fact_evidence": official_fact_evidence,
         "retained_prior_evidence": retained_prior_evidence,
@@ -1451,7 +1746,7 @@ async def _update_candidate(
     candidate.normalized_payload = dict(proposal)
     candidate.review_status = ImportReviewStatus.NEEDS_REVIEW
     candidate.processing_status = ProjectProcessingStatus.NEEDS_REVIEW
-    await _stage_media(db, candidate, documents.media)
+    await _stage_media(db, candidate, documents.media_manifest)
     # Imported lazily because media_intake imports this adapter's domain constants.
     from app.acquisition.media_intake import _remove_media_output
 
@@ -1575,6 +1870,120 @@ async def refresh_explicit_candidate(
     return candidate
 
 
+def _classification_counts(manifest: tuple[DiscoveredMedia, ...]) -> dict[str, int]:
+    labels = (
+        "cover",
+        "gallery",
+        "exterior",
+        "interior",
+        "amenities",
+        "floor-plan",
+        "location-map",
+        "master-plan",
+        "reject",
+        "uncertain",
+    )
+    return {
+        label: sum(
+            item.disposition == label
+            if label in {"reject", "uncertain"}
+            else item.disposition == "accepted"
+            and item.category is not None
+            and item.category.value == label
+            for item in manifest
+        )
+        for label in labels
+    }
+
+
+async def classify_existing_candidate_media(
+    db: AsyncSession,
+    settings: Settings,
+    candidate_id: UUID,
+    *,
+    fetcher: SourceFetcher | None = None,
+) -> dict[str, object]:
+    """Persist current DOM evidence without changing facts or review state."""
+    candidate = await db.scalar(
+        select(ProjectImportCandidate)
+        .where(ProjectImportCandidate.id == candidate_id)
+        .options(
+            selectinload(ProjectImportCandidate.evidence),
+            selectinload(ProjectImportCandidate.staged_media),
+        )
+    )
+    if not candidate or candidate.adapter_key != TANAMI_ADAPTER_KEY:
+        raise ValueError("Only an existing mapped Tanami candidate may be classified.")
+    project_url = candidate.owner_manifest_values.get("approved_project_url")
+    if not isinstance(project_url, str):
+        raise ValueError("The candidate has no retained exact Tanami Project URL.")
+    source_fetcher = fetcher or BatchCachingFetcher(SecureFetcher())
+    documents = await acquire_project_documents(project_url, fetcher=source_fetcher)
+    retained_names = {
+        normalize_name(value)
+        for value in (
+            candidate.normalized_project_name,
+            candidate.owner_manifest_values.get("source_project_name"),
+            candidate.owner_manifest_values.get("listing_project_name"),
+            candidate.owner_manifest_values.get("owner_project_name"),
+        )
+        if isinstance(value, str) and value.strip()
+    }
+    if retained_names and normalize_name(documents.identity.project_name) not in retained_names:
+        raise ValueError(
+            "The current Tanami page identity does not match the retained exact Project mapping."
+        )
+    storage = PrivateStorage(settings)
+    for result in documents.results:
+        await _store_snapshot(
+            db,
+            storage,
+            candidate,
+            result,
+            ProjectSourceType.APPROVED_SECONDARY_SOURCE,
+        )
+    await _stage_media(db, candidate, documents.media_manifest)
+    current_urls = {item.source_url for item in documents.media_manifest}
+    stale_count = 0
+    for media in candidate.staged_media:
+        hostname = urlsplit(media.source_url).hostname or ""
+        if not host_is_allowed(hostname, TANAMI_MEDIA_DOMAINS) or media.source_url in current_urls:
+            continue
+        stale_count += 1
+        media.discovery_manifest = {
+            **dict(media.discovery_manifest or {}),
+            "project_id": str(candidate.linked_project_id) if candidate.linked_project_id else None,
+            "project_url": project_url,
+            "source_url": media.source_url,
+            "category": None,
+            "disposition": "reject",
+            "category_evidence": ["not observed in the current exact Project DOM pass"],
+        }
+        media.stage_status = "rejected-unrelated"
+        media.rights_status = MediaRightsStatus.REJECTED
+        media.failure_reason = "Not observed in the current exact Project DOM pass."
+    counts = _classification_counts(documents.media_manifest)
+    candidate.acquisition_summary = {
+        **dict(candidate.acquisition_summary or {}),
+        "dom_media_classification": {
+            "version": TANAMI_ADAPTER_VERSION,
+            "classified_at": datetime.now(UTC).isoformat(),
+            "project_url": project_url,
+            "counts": counts,
+            "stale_references": stale_count,
+        },
+    }
+    await db.commit()
+    return {
+        "candidate_id": str(candidate.id),
+        "project_id": str(candidate.linked_project_id) if candidate.linked_project_id else None,
+        "project": candidate.normalized_project_name,
+        "project_url": project_url,
+        "counts": counts,
+        "stale_references": stale_count,
+    }
+
+
 async def _store_snapshot(
     db: AsyncSession,
     storage: PrivateStorage,
@@ -1618,23 +2027,79 @@ async def _store_snapshot(
 async def _stage_media(
     db: AsyncSession,
     candidate: ProjectImportCandidate,
-    media: tuple[tuple[str, ProjectMediaCategory], ...],
+    media: tuple[tuple[str, ProjectMediaCategory], ...] | tuple[DiscoveredMedia, ...],
 ) -> None:
     existing = {item.source_url: item for item in candidate.staged_media}
-    eligible = tuple((url, category) for url, category in media if _is_https_raster_candidate(url))
-    for order, (url, category) in enumerate(eligible):
+    linked_project_id = getattr(candidate, "linked_project_id", None)
+    owner_manifest_values = getattr(candidate, "owner_manifest_values", {}) or {}
+    normalized: list[tuple[str, ProjectMediaCategory, int, str, dict[str, object]]] = []
+    for order, discovered in enumerate(media):
+        if isinstance(discovered, DiscoveredMedia):
+            url = discovered.source_url
+            category = discovered.category or ProjectMediaCategory.GALLERY
+            disposition = discovered.disposition
+            category_order = discovered.category_order
+            manifest = {
+                "project_id": str(linked_project_id) if linked_project_id else None,
+                "project_url": owner_manifest_values.get("approved_project_url"),
+                "source_url": url,
+                "dom_heading": discovered.dom_heading,
+                "parent_context": discovered.parent_context,
+                "caption": discovered.caption,
+                "alt_text": discovered.alt_text,
+                "subpage": discovered.subpage,
+                "category": discovered.category.value if discovered.category else None,
+                "disposition": disposition,
+                "category_evidence": list(discovered.category_evidence),
+                "source_order": discovered.source_order,
+                "category_order": category_order,
+            }
+        else:
+            assert isinstance(discovered, tuple)
+            url, category = discovered
+            disposition = "accepted"
+            category_order = order
+            manifest = {
+                "project_id": str(linked_project_id) if linked_project_id else None,
+                "project_url": owner_manifest_values.get("approved_project_url"),
+                "source_url": url,
+                "category": category.value,
+                "disposition": disposition,
+                "source_order": order,
+                "category_order": category_order,
+            }
+        if _is_https_raster_candidate(url):
+            normalized.append((url, category, category_order, disposition, manifest))
+    for url, category, category_order, disposition, manifest in normalized:
         item = existing.get(url)
         if item:
             item.category = category
+            item.display_order = category_order
+            item.discovery_manifest = manifest
             item.last_seen_at = datetime.now(UTC)
+            if disposition == "reject":
+                item.stage_status = "rejected-unrelated"
+            elif disposition == "uncertain":
+                item.stage_status = "classification-uncertain"
+            elif item.stage_status in {"rejected-unrelated", "classification-uncertain"}:
+                item.stage_status = "reference-only"
+                item.rights_status = MediaRightsStatus.PENDING
+                item.failure_reason = None
             continue
         item = ProjectImportMedia(
             candidate_id=candidate.id,
             category=category,
             source_url=url,
             rights_status=MediaRightsStatus.PENDING,
-            stage_status="reference-only",
-            display_order=order,
+            stage_status=(
+                "reference-only"
+                if disposition == "accepted"
+                else "rejected-unrelated"
+                if disposition == "reject"
+                else "classification-uncertain"
+            ),
+            display_order=category_order,
+            discovery_manifest=manifest,
             last_seen_at=datetime.now(UTC),
         )
         db.add(item)
