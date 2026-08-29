@@ -6,6 +6,9 @@ import { mobileStoreTargets } from "../../lib/mobile-app-links";
 
 export function MobileAppPanel({ locale }: Readonly<{ locale: Locale }>) {
   const copy = footerStackCopy[locale].app;
+  const storeLabels = locale === "ar"
+    ? { ios: "متجر تطبيقات آبل", android: "متجر غوغل بلاي" }
+    : { ios: "App Store", android: "Google Play" };
 
   return (
     <section aria-labelledby="mobile-app-heading" className="mobile-app-panel">
@@ -20,11 +23,11 @@ export function MobileAppPanel({ locale }: Readonly<{ locale: Locale }>) {
         <div aria-label={copy.comingSoon} className="mobile-app-panel__stores" role="group">
           {mobileStoreTargets.map((target) => target.url ? (
             <a href={target.url} key={target.platform} rel="noreferrer" target="_blank">
-              <span>{target.storeLabel}</span>
+              <span>{storeLabels[target.platform]}</span>
             </a>
           ) : (
-            <button aria-label={`${target.storeLabel} — ${copy.comingSoon}`} disabled key={target.platform} type="button">
-              <span>{target.storeLabel}</span>
+            <button aria-label={`${storeLabels[target.platform]} — ${copy.comingSoon}`} disabled key={target.platform} type="button">
+              <span>{storeLabels[target.platform]}</span>
               <small>{copy.comingSoon}</small>
             </button>
           ))}
@@ -35,7 +38,7 @@ export function MobileAppPanel({ locale }: Readonly<{ locale: Locale }>) {
         <div className="mobile-app-panel__device mobile-app-panel__device--front">
           <span className="mobile-app-panel__speaker" />
           <Image alt="" height={2885} sizes="120px" src="/brand/aliyas-real-estate-logo.png" width={2885} />
-          <small>ALIYAS</small>
+          <small>{locale === "ar" ? "علياس" : "ALIYAS"}</small>
         </div>
       </div>
     </section>

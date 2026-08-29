@@ -15,16 +15,18 @@ const previewPage = readFileSync(
 );
 
 test("candidate payment plans are normalized to renderable text and milestone values", () => {
-  assert.match(source, /paymentPlan: plan\?\.raw_source_text\?\.trim\(\) \|\| null/);
+  assert.match(source, /const paymentEligible = Boolean/);
+  assert.match(source, /plan\?\.is_complete/);
+  assert.match(source, /!plan\.requires_review/);
+  assert.match(source, /plan\.milestones\?\.length/);
+  assert.match(source, /paymentPlan: paymentEligible && !ar/);
   assert.doesNotMatch(source, /paymentPlan: project\.payment_plan/);
-  assert.match(source, /plan\?\.milestones \?\? project\.payment_milestones \?\? \[\]/);
+  assert.match(source, /const milestones = paymentEligible \? plan\?\.milestones \?\? \[\] : \[\]/);
 });
 
 test("missing milestone percentages render no placeholder text", () => {
-  assert.match(
-    source,
-    /item\.percentage == null \? null : <em>\{item\.percentage\}%<\/em>/,
-  );
+  assert.match(source, /item\.percentage == null/);
+  assert.match(source, /localizedDisplayText\(`\$\{item\.percentage\}%`, locale\)/);
 });
 
 test("omitted optional candidate collections use empty presentation defaults", () => {
@@ -39,6 +41,14 @@ test("omitted optional candidate collections use empty presentation defaults", (
     assert.match(source, new RegExp(`project\\.${value} \\?\\? \\[\\]`));
   }
   assert.match(previewPage, /\(project\.media \?\? \[\]\)\.map/);
+});
+
+test("private preview metadata uses the localized Project name", () => {
+  assert.match(previewPage, /const projectName = localizedDisplayText\(project\.project_name, locale\)/);
+  assert.match(previewPage, /title: `\$\{projectName\} \| \$\{localizedBrand\(locale\)\}`/);
+  assert.match(previewPage, /normalizeArabicUserFacingText\(project\.overview \?\? projectName\)/);
+  assert.match(previewPage, /description,/);
+  assert.doesNotMatch(previewPage, /title: "Private Project preview/);
 });
 
 test("project media keeps amenities and plan/map categories separate from gallery", () => {

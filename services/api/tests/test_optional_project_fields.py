@@ -10,6 +10,7 @@ from app.project_field_policy import (
     candidate_media_is_preview_eligible,
     critical_candidate_errors,
 )
+from app.project_localization import approved_arabic_project_name
 from app.public_project_evidence import omit_unresolved, public_evidenced_project
 from app.serializers import candidate_public_preview_dict
 
@@ -152,6 +153,38 @@ def _preview_parties():
         name_ar="منطقة موثقة",
     )
     return developer, area
+
+
+def test_arabic_project_name_never_silently_falls_back_to_english():
+    developer, area = _preview_parties()
+    record = _candidate_preview_record(None)
+    record.normalized_payload.pop("project_name_ar")
+
+    with pytest.raises(ValueError, match="approved localized Project name"):
+        candidate_public_preview_dict(record, developer, area, "ar")
+
+    record.normalized_payload["project_name_ar"] = "Verified Project"
+    with pytest.raises(ValueError, match="approved localized Project name"):
+        candidate_public_preview_dict(record, developer, area, "ar")
+
+    record.normalized_payload["project_name_ar"] = "زهور 2 أبتاون"
+    assert candidate_public_preview_dict(record, developer, area, "ar")["project_name"] == (
+        "زهور 2 أبتاون"
+    )
+
+
+def test_intentionally_retained_latin_brand_requires_documentation():
+    assert approved_arabic_project_name({"project_name_ar": "SKAI"}, "SKAI") is None
+    assert (
+        approved_arabic_project_name(
+            {
+                "project_name_ar": "SKAI",
+                "project_name_ar_latin_retention_reason": "Registered Arabic-market wordmark.",
+            },
+            "English SKAI",
+        )
+        == "SKAI"
+    )
 
 
 def test_candidate_preview_omits_unknown_statuses_and_incomplete_payment_plan():

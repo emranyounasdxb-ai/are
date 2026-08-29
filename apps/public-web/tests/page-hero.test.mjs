@@ -24,6 +24,7 @@ const { PageHero } = compile('page-hero.tsx', {
   '../motion/reveal': { Reveal: ({ distance, ...props }) => React.createElement('div', { ...props, 'data-distance': distance }) },
   '../motion/home-hero-shiny-eyebrow': { HomeHeroShinyEyebrow: ({ text }) => React.createElement('span', { 'data-shiny': true }, text) },
   '../motion/home-hero-typed-description': { HomeHeroTypedDescription: ({ text, locale }) => React.createElement('span', { dir: locale === 'ar' ? 'rtl' : 'ltr', 'data-description': true }, text) },
+  '../../lib/arabic-localization': { normalizeArabicUserFacingText: value => value },
   './hero-images': { heroImages },
   './page-hero.module.css': { __esModule: true, default: new Proxy({}, { get: (_, key) => String(key) }) },
 });

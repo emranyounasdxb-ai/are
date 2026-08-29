@@ -7,6 +7,7 @@ import { LogIn } from "lucide-react";
 import { Suspense, useEffect, useRef, useState } from "react";
 
 import type { HeaderCopy, Locale } from "../../lib/home-copy";
+import { localizedBrand } from "../../lib/arabic-localization";
 import { isNavigationHrefActive } from "../../lib/navigation";
 import GradientText from "../GradientText";
 
@@ -66,6 +67,7 @@ function NavigationLinkFallback({ item, pathname }: Readonly<{ item: NavigationI
 export function SiteHeader({ copy, locale }: SiteHeaderProps) {
   const adminUrl = process.env.NEXT_PUBLIC_ARE_ADMIN_URL ?? "http://127.0.0.1:50002";
   const adminAccessibleLabel = locale === "ar" ? "تسجيل دخول الإدارة" : "Admin login";
+  const brandName = localizedBrand(locale);
   const [isOpen, setIsOpen] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const menuPanelRef = useRef<HTMLDivElement>(null);
@@ -199,14 +201,14 @@ export function SiteHeader({ copy, locale }: SiteHeaderProps) {
       <header className="site-header">
         <div className="site-header__inner">
           <Link
-            aria-label="ALIYAS Real Estate"
+            aria-label={brandName}
             className="brand-mark"
             href={`/${locale}`}
             onClick={(event) => resetCurrentRoute(event, `/${locale}`)}
           >
             <span className="brand-mark__plate">
               <Image
-                alt="ALIYAS Real Estate logo"
+                alt={locale === "ar" ? "شعار علياس العقارية" : "ALIYAS Real Estate logo"}
                 fetchPriority="high"
                 height={2885}
                 loading="eager"

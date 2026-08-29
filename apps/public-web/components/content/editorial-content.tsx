@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import type { Locale } from "../../lib/home-copy";
+import { normalizeArabicUserFacingText, toArabicIndicDigits } from "../../lib/arabic-localization";
 
 export type ContentItem = Readonly<{ title: string; text: string }>;
 export type FaqItem = Readonly<{ question: string; answer: string }>;
@@ -12,13 +13,14 @@ export function Breadcrumbs(properties: Readonly<{ items: ReadonlyArray<Readonly
 }
 
 export function EditorialCards({ items }: Readonly<{ items: ReadonlyArray<ContentItem> }>) {
+  const arabic = items.some((item) => /[\u0600-\u06ff]/.test(item.title));
   return (
     <div className="editorial-cards">
       {items.map((item, index) => (
         <article key={item.title}>
-          <span aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
-          <h3>{item.title}</h3>
-          <p>{item.text}</p>
+          <span aria-hidden="true">{arabic ? toArabicIndicDigits(String(index + 1).padStart(2, "0")) : String(index + 1).padStart(2, "0")}</span>
+          <h3>{arabic ? normalizeArabicUserFacingText(item.title) : item.title}</h3>
+          <p>{arabic ? normalizeArabicUserFacingText(item.text) : item.text}</p>
         </article>
       ))}
     </div>
@@ -26,12 +28,13 @@ export function EditorialCards({ items }: Readonly<{ items: ReadonlyArray<Conten
 }
 
 export function ProcessList({ items }: Readonly<{ items: ReadonlyArray<ContentItem> }>) {
+  const arabic = items.some((item) => /[\u0600-\u06ff]/.test(item.title));
   return (
     <ol className="process-list">
       {items.map((item, index) => (
         <li key={item.title}>
-          <span aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
-          <div><h3>{item.title}</h3><p>{item.text}</p></div>
+          <span aria-hidden="true">{arabic ? toArabicIndicDigits(String(index + 1).padStart(2, "0")) : String(index + 1).padStart(2, "0")}</span>
+          <div><h3>{arabic ? normalizeArabicUserFacingText(item.title) : item.title}</h3><p>{arabic ? normalizeArabicUserFacingText(item.text) : item.text}</p></div>
         </li>
       ))}
     </ol>
@@ -39,9 +42,10 @@ export function ProcessList({ items }: Readonly<{ items: ReadonlyArray<ContentIt
 }
 
 export function Checklist({ items }: Readonly<{ items: ReadonlyArray<string> }>) {
+  const arabic = items.some((item) => /[\u0600-\u06ff]/.test(item));
   return (
     <ul className="content-checklist">
-      {items.map((item) => <li key={item}>{item}</li>)}
+      {items.map((item) => <li key={item}>{arabic ? normalizeArabicUserFacingText(item) : item}</li>)}
     </ul>
   );
 }
@@ -51,17 +55,21 @@ export function FaqSection({
   heading,
   items,
 }: Readonly<{ eyebrow: string; heading: string; items: ReadonlyArray<FaqItem> }>) {
+  const arabic = /[\u0600-\u06ff]/.test(heading);
+  const localizedEyebrow = arabic && eyebrow === "ARE / FAQ"
+    ? "علياس العقارية / الأسئلة الشائعة"
+    : arabic ? normalizeArabicUserFacingText(eyebrow) : eyebrow;
   return (
     <section aria-labelledby="faq-title" className="content-section content-section--faq">
       <div className="content-heading">
-        <p>{eyebrow}</p>
-        <h2 id="faq-title">{heading}</h2>
+        <p>{localizedEyebrow}</p>
+        <h2 id="faq-title">{arabic ? normalizeArabicUserFacingText(heading) : heading}</h2>
       </div>
       <div className="faq-list">
         {items.map((item) => (
           <details key={item.question}>
-            <summary>{item.question}<span aria-hidden="true">+</span></summary>
-            <p>{item.answer}</p>
+            <summary>{arabic ? normalizeArabicUserFacingText(item.question) : item.question}<span aria-hidden="true">+</span></summary>
+            <p>{arabic ? normalizeArabicUserFacingText(item.answer) : item.answer}</p>
           </details>
         ))}
       </div>
@@ -96,7 +104,7 @@ export function FinalCta({
 }: Readonly<{ action: string; heading: string; href: string; locale: Locale; text: string }>) {
   return (
     <section aria-labelledby="closing-title" className="closing-cta">
-      <div><p>ARE / {locale === "ar" ? "الخطوة التالية" : "NEXT STEP"}</p><h2 id="closing-title">{heading}</h2><span>{text}</span></div>
+      <div><p>{locale === "ar" ? "علياس العقارية / الخطوة التالية" : "ARE / NEXT STEP"}</p><h2 id="closing-title">{heading}</h2><span>{text}</span></div>
       <Link className="button button--primary" href={href}>{action}</Link>
     </section>
   );

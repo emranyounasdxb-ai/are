@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 
 import type { PublicDeveloper } from "../../lib/api";
 import type { Locale } from "../../lib/home-copy";
+import { localizedDisplayText } from "../../lib/arabic-localization";
 
 export function DeveloperDirectory({ developers, locale, unavailable = false }: Readonly<{ developers: ReadonlyArray<PublicDeveloper>; locale: Locale; unavailable?: boolean }>) {
   const [emirate, setEmirate] = useState("all");
@@ -27,13 +28,13 @@ export function DeveloperDirectory({ developers, locale, unavailable = false }: 
       </div></div>
       <button className="reset-button" disabled={emirate === "all" && !query} onClick={() => { setEmirate("all"); setQuery(""); }} type="button">{copy.reset}</button>
     </div>
-    <p aria-live="polite" className="results-status">{unavailable ? copy.unavailable : filtered.length ? `${filtered.length} ${copy.results}` : copy.empty}</p>
+    <p aria-live="polite" className="results-status">{unavailable ? copy.unavailable : filtered.length ? `${localizedDisplayText(filtered.length.toString(), locale)} ${copy.results}` : copy.empty}</p>
     <div className="developer-grid">
       {filtered.map((developer) => <article className="developer-card" id={developer.slug} key={developer.slug}>
-        <div className="developer-card__topline"><span>{developer.primary_emirate}</span><time dateTime={developer.verification_date}>{copy.verified}: {developer.verification_date}</time></div>
-        <h3 dir="ltr">{developer.name}</h3><p>{developer.description}</p>
+        <div className="developer-card__topline"><span>{developer.primary_emirate}</span><time dateTime={developer.verification_date}>{copy.verified}: {localizedDisplayText(developer.verification_date, locale)}</time></div>
+        <h3>{developer.name}</h3><p>{developer.description}</p>
         <details><summary>{copy.details}<span aria-hidden="true">+</span></summary><div className="developer-card__details">
-          <dl><div><dt>{copy.focus}</dt><dd>{developer.focus}</dd></div><div><dt>{copy.projects}</dt><dd dir="ltr">{developer.selected_projects.join(" · ")}</dd></div>{developer.other_presence.length ? <div><dt>{copy.presence}</dt><dd>{developer.other_presence.join(" · ")}</dd></div> : null}</dl>
+          <dl><div><dt>{copy.focus}</dt><dd>{developer.focus}</dd></div>{developer.selected_projects.length ? <div><dt>{copy.projects}</dt><dd>{developer.selected_projects.join(" · ")}</dd></div> : null}{developer.other_presence.length ? <div><dt>{copy.presence}</dt><dd>{developer.other_presence.join(" · ")}</dd></div> : null}</dl>
           {developer.verification_note ? <p><strong>{copy.note}:</strong> {developer.verification_note}</p> : null}
           <div className="source-links"><a href={developer.official_website} rel="noreferrer" target="_blank">{copy.website} ↗</a><a href={developer.source_url} rel="noreferrer" target="_blank">{copy.government} ↗</a></div>
         </div></details>

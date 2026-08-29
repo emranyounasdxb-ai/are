@@ -21,7 +21,7 @@ export function ContactPreviewForm({ initialEnquiryType, locale, selectedDevelop
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value("email"))) issues.push({ field: "email", message: locale === "ar" ? "أدخل بريداً إلكترونياً صالحاً." : "Enter a valid email address." });
     if (!/^[+0-9 ()-]{7,48}$/.test(value("phone")) || value("phone").replace(/\D/g, "").length < 7) issues.push({ field: "phone", message: locale === "ar" ? "أدخل رقم هاتف صالحاً." : "Enter a valid phone number." });
     if (!value("enquiryType")) issues.push({ field: "enquiryType", message: locale === "ar" ? "اختر نوع الاستفسار." : "Choose an enquiry type." });
-    if (value("message").length < 10) issues.push({ field: "message", message: locale === "ar" ? "اكتب رسالة لا تقل عن 10 أحرف." : "Write a message of at least 10 characters." });
+    if (value("message").length < 10) issues.push({ field: "message", message: locale === "ar" ? "اكتب رسالة لا تقل عن ١٠ أحرف." : "Write a message of at least 10 characters." });
     if (!form.get("contactConsent")) issues.push({ field: "contactConsent", message: locale === "ar" ? "أكد موافقتك على معالجة الاستفسار." : "Confirm consent to process the enquiry." });
     if (issues.length) {
       setErrors(issues.map((item) => item.message)); setMessage(copy.validation); setState("error");
@@ -46,7 +46,7 @@ export function ContactPreviewForm({ initialEnquiryType, locale, selectedDevelop
     <label><span>{copy.nameLabel}</span><input autoComplete="name" name="name" required/></label>
     <label><span>{copy.emailLabel}</span><input autoComplete="email" dir="ltr" inputMode="email" name="email" required type="email"/></label>
     <label><span>{locale === "ar" ? "رقم الهاتف" : "Phone number"}</span><input autoComplete="tel" dir="ltr" inputMode="tel" name="phone" required type="tel"/></label>
-    <label><span>{locale === "ar" ? "طريقة التواصل المفضلة" : "Preferred contact method"}</span><select defaultValue="email" name="preferredContact"><option value="email">Email</option><option value="phone">{locale === "ar" ? "هاتف" : "Phone"}</option><option value="whatsapp">WhatsApp</option></select></label>
+    <label><span>{locale === "ar" ? "طريقة التواصل المفضلة" : "Preferred contact method"}</span><select defaultValue="email" name="preferredContact"><option value="email">{locale === "ar" ? "بريد إلكتروني" : "Email"}</option><option value="phone">{locale === "ar" ? "هاتف" : "Phone"}</option><option value="whatsapp">{locale === "ar" ? "واتساب" : "WhatsApp"}</option></select></label>
     <label><span>{copy.messageLabel}</span><textarea name="message" placeholder={copy.messagePlaceholder} required rows={6}/></label>
     <label className="contact-form__consent"><input name="contactConsent" required type="checkbox"/><span>{locale === "ar" ? "أوافق على معالجة بياناتي للرد على هذا الطلب." : "I agree to the processing of my data to respond to this request."}</span></label>
     <label className="contact-form__consent"><input name="marketingConsent" type="checkbox"/><span>{locale === "ar" ? "أرغب في تلقي تحديثات تسويقية (اختياري)." : "I would like to receive marketing updates (optional)."}</span></label>

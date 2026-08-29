@@ -5,15 +5,33 @@ import { notFound } from "next/navigation";
 import { SiteFooter } from "../../../../../../../../components/navigation/site-footer";
 import { ProjectDetailPresentation } from "../../../../../../../../components/projects/project-detail-presentation";
 import { getCandidateProjectPreview } from "../../../../../../../../lib/api";
+import { localizedBrand, localizedDisplayText, normalizeArabicUserFacingText } from "../../../../../../../../lib/arabic-localization";
 import { homeCopy, isLocale } from "../../../../../../../../lib/home-copy";
 
 type Props = Readonly<{ params: Promise<{ locale: string; batchId: string; candidateId: string }> }>;
 
 export const dynamic = "force-dynamic";
-export const metadata: Metadata = {
-  title: "Private Project preview | ALIYAS Real Estate",
-  robots: { index: false, follow: false, nocache: true },
-};
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { locale, batchId, candidateId } = await params;
+  if (!isLocale(locale)) return {};
+  const requestHeaders = await headers();
+  const project = await getCandidateProjectPreview(
+    locale,
+    batchId,
+    candidateId,
+    requestHeaders.get("cookie") ?? "",
+  );
+  if (!project) return { robots: { index: false, follow: false, nocache: true } };
+  const projectName = localizedDisplayText(project.project_name, locale);
+  const description = locale === "ar"
+    ? normalizeArabicUserFacingText(project.overview ?? projectName)
+    : project.overview ?? projectName;
+  return {
+    title: `${projectName} | ${localizedBrand(locale)}`,
+    description,
+    robots: { index: false, follow: false, nocache: true },
+  };
+}
 
 export default async function CandidateProjectPreviewPage({ params }: Props) {
   const { locale, batchId, candidateId } = await params;

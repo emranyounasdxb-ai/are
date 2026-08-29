@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 
 import { careerInterests, careersCopy, experienceRanges } from "../../lib/careers-data";
 import type { Locale } from "../../lib/home-copy";
+import { localizedDisplayText, normalizeArabicContent } from "../../lib/arabic-localization";
 
 type FieldName = "fullName" | "email" | "phone" | "location" | "interest" | "experience" | "coverMessage" | "cv" | "linkedin" | "portfolio" | "languages" | "currentTitle" | "acknowledge";
 type Errors = Partial<Record<FieldName, string>>;
@@ -26,7 +27,7 @@ function isValidUrl(value: string) {
 }
 
 function validateFile(file: File | undefined, locale: Locale) {
-  const copy = careersCopy[locale].form;
+  const copy = locale === "ar" ? normalizeArabicContent(careersCopy[locale].form) : careersCopy[locale].form;
   if (!file) return copy.errors.cvRequired;
   if (file.size > maximumFileSize) return copy.errors.cvSize;
   const extension = file.name.toLocaleLowerCase("en").split(".").pop() ?? "";
@@ -36,7 +37,7 @@ function validateFile(file: File | undefined, locale: Locale) {
 }
 
 export function CareersApplicationForm({ jobSlug, locale }: Readonly<{ jobSlug?: string; locale: Locale }>) {
-  const copy = careersCopy[locale].form;
+  const copy = locale === "ar" ? normalizeArabicContent(careersCopy[locale].form) : careersCopy[locale].form;
   const formRef = useRef<HTMLFormElement>(null);
   const idempotencyRef = useRef<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -172,7 +173,7 @@ export function CareersApplicationForm({ jobSlug, locale }: Readonly<{ jobSlug?:
         <Field error={errors.linkedin} label={copy.linkedin} marker={optional} name="linkedin"><input aria-describedby={describedBy("linkedin")} aria-invalid={Boolean(errors.linkedin)} autoComplete="url" dir="ltr" id="linkedin" inputMode="url" name="linkedin" type="url" /></Field>
         <Field error={errors.portfolio} label={copy.portfolio} marker={optional} name="portfolio"><input aria-describedby={describedBy("portfolio")} aria-invalid={Boolean(errors.portfolio)} autoComplete="url" dir="ltr" id="portfolio" inputMode="url" name="portfolio" type="url" /></Field>
         <Field className="career-form__wide" error={errors.coverMessage} label={copy.coverMessage} marker={marker} name="coverMessage"><textarea aria-describedby={describedBy("coverMessage")} aria-invalid={Boolean(errors.coverMessage)} id="coverMessage" name="coverMessage" required rows={7} /></Field>
-        <div className="career-form__field career-form__wide"><div className="career-form__label"><label htmlFor="cv">{copy.cv}</label>{marker}</div><input accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" aria-describedby={describedBy("cv", "cv-hint")} aria-invalid={Boolean(errors.cv)} id="cv" name="cv" onChange={(event) => handleFile(event.target.files?.[0])} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.currentTarget.click(); } }} ref={fileRef} required type="file" /><p className="career-form__hint" id="cv-hint">{copy.fileHint} {copy.localFileNote}</p>{errors.cv ? <p className="career-form__error" id="cv-error">{errors.cv}</p> : null}{selectedFile ? <div className="career-form__file"><span><strong>{copy.selectedFile}:</strong> <bdi>{selectedFile.name}</bdi> ({(selectedFile.size / 1024 / 1024).toFixed(2)} MB)</span><button onClick={removeFile} type="button">{copy.removeFile}</button></div> : null}</div>
+        <div className="career-form__field career-form__wide"><div className="career-form__label"><label htmlFor="cv">{copy.cv}</label>{marker}</div><input accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" aria-describedby={describedBy("cv", "cv-hint")} aria-invalid={Boolean(errors.cv)} id="cv" name="cv" onChange={(event) => handleFile(event.target.files?.[0])} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.currentTarget.click(); } }} ref={fileRef} required type="file" /><p className="career-form__hint" id="cv-hint">{copy.fileHint} {copy.localFileNote}</p>{errors.cv ? <p className="career-form__error" id="cv-error">{errors.cv}</p> : null}{selectedFile ? <div className="career-form__file"><span><strong>{copy.selectedFile}:</strong> <bdi>{selectedFile.name}</bdi> ({localizedDisplayText((selectedFile.size / 1024 / 1024).toFixed(2), locale)} {locale === "ar" ? "ميغابايت" : "MB"})</span><button onClick={removeFile} type="button">{copy.removeFile}</button></div> : null}</div>
       </div>
 
       <div className="career-form__acknowledgement"><input aria-describedby={describedBy("acknowledge")} aria-invalid={Boolean(errors.acknowledge)} id="acknowledge" name="acknowledge" onKeyDown={(event) => { if (event.key === " ") { event.preventDefault(); event.currentTarget.click(); } }} required type="checkbox" /><label htmlFor="acknowledge">{copy.acknowledge}</label>{errors.acknowledge ? <p className="career-form__error" id="acknowledge-error">{errors.acknowledge}</p> : null}</div>

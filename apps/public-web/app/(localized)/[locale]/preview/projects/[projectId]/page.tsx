@@ -7,15 +7,20 @@ import { notFound } from "next/navigation";
 import { SiteFooter } from "../../../../../../components/navigation/site-footer";
 import { ProjectDetailPresentation } from "../../../../../../components/projects/project-detail-presentation";
 import { getDraftProjectPreview } from "../../../../../../lib/api";
+import { localizedBrand, localizedDisplayText, normalizeArabicUserFacingText } from "../../../../../../lib/arabic-localization";
 import { homeCopy, isLocale } from "../../../../../../lib/home-copy";
 
 type Props = Readonly<{ params: Promise<{ locale: string; projectId: string }> }>;
 
 export const dynamic = "force-dynamic";
-export const metadata: Metadata = {
-  title: "Private Project preview | ALIYAS Real Estate",
-  robots: { index: false, follow: false, nocache: true },
-};
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { locale } = await params;
+  if (!isLocale(locale)) notFound();
+  return {
+    title: locale === "ar" ? `معاينة خاصة للمشروع | ${localizedBrand(locale)}` : "Private Project preview | ALIYAS Real Estate",
+    robots: { index: false, follow: false, nocache: true },
+  };
+}
 
 export default async function DraftProjectPreviewPage({ params }: Props) {
   const { locale, projectId } = await params;
@@ -44,13 +49,13 @@ export default async function DraftProjectPreviewPage({ params }: Props) {
       <p>{locale === "ar" ? "إذن عرض الغلاف لا يعني اعتماد المشروع أو نشره." : "Cover preview permission does not approve or publish this Project."}</p>
       <div className="cms-property-grid">
         <article>
-          {cover ? <Image alt={cover.alt ?? ""} height={cover.height ?? 1080} width={cover.width ?? 1920}
+          {cover ? <Image alt={locale === "ar" ? normalizeArabicUserFacingText(cover.alt ?? project.official_name) : cover.alt ?? ""} height={cover.height ?? 1080} width={cover.width ?? 1920}
             src={cover.url} unoptimized style={{ width: "100%", height: "auto", aspectRatio: "16 / 9", objectFit: "cover" }}/>
-            : <div className="cms-media-neutral" aria-hidden="true">ARE</div>}
+            : <div className="cms-media-neutral" aria-hidden="true">{locale === "ar" ? "علياس" : "ARE"}</div>}
           <div>
             <span>{project.emirate} · {locale === "ar" ? project.area.name_ar : project.area.name_en}</span>
-            <h3>{project.official_name}</h3>
-            <p>{project.short_summary}</p>
+            <h3>{localizedDisplayText(project.official_name, locale)}</h3>
+            <p>{locale === "ar" ? normalizeArabicUserFacingText(project.short_summary) : project.short_summary}</p>
             <Link className="text-link" href={`/${locale}/preview/projects/${projectId}#top`}>
               {locale === "ar" ? "عرض المشروع" : "View project"}
             </Link>
