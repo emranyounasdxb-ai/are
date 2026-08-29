@@ -296,6 +296,7 @@ class ImportCandidateReviewInput(StrictModel):
     proposed_area_id: uuid.UUID | None = None
     human_review_completed: bool = False
     arabic_review_required: bool = True
+    context_review_completed: bool = False
 
 
 class ImportBulkActionInput(StrictModel):
@@ -303,6 +304,7 @@ class ImportBulkActionInput(StrictModel):
         "retry-acquisition",
         "assign-developer",
         "assign-area",
+        "return-to-review",
         "reject",
         "mark-ready",
         "create-drafts",

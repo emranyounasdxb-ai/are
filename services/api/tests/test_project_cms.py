@@ -659,6 +659,12 @@ async def test_import_review_summary_bulk_readiness_and_draft_are_safe(
                 extracted_at=checked_at,
                 last_verified_at=checked_at,
                 content_hash="b" * 64,
+                acquisition_summary={
+                    "source_first_research": {
+                        "exact_documents": ["https://example.com/official-project"],
+                        "context_review_completed": True,
+                    }
+                },
                 validation_errors=[],
                 conflict_reasons=[],
                 arabic_review_required=False,

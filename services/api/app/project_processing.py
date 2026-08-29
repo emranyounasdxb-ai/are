@@ -54,6 +54,17 @@ SUPPORTED_LOCATION_NAMES = (
     "عجمان",
 )
 
+LOCALIZED_LOCATION_EQUIVALENTS = {
+    "أبوظبي": "Abu Dhabi",
+    "أم القيوين": "Umm Al Quwain",
+    "إمارة دبي": "Dubai",
+    "الشارقة": "Sharjah",
+    "الفجيرة": "Fujairah",
+    "دبي": "Dubai",
+    "رأس الخيمة": "Ras Al Khaimah",
+    "عجمان": "Ajman",
+}
+
 PIPELINE_STAGES = (
     "validate-raw-evidence",
     "normalize-facts",
@@ -194,7 +205,12 @@ def overview_fact_guard(texts: tuple[str, str], facts: dict[str, object]) -> dic
     unsupported_locations = sorted(
         value
         for value in SUPPORTED_LOCATION_NAMES
-        if value.casefold() in combined.casefold() and value.casefold() not in normalized_facts
+        if value.casefold() in combined.casefold()
+        and value.casefold() not in normalized_facts
+        and not (
+            value in LOCALIZED_LOCATION_EQUIVALENTS
+            and LOCALIZED_LOCATION_EQUIVALENTS[value].casefold() in normalized_facts
+        )
     )
     named_claims = {
         clean.group(1).strip(" .,؛،")

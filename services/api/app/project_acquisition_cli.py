@@ -118,11 +118,27 @@ def parser() -> argparse.ArgumentParser:
     overview_import.add_argument("--file", required=True, type=Path)
     overview_import.add_argument("--actor-id", required=True, type=uuid.UUID)
     overview_import.add_argument("--correlation-id", required=True)
+    covers = subcommands.add_parser(
+        "generate-illustrative-covers",
+        help="Create owner-authorized Project-specific ALIYAS conceptual Covers",
+    )
+    covers.add_argument("--candidate-id", required=True, action="append", type=uuid.UUID)
+    covers.add_argument("--actor-id", required=True, type=uuid.UUID)
     return value
 
 
 async def run(args: argparse.Namespace) -> None:
     async with SessionLocal() as db:
+        if args.command == "generate-illustrative-covers":
+            from app.acquisition.illustrative_cover import generate_candidate_cover
+
+            results = []
+            for candidate_id in args.candidate_id:
+                results.append(
+                    await generate_candidate_cover(db, get_settings(), candidate_id, args.actor_id)
+                )
+            print(json.dumps({"count": len(results), "results": results}, indent=2))
+            return
         if args.command == "official-research":
             from app.acquisition.research import research_existing_batch
 

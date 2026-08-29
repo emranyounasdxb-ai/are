@@ -2251,11 +2251,23 @@ async def review_import_candidate(
         else None,
         "area_id": str(candidate.proposed_area_id) if candidate.proposed_area_id else None,
         "human_review_completed": candidate.human_review_completed,
+        "context_review_completed": bool(
+            (candidate.acquisition_summary or {})
+            .get("source_first_research", {})
+            .get("context_review_completed")
+        ),
     }
     candidate.proposed_developer_id = payload.proposed_developer_id
     candidate.proposed_area_id = payload.proposed_area_id
     candidate.human_review_completed = payload.human_review_completed
     candidate.arabic_review_required = payload.arabic_review_required
+    summary = dict(candidate.acquisition_summary or {})
+    research = dict(summary.get("source_first_research") or {})
+    research["context_review_completed"] = payload.context_review_completed
+    research["context_reviewed_at"] = datetime.now(UTC).isoformat()
+    research["context_reviewed_by"] = str(context.user.id)
+    summary["source_first_research"] = research
+    candidate.acquisition_summary = summary
     candidate.reviewed_by = context.user.id
     candidate.review_version += 1
     await _reconcile_completed_candidate_gates(candidate, db)
@@ -2274,6 +2286,7 @@ async def review_import_candidate(
             else None,
             "area_id": str(candidate.proposed_area_id) if candidate.proposed_area_id else None,
             "human_review_completed": candidate.human_review_completed,
+            "context_review_completed": payload.context_review_completed,
             "review_version": candidate.review_version,
         },
     )
