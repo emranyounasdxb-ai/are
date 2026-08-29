@@ -19,10 +19,15 @@ from app.acquisition.security import host_is_allowed
 ADAPTER_VERSION = "1.0"
 STOP_TOKENS = {"at", "by", "the", "phase", "tower", "and"}
 PROJECT_FORM_SUFFIXES = {
+    "apartment",
     "apartments",
+    "plot",
     "plots",
+    "residence",
     "residences",
+    "townhouse",
     "townhouses",
+    "villa",
     "villas",
 }
 
@@ -188,7 +193,8 @@ def official_url_matches_project(project_name: str, url: str) -> bool:
     leaf = urlsplit(url).path.rstrip("/").rsplit("/", 1)[-1]
     # A bedroom count is not a numbered building or phase.
     leaf = re.sub(r"\b\d+[-_ ]?(?:br|bedroom|bedrooms)\b", "", leaf, flags=re.I)
-    leaf_tokens = set(normalize_name(leaf.replace("-", " ")).split())
+    normalized_leaf_tokens = normalize_name(leaf.replace("-", " ")).split()
+    leaf_tokens = set(normalized_leaf_tokens)
     semantic_leaf_tokens = leaf_tokens - STOP_TOKENS - PROJECT_FORM_SUFFIXES
     if path_tokens & excluded_sections:
         return False
@@ -203,12 +209,17 @@ def official_url_matches_project(project_name: str, url: str) -> bool:
         }
         extra_numbers = {value for value in leaf_tokens if value.isdigit()} - important
         single_token_mismatch = len(important) == 1 and semantic_leaf_tokens != important
+        compact_identity_match = (
+            important
+            and "".join(target_tokens) == "".join(normalized_leaf_tokens)
+            and not extra_numbers
+        )
         if (
             important
             and not single_token_mismatch
             and not extra_numbers
             and important <= leaf_tokens
-        ):
+        ) or compact_identity_match:
             return True
     return False
 
@@ -237,7 +248,7 @@ OFFICIAL_ADAPTERS = (
         "arada",
         "ARADA Developer",
         "https://www.arada.com/en/properties/",
-        ("arada.com",),
+        ("arada.com", "aradawebcontent.blob.core.windows.net"),
         None,
         ("/en/properties/",),
         aliases=("Arada", "ARADA"),
@@ -311,7 +322,7 @@ OFFICIAL_ADAPTERS = (
         "sharjah-holding",
         "Sharjah Holding",
         "https://sharjahholding.ae/",
-        ("sharjahholding.ae",),
+        ("sharjahholding.ae", "alzahia.ae"),
         None,
         ("/",),
     ),
@@ -327,7 +338,7 @@ OFFICIAL_ADAPTERS = (
         "shurooq",
         "Shurooq",
         "https://shurooq.gov.ae/",
-        ("shurooq.gov.ae",),
+        ("shurooq.gov.ae", "ajwan.ae", "discovershurooq.ae"),
         None,
         ("/", "/portfolio/"),
     ),

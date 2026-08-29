@@ -176,6 +176,36 @@ def test_cms_retains_each_backend_critical_blocker(field: str, value: object) ->
     assert result["eligibility"]["mark-ready"] is False
 
 
+def test_reviewed_candidate_scoped_official_document_satisfies_source_gate() -> None:
+    record = candidate()
+    url = "https://developer.example/official-brochure.pdf"
+    record.official_source_url = url
+    record.acquisition_summary = {
+        "source_first_research": {
+            "exact_documents": [],
+            "candidate_scoped_documents": [url],
+            "context_review_completed": True,
+        }
+    }
+
+    assert eligibility_errors(record) == []
+
+
+def test_candidate_scoped_official_document_still_requires_context_review() -> None:
+    record = candidate()
+    url = "https://developer.example/official-brochure.pdf"
+    record.official_source_url = url
+    record.acquisition_summary = {
+        "source_first_research": {
+            "exact_documents": [],
+            "candidate_scoped_documents": [url],
+            "context_review_completed": False,
+        }
+    }
+
+    assert "Exact official Project document requires verification" in eligibility_errors(record)
+
+
 @pytest.mark.parametrize("status", list(ImportReviewStatus))
 def test_cms_mark_ready_preserves_transition_state(status: ImportReviewStatus) -> None:
     record = candidate()

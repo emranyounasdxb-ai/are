@@ -8,6 +8,7 @@ from sqlalchemy import delete, func, select
 
 from app.acquisition.contracts import DiscoveryResult, FetchResult
 from app.acquisition.research import (
+    EXPLICIT_REFERENCE_DOMAINS,
     discovery_inspection_urls,
     exact_document_identity,
     readiness_report,
@@ -103,6 +104,12 @@ def test_identity_does_not_fuzzily_merge_phases_or_unit_counts():
     assert not exact_document_identity("Nasma Residences", "Nasma Central")
     assert not exact_document_identity("The Boulevard 3", "The Boulevard 3 Bedroom")
     assert not exact_document_identity("Abu Dhabi Tower", "Renad Tower")
+    assert exact_document_identity("Ajwan Residences", "Ajwan Residence")
+    assert exact_document_identity("Bluebay walk", "Blue Bay Walk")
+
+
+def test_explicit_reference_domains_are_narrow_and_review_gated() -> None:
+    assert EXPLICIT_REFERENCE_DOMAINS == ("linkedin.com", "sharjah24.ae", "wam.ae")
 
 
 def test_fuzzy_discovery_is_bounded_to_private_document_identity_inspection():
