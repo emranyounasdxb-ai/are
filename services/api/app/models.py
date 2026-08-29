@@ -909,6 +909,7 @@ class ProjectImportMedia(TimestampMixin, Base):
     description_en: Mapped[str | None] = mapped_column(String(500))
     description_ar: Mapped[str | None] = mapped_column(String(500))
     tags: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    discovery_manifest: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
 
 
 class ProjectImportBulkOperation(TimestampMixin, Base):

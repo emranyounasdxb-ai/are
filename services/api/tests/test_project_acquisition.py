@@ -50,6 +50,7 @@ from app.models import (
     ProjectImportEditorialDraft,
     ProjectImportMedia,
     ProjectMediaCategory,
+    ProjectProcessingStatus,
     PublicationStatus,
 )
 from app.storage import PrivateStorage
@@ -713,7 +714,8 @@ async def test_media_intake_processes_references_beyond_the_old_fifty_item_cap(
             content_hash="f" * 64,
             validation_errors=[],
             conflict_reasons=[],
-            review_status=ImportReviewStatus.NEEDS_REVIEW,
+            review_status=ImportReviewStatus.READY_FOR_APPROVAL,
+            processing_status=ProjectProcessingStatus.READY_TO_POST,
             staged_media=[
                 ProjectImportMedia(
                     category=ProjectMediaCategory.GALLERY,
@@ -742,11 +744,14 @@ async def test_media_intake_processes_references_beyond_the_old_fifty_item_cap(
             test_settings,
             batch_id,
             fetcher=RasterFixtureFetcher(image.getvalue()),
+            preserve_review_state=True,
         )
 
         assert stats["references"] == 51
         assert stats["attempted"] == 51
         assert all(item.stage_status != "reference-only" for item in candidate.staged_media)
+        assert candidate.review_status == ImportReviewStatus.READY_FOR_APPROVAL
+        assert candidate.processing_status == ProjectProcessingStatus.READY_TO_POST
 
 
 @pytest.mark.asyncio

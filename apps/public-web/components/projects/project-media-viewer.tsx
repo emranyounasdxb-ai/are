@@ -17,7 +17,7 @@ export type ProjectPresentationMedia = {
 };
 
 type MediaCategory = {
-  id: "floor-plan" | "master-plan" | "location-map" | "gallery";
+  id: "amenities" | "floor-plan" | "master-plan" | "location-map" | "gallery";
   label: string;
   items: ProjectPresentationMedia[];
 };

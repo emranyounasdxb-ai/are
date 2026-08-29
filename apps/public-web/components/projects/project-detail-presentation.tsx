@@ -375,10 +375,11 @@ function Heading({ eyebrow, id, title }: Readonly<{ eyebrow: string; id: string;
 function buildMediaCategories(items: ProjectPresentationMedia[], locale: Locale) {
   const t = copy[locale];
   const categories = [
+    { id: "amenities" as const, label: t.amenities, categories: ["amenities"] },
     { id: "floor-plan" as const, label: t.floorPlans, categories: ["floor-plan"] },
     { id: "master-plan" as const, label: t.masterPlan, categories: ["master-plan"] },
     { id: "location-map" as const, label: t.locationMap, categories: ["location-map"] },
-    { id: "gallery" as const, label: t.gallery, categories: ["gallery", "exterior", "interior", "amenities", "construction"] },
+    { id: "gallery" as const, label: t.gallery, categories: ["gallery", "exterior", "interior", "construction"] },
   ];
   return categories.map((category) => ({
     id: category.id,

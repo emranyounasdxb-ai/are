@@ -226,7 +226,9 @@ def project_dict(record: Project, locale: str | None = None) -> dict[str, Any]:
             "size_bytes": item.size_bytes,
             "verified_at": item.verified_at,
         }
-        for item in record.media
+        for item in sorted(
+            record.media, key=lambda value: (value.category.value, value.display_order)
+        )
     ]
     plan = record.payment_plan
     payment_plan = (
@@ -701,7 +703,10 @@ def candidate_public_preview_dict(
             "height": item.height,
             "display_order": item.display_order,
         }
-        for item in sorted(record.staged_media, key=lambda value: value.display_order)
+        for item in sorted(
+            record.staged_media,
+            key=lambda value: (value.category.value, value.display_order),
+        )
         if candidate_media_is_preview_eligible(item)
     ]
     payment_plan = proposal.get("payment_plan")

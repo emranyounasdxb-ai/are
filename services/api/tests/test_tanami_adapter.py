@@ -13,10 +13,12 @@ from app.acquisition.adapters import (
 )
 from app.acquisition.contracts import FetchResult
 from app.acquisition.tanami import (
+    DiscoveredMedia,
     _ambiguous_cross_candidate_media_ids,
     _stage_media,
     acquire_explicit_batch,
     acquire_project_documents,
+    classify_existing_candidate_media,
     discover_exact_project_media,
     discover_sharjah_project_urls,
     exact_project_media,
@@ -26,10 +28,12 @@ from app.acquisition.tanami import (
 )
 from app.db import SessionLocal
 from app.models import (
+    ImportReviewStatus,
     ProjectImportBatch,
     ProjectImportCandidate,
     ProjectImportMedia,
     ProjectMediaCategory,
+    ProjectProcessingStatus,
 )
 
 ALPHA = "https://www.tanamiproperties.com/Projects/Alpha-Residences"
@@ -285,6 +289,105 @@ def test_json_css_and_exact_project_boundary_exclude_branding_and_related_media(
     }
 
 
+def test_dom_context_overrides_misleading_gallery_filename_and_preserves_order() -> None:
+    floor_url = "https://manage.tanamiproperties.com/Gallery/1/Large/exterior.webp"
+    gallery_first = "https://manage.tanamiproperties.com/Gallery/1/Large/first.webp"
+    gallery_second = "https://manage.tanamiproperties.com/Gallery/1/Large/second.webp"
+    result = _html_result(
+        f"""
+        <section aria-label="Floor Plans"><h2>Floor Plans</h2>
+          <figure><img src="{floor_url}" alt="Two bedroom layout">
+          <figcaption>Type A floor plan</figcaption></figure>
+        </section>
+        <section class="project-gallery"><h2>Project Gallery</h2>
+          <img src="{gallery_first}" alt="Exterior view">
+          <img src="{gallery_second}" alt="Lobby interior">
+        </section>
+        """
+    )
+
+    discovery = discover_exact_project_media(ALPHA, (result,))
+    by_url = {item.source_url: item for item in discovery.manifest}
+
+    assert by_url[floor_url].category == ProjectMediaCategory.FLOOR_PLAN
+    assert "DOM context" in by_url[floor_url].category_evidence[0]
+    assert by_url[floor_url].caption == "Type A floor plan"
+    assert [by_url[gallery_first].category_order, by_url[gallery_second].category_order] == [0, 0]
+    assert by_url[gallery_first].category == ProjectMediaCategory.EXTERIOR
+    assert by_url[gallery_second].category == ProjectMediaCategory.INTERIOR
+    assert by_url[gallery_first].source_order < by_url[gallery_second].source_order
+
+
+def test_media_manifest_separates_categories_rejects_assets_and_keeps_uncertain_private() -> None:
+    result = _html_result(
+        """
+        <section class="amenities"><h2>Amenities</h2>
+          <img src="https://manage.tanamiproperties.com/Project/asset-a.webp">
+        </section>
+        <section class="location-map"><h2>Location Map</h2>
+          <img src="https://manage.tanamiproperties.com/Project/asset-b.webp">
+        </section>
+        <section><img src="https://manage.tanamiproperties.com/Assets/logo.webp"></section>
+        <section><img src="https://manage.tanamiproperties.com/Project/unknown.webp"></section>
+        """
+    )
+
+    manifest = discover_exact_project_media(ALPHA, (result,)).manifest
+    assert [item.disposition for item in manifest] == [
+        "accepted",
+        "accepted",
+        "reject",
+        "uncertain",
+    ]
+    assert manifest[0].category == ProjectMediaCategory.AMENITIES
+    assert manifest[1].category == ProjectMediaCategory.LOCATION_MAP
+    assert manifest[2].category is None
+    assert manifest[3].category is None
+
+
+@pytest.mark.asyncio
+async def test_media_staging_persists_dom_manifest_and_category_order_idempotently() -> None:
+    class RecordingSession:
+        def __init__(self) -> None:
+            self.added: list[ProjectImportMedia] = []
+
+        def add(self, value: ProjectImportMedia) -> None:
+            self.added.append(value)
+
+    session = RecordingSession()
+    candidate = type(
+        "Candidate",
+        (),
+        {
+            "id": __import__("uuid").uuid4(),
+            "linked_project_id": __import__("uuid").uuid4(),
+            "owner_manifest_values": {"approved_project_url": ALPHA},
+            "staged_media": [],
+        },
+    )()
+    item = DiscoveredMedia(
+        source_url="https://manage.tanamiproperties.com/Gallery/1/Large/a.webp",
+        category=ProjectMediaCategory.GALLERY,
+        disposition="accepted",
+        dom_heading="Project Gallery",
+        parent_context="section project-gallery",
+        caption="Facade",
+        alt_text="Project facade",
+        subpage="gallery",
+        category_evidence=("exact Project gallery context",),
+        source_order=7,
+        category_order=2,
+    )
+
+    await _stage_media(session, candidate, (item,))  # type: ignore[arg-type]
+    await _stage_media(session, candidate, (item,))  # type: ignore[arg-type]
+
+    assert len(session.added) == 1
+    assert candidate.staged_media[0].display_order == 2
+    assert candidate.staged_media[0].discovery_manifest["source_order"] == 7
+    assert candidate.staged_media[0].discovery_manifest["dom_heading"] == "Project Gallery"
+
+
 @pytest.mark.asyncio
 async def test_same_project_section_title_variants_are_not_conflicts() -> None:
     class SectionTitleFetcher(TanamiFixtureFetcher):
@@ -495,12 +598,18 @@ async def test_explicit_batch_is_idempotent_and_missing_official_source_needs_re
             )
             == 1
         )
+        staged_media = list(
+            (
+                await db.scalars(
+                    select(ProjectImportMedia).where(
+                        ProjectImportMedia.candidate_id == candidate_id
+                    )
+                )
+            ).all()
+        )
+        assert len(staged_media) == 5
         assert (
-            await db.scalar(
-                select(func.count())
-                .select_from(ProjectImportMedia)
-                .where(ProjectImportMedia.candidate_id == candidate_id)
-            )
+            sum(item.discovery_manifest.get("disposition") == "accepted" for item in staged_media)
             == 2
         )
         assert (
@@ -511,6 +620,56 @@ async def test_explicit_batch_is_idempotent_and_missing_official_source_needs_re
             )
             == 1
         )
+
+
+@pytest.mark.asyncio
+async def test_media_only_classification_is_idempotent_and_preserves_review_state(
+    test_settings,
+) -> None:
+    async with SessionLocal() as db:
+        batch = await acquire_explicit_batch(
+            db,
+            test_settings,
+            [ALPHA],
+            fetcher=TanamiFixtureFetcher(),
+            batch_name="QA media classification batch",
+        )
+        candidate = await db.scalar(
+            select(ProjectImportCandidate).where(ProjectImportCandidate.batch_id == batch.id)
+        )
+        assert candidate is not None
+        candidate.review_status = ImportReviewStatus.READY_FOR_APPROVAL
+        candidate.processing_status = ProjectProcessingStatus.READY_TO_POST
+        await db.commit()
+
+        first = await classify_existing_candidate_media(
+            db,
+            test_settings,
+            candidate.id,
+            fetcher=TanamiFixtureFetcher(),
+        )
+        first_count = await db.scalar(
+            select(func.count())
+            .select_from(ProjectImportMedia)
+            .where(ProjectImportMedia.candidate_id == candidate.id)
+        )
+        second = await classify_existing_candidate_media(
+            db,
+            test_settings,
+            candidate.id,
+            fetcher=TanamiFixtureFetcher(),
+        )
+        second_count = await db.scalar(
+            select(func.count())
+            .select_from(ProjectImportMedia)
+            .where(ProjectImportMedia.candidate_id == candidate.id)
+        )
+        await db.refresh(candidate)
+
+        assert first["counts"] == second["counts"]
+        assert first_count == second_count
+        assert candidate.review_status == ImportReviewStatus.READY_FOR_APPROVAL
+        assert candidate.processing_status == ProjectProcessingStatus.READY_TO_POST
 
 
 @pytest.mark.asyncio

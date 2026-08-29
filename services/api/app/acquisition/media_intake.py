@@ -75,6 +75,7 @@ async def intake_private_media(
     candidate_ids: list[uuid.UUID] | None = None,
     media_ids: set[uuid.UUID] | None = None,
     fetcher: SecureRasterFetcher | None = None,
+    preserve_review_state: bool = False,
 ) -> dict[str, int]:
     batch = await db.scalar(
         select(ProjectImportBatch)
@@ -119,13 +120,21 @@ async def intake_private_media(
         "accepted_gallery_candidates": 0,
         "floor_plan_candidates": 0,
         "master_plan_candidates": 0,
+        "classification_uncertain": 0,
         "skipped_video": 0,
     }
     for candidate in sorted(selected, key=lambda value: value.manifest_row_id):
+        prior_review_status = candidate.review_status
+        prior_processing_status = candidate.processing_status
         candidate_stats = {key: 0 for key in stats}
-        for order, media in enumerate(
-            sorted(candidate.staged_media, key=lambda value: value.source_url)
-        ):
+        ordered_media = sorted(
+            candidate.staged_media,
+            key=lambda value: (
+                int((value.discovery_manifest or {}).get("source_order", value.display_order)),
+                value.display_order,
+            ),
+        )
+        for media in ordered_media:
             if media_ids is not None and media.id not in media_ids:
                 continue
             candidate_stats["references"] += 1
@@ -136,6 +145,24 @@ async def intake_private_media(
             if media.category.value == "video-reference":
                 candidate_stats["skipped_video"] += 1
                 continue
+            disposition = str((media.discovery_manifest or {}).get("disposition") or "accepted")
+            if disposition in {"reject", "uncertain"}:
+                reason = (
+                    "DOM-aware classification requires human review."
+                    if disposition == "uncertain"
+                    else "DOM-aware classification rejected this non-Project asset."
+                )
+                _remove_media_output(storage, media, reason)
+                media.stage_status = (
+                    "classification-uncertain"
+                    if disposition == "uncertain"
+                    else "rejected-unrelated"
+                )
+                if disposition == "uncertain":
+                    candidate_stats["classification_uncertain"] += 1
+                else:
+                    candidate_stats["unrelated_rejected"] += 1
+                continue
             if media.stage_status == "rejected-unrelated" or (
                 media.processing_version == MEDIA_PROCESSING_VERSION
                 and media.stage_status
@@ -145,6 +172,8 @@ async def intake_private_media(
                     "rejected-low-resolution",
                 }
             ):
+                if media.stage_status == "downloaded":
+                    _apply_category_metadata(candidate, media)
                 _count_terminal_media(candidate_stats, media)
                 continue
             allowed_domains = _allowed_domains_for_media(candidate, media.source_url)
@@ -181,7 +210,9 @@ async def intake_private_media(
                 candidate_stats["failed"] += 1
                 continue
             quality = classify_media_quality(raster, media.category.value)
-            media.display_order = order
+            media.display_order = int(
+                (media.discovery_manifest or {}).get("category_order", media.display_order)
+            )
             media.last_seen_at = media.retrieved_at
             media.original_sha256 = hashlib.sha256(result.body).hexdigest()
             media.processed_sha256 = raster.sha256
@@ -208,12 +239,16 @@ async def intake_private_media(
             )
             project_slug = project_name
             private_master_filename = normalized_media_filename(
-                project_slug, media.category.value, order, raster.sha256, raster.extension
+                project_slug,
+                media.category.value,
+                media.display_order,
+                raster.sha256,
+                raster.extension,
             )
             public_filename = descriptive_media_filename(
                 project_slug,
                 media.category.value,
-                order + 1,
+                media.display_order + 1,
             )
             media.normalized_filename = public_filename
             category_en, category_ar = MEDIA_CATEGORY_LABELS[media.category.value]
@@ -338,7 +373,13 @@ async def intake_private_media(
             if media.rights_status != MediaRightsStatus.APPROVED:
                 media.rights_status = MediaRightsStatus.APPROVED
                 media.rights_basis = (
-                    "Automatically approved exact-Project image from a validated candidate source."
+                    "Owner-authorized exact-Project Tanami media use; Tanami source provenance "
+                    "retained and ALIYAS is not recorded as the original copyright owner."
+                    if candidate.adapter_key == TANAMI_ADAPTER_KEY
+                    else (
+                        "Automatically approved exact-Project image from a validated "
+                        "candidate source."
+                    )
                 )
                 media.rights_confirmed_by = None
                 media.rights_confirmed_at = datetime.now(UTC)
@@ -362,7 +403,14 @@ async def intake_private_media(
             item.stage_status == "downloaded" and item.category == ProjectMediaCategory.GALLERY
             for item in candidate.staged_media
         )
-        _apply_media_diagnostics(candidate, candidate_stats)
+        _apply_media_diagnostics(
+            candidate,
+            candidate_stats,
+            preserve_review_state=preserve_review_state,
+        )
+        if preserve_review_state:
+            candidate.review_status = prior_review_status
+            candidate.processing_status = prior_processing_status
         for key, value in candidate_stats.items():
             stats[key] += value
         await db.commit()
@@ -511,7 +559,12 @@ def _remove_media_output(storage: PrivateStorage, media: ProjectImportMedia, rea
     media.processing_version = MEDIA_PROCESSING_VERSION
 
 
-def _apply_media_diagnostics(candidate: ProjectImportCandidate, stats: dict[str, int]) -> None:
+def _apply_media_diagnostics(
+    candidate: ProjectImportCandidate,
+    stats: dict[str, int],
+    *,
+    preserve_review_state: bool = False,
+) -> None:
     summary = dict(candidate.acquisition_summary)
     visible_gallery_count = int(summary.get("visible_gallery_count") or 0)
     coverage_incomplete = (
@@ -530,6 +583,7 @@ def _apply_media_diagnostics(candidate: ProjectImportCandidate, stats: dict[str,
             "accepted_gallery_candidates": stats["accepted_gallery_candidates"],
             "floor_plan_candidates": stats["floor_plan_candidates"],
             "master_plan_candidates": stats["master_plan_candidates"],
+            "media_classification_uncertain": stats["classification_uncertain"],
             "media_coverage_incomplete": coverage_incomplete,
             "cover_quality_warning": (
                 None
@@ -539,6 +593,8 @@ def _apply_media_diagnostics(candidate: ProjectImportCandidate, stats: dict[str,
         }
     )
     candidate.acquisition_summary = summary
+    if preserve_review_state:
+        return
     reconcile_candidate_quality(candidate)
     candidate.review_status = ImportReviewStatus.NEEDS_REVIEW
     candidate.processing_status = ProjectProcessingStatus.NEEDS_REVIEW
