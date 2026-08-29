@@ -53,6 +53,10 @@ REJECTED_URL_TOKENS = (
     "google-play",
 )
 MEDIA_PROCESSING_VERSION = "project-media-v3"
+TANAMI_OWNER_AUTHORIZED_RIGHTS_BASIS = (
+    "Owner-authorized exact-Project Tanami media use; Tanami source provenance "
+    "retained and ALIYAS is not recorded as the original copyright owner."
+)
 
 MEDIA_CATEGORY_LABELS = {
     "cover": ("Cover image", "الصورة الرئيسية"),
@@ -174,6 +178,7 @@ async def intake_private_media(
             ):
                 if media.stage_status == "downloaded":
                     _apply_category_metadata(candidate, media)
+                    _synchronize_owner_authorized_tanami_rights(candidate, media)
                 _count_terminal_media(candidate_stats, media)
                 continue
             allowed_domains = _allowed_domains_for_media(candidate, media.source_url)
@@ -370,16 +375,12 @@ async def intake_private_media(
             )
             media.derivative_manifest = derivative_manifest
             media.change_status = "newly-added"
-            if media.rights_status != MediaRightsStatus.APPROVED:
+            if candidate.adapter_key == TANAMI_ADAPTER_KEY:
+                _synchronize_owner_authorized_tanami_rights(candidate, media)
+            elif media.rights_status != MediaRightsStatus.APPROVED:
                 media.rights_status = MediaRightsStatus.APPROVED
                 media.rights_basis = (
-                    "Owner-authorized exact-Project Tanami media use; Tanami source provenance "
-                    "retained and ALIYAS is not recorded as the original copyright owner."
-                    if candidate.adapter_key == TANAMI_ADAPTER_KEY
-                    else (
-                        "Automatically approved exact-Project image from a validated "
-                        "candidate source."
-                    )
+                    "Automatically approved exact-Project image from a validated candidate source."
                 )
                 media.rights_confirmed_by = None
                 media.rights_confirmed_at = datetime.now(UTC)
@@ -415,6 +416,23 @@ async def intake_private_media(
             stats[key] += value
         await db.commit()
     return stats
+
+
+def _synchronize_owner_authorized_tanami_rights(
+    candidate: ProjectImportCandidate, media: ProjectImportMedia
+) -> None:
+    """Apply the owner's source-specific authorization without weakening other sources."""
+    if candidate.adapter_key != TANAMI_ADAPTER_KEY:
+        return
+    if (
+        media.rights_status == MediaRightsStatus.APPROVED
+        and media.rights_basis == TANAMI_OWNER_AUTHORIZED_RIGHTS_BASIS
+    ):
+        return
+    media.rights_status = MediaRightsStatus.APPROVED
+    media.rights_basis = TANAMI_OWNER_AUTHORIZED_RIGHTS_BASIS
+    media.rights_confirmed_by = None
+    media.rights_confirmed_at = datetime.now(UTC)
 
 
 def _allowed_domains_for_media(

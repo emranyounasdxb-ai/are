@@ -23,7 +23,11 @@ from app.acquisition.media import (
     responsive_derivatives,
     validate_raster,
 )
-from app.acquisition.media_intake import _select_best_cover, intake_private_media
+from app.acquisition.media_intake import (
+    TANAMI_OWNER_AUTHORIZED_RIGHTS_BASIS,
+    _select_best_cover,
+    intake_private_media,
+)
 from app.acquisition.parser import normalize_evidence, parse_html
 from app.acquisition.reconciliation import reconcile_candidate_quality, source_disagreement
 from app.acquisition.security import AcquisitionSecurityError, validate_public_url
@@ -35,6 +39,7 @@ from app.acquisition.service import (
     read_manifest,
     retry_candidates,
 )
+from app.acquisition.tanami import TANAMI_ADAPTER_KEY
 from app.db import SessionLocal
 from app.models import (
     AreaCommunity,
@@ -60,6 +65,62 @@ def test_raster_source_paths_are_encoded_without_changing_the_host() -> None:
     assert _encode_raster_url("https://example.com/Lifestyle/Cinema Room.jpg") == (
         "https://example.com/Lifestyle/Cinema%20Room.jpg"
     )
+
+
+@pytest.mark.asyncio
+async def test_idempotent_tanami_media_rerun_synchronizes_owner_authorization(
+    test_settings,
+) -> None:
+    batch_id = uuid.uuid4()
+    async with SessionLocal() as db:
+        media = ProjectImportMedia(
+            category=ProjectMediaCategory.GALLERY,
+            source_url="https://www.tanamiproperties.com/project-media/gallery.jpg",
+            rights_status=MediaRightsStatus.APPROVED,
+            rights_basis=(
+                "Automatically approved exact-Project image from a validated candidate source."
+            ),
+            stage_status="downloaded",
+            processing_version="project-media-v3",
+        )
+        candidate = ProjectImportCandidate(
+            manifest_row_id=1,
+            raw_source_payload={},
+            owner_manifest_values={"owner_project_name": "QA Tanami Project"},
+            normalized_project_name="QA Tanami Project",
+            source_urls=[],
+            content_hash="a" * 64,
+            validation_errors=[],
+            conflict_reasons=[],
+            adapter_key=TANAMI_ADAPTER_KEY,
+            review_status=ImportReviewStatus.NEEDS_REVIEW,
+            staged_media=[media],
+        )
+        db.add(
+            ProjectImportBatch(
+                id=batch_id,
+                name="QA Tanami Rights Sync",
+                source_reference="qa-tanami-rights-sync",
+                manifest_hash="b" * 64,
+                adapter_version="test",
+                total_count=1,
+                candidates=[candidate],
+            )
+        )
+        await db.commit()
+
+        first = await intake_private_media(db, test_settings, batch_id, preserve_review_state=True)
+        first_confirmation = media.rights_confirmed_at
+
+        assert first["attempted"] == 0
+        assert media.rights_basis == TANAMI_OWNER_AUTHORIZED_RIGHTS_BASIS
+        assert first_confirmation is not None
+
+        second = await intake_private_media(db, test_settings, batch_id, preserve_review_state=True)
+
+        assert second["attempted"] == 0
+        assert media.rights_basis == TANAMI_OWNER_AUTHORIZED_RIGHTS_BASIS
+        assert media.rights_confirmed_at == first_confirmation
 
 
 def test_reconciliation_does_not_recreate_the_generic_nine_conflicts() -> None:
