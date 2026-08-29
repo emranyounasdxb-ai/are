@@ -619,6 +619,23 @@ def test_official_project_url_requires_phase_tokens_and_rejects_broad_pages() ->
         "The Boulevard at Aljada",
         "https://www.arada.com/en/property_category/the-boulevard/",
     )
+    assert official_url_matches_project(
+        "Ajwan Residences", "https://shurooq.gov.ae/portfolio/Ajwan-Residence"
+    )
+    assert official_url_matches_project("Bluebay walk", "https://ajmalmakan.com/blue-bay-walk/")
+
+
+def test_linked_official_domains_are_allowlisted_for_bounded_research() -> None:
+    arada = adapter_for("ARADA")
+    sharjah_holding = adapter_for("Sharjah Holding")
+    shurooq = adapter_for("Shurooq")
+
+    assert arada is not None
+    assert "aradawebcontent.blob.core.windows.net" in arada.allowed_domains
+    assert sharjah_holding is not None
+    assert "alzahia.ae" in sharjah_holding.allowed_domains
+    assert shurooq is not None
+    assert "ajwan.ae" in shurooq.allowed_domains
 
 
 def test_official_announcement_match_requires_every_multi_token_identity_part() -> None:

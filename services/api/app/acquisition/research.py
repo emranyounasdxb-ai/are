@@ -51,6 +51,7 @@ from app.project_field_policy import (
 from app.storage import PrivateStorage
 
 RESEARCH_VERSION = "official-readiness-v1"
+EXPLICIT_REFERENCE_DOMAINS = ("linkedin.com", "sharjah24.ae", "wam.ae")
 
 
 def discovery_inspection_urls(discovery: DiscoveryResult | None) -> list[str]:
@@ -182,6 +183,8 @@ def exact_document_identity(project_name: str, heading: str) -> bool:
     if not expected:
         return False
     if sorted(expected) == sorted(actual):
+        return True
+    if "".join(expected) == "".join(actual):
         return True
     # Official announcements commonly wrap an exact multi-token Project name
     # in a longer headline. Accept only the contiguous identity phrase so phase
@@ -344,6 +347,7 @@ async def research_existing_batch(
             "checked_at": datetime.now(UTC).isoformat(),
             "documents": [],
             "exact_documents": [],
+            "candidate_scoped_documents": [],
             "failures": [],
             "automatic_approval": False,
         }
@@ -371,11 +375,16 @@ async def research_existing_batch(
                     if url
                 )
             )[:8]
+            scoped_urls = set((extra_urls or {}).get(candidate.manifest_row_id, []))
             for url in urls:
-                if not host_is_allowed(urlsplit(url).hostname or "", adapter.allowed_domains):
+                is_explicit = url in scoped_urls
+                allowed_domains = adapter.allowed_domains
+                if is_explicit:
+                    allowed_domains = (*allowed_domains, *EXPLICIT_REFERENCE_DOMAINS)
+                if not host_is_allowed(urlsplit(url).hostname or "", allowed_domains):
                     research["failures"].append(f"Unapproved source domain: {url}")
                     continue
-                result = await asyncio.to_thread(source_fetcher.fetch, url, adapter.allowed_domains)
+                result = await asyncio.to_thread(source_fetcher.fetch, url, allowed_domains)
                 document: dict[str, Any] = {
                     "requested_url": url,
                     "source_url": result.url,
@@ -386,9 +395,16 @@ async def research_existing_batch(
                     "exact_identity": False,
                 }
                 if result.ok:
-                    await _store_snapshot(
-                        db, storage, candidate, result, ProjectSourceType.OFFICIAL_DEVELOPER_PAGE
-                    )
+                    source_type = ProjectSourceType.OFFICIAL_DEVELOPER_PAGE
+                    if not host_is_allowed(
+                        urlsplit(result.url).hostname or "", adapter.allowed_domains
+                    ):
+                        source_type = ProjectSourceType.APPROVED_SECONDARY_SOURCE
+                    elif result.content_type == "application/pdf":
+                        source_type = ProjectSourceType.OFFICIAL_DEVELOPER_BROCHURE
+                    await _store_snapshot(db, storage, candidate, result, source_type)
+                    if url in scoped_urls:
+                        research["candidate_scoped_documents"].append(result.url)
                     if result.content_type in {"text/html", "application/xhtml+xml"}:
                         parsed = parse_html(result.body, result.url)
                         document["title"] = parsed.title
@@ -422,11 +438,19 @@ async def research_existing_batch(
         else:
             research["failures"].append("Exact canonical Developer adapter unavailable")
         research["exact_documents"] = list(dict.fromkeys(research["exact_documents"]))
+        research["candidate_scoped_documents"] = list(
+            dict.fromkeys(research["candidate_scoped_documents"])
+        )
         if (
             research["exact_documents"]
             and candidate.official_source_url not in research["exact_documents"]
         ):
             candidate.official_source_url = research["exact_documents"][0]
+        elif research["candidate_scoped_documents"]:
+            # Explicit row-to-URL research input is a reviewable official reference,
+            # not automatic identity approval. The authenticated CMS context review
+            # remains mandatory before this evidence can satisfy readiness.
+            candidate.official_source_url = research["candidate_scoped_documents"][0]
         elif adapter and not research["exact_documents"]:
             research["failures"].append("Exact official Project document unavailable")
         previous = (candidate.acquisition_summary or {}).get("source_first_research", {})
@@ -444,6 +468,14 @@ async def research_existing_batch(
             research["documents"] = list(by_url.values())
             research["exact_documents"] = list(
                 dict.fromkeys([*previous.get("exact_documents", []), *research["exact_documents"]])
+            )
+            research["candidate_scoped_documents"] = list(
+                dict.fromkeys(
+                    [
+                        *previous.get("candidate_scoped_documents", []),
+                        *research["candidate_scoped_documents"],
+                    ]
+                )
             )
             research["failures"] = list(
                 dict.fromkeys([*previous.get("failures", []), *research["failures"]])

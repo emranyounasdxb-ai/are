@@ -81,6 +81,14 @@ def parser() -> argparse.ArgumentParser:
         help="Reinspect one existing private batch without approval/publication",
     )
     research.add_argument("--batch-id", required=True, type=uuid.UUID)
+    research.add_argument("--candidate-id", action="append", type=uuid.UUID, default=None)
+    research.add_argument(
+        "--extra-url",
+        action="append",
+        default=[],
+        metavar="ROW=URL",
+        help="Inspect an explicit official URL for one existing manifest row.",
+    )
     tanami_refresh = subcommands.add_parser(
         "tanami-refresh-existing",
         help="Refresh only the retained candidates in one existing explicit Tanami batch",
@@ -142,7 +150,19 @@ async def run(args: argparse.Namespace) -> None:
         if args.command == "official-research":
             from app.acquisition.research import research_existing_batch
 
-            result = await research_existing_batch(db, get_settings(), args.batch_id)
+            extra_urls: dict[int, list[str]] = {}
+            for value in args.extra_url:
+                row_text, separator, url = value.partition("=")
+                if not separator or not row_text.isdigit() or not url.startswith("https://"):
+                    raise ValueError("Each --extra-url must use ROW=https://official.example/path.")
+                extra_urls.setdefault(int(row_text), []).append(url)
+            result = await research_existing_batch(
+                db,
+                get_settings(),
+                args.batch_id,
+                candidate_ids=args.candidate_id,
+                extra_urls=extra_urls,
+            )
             print(json.dumps(result, indent=2))
             return
         if args.command == "overview-pack-validate":

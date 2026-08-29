@@ -191,7 +191,13 @@ def candidate_readiness_blockers(candidate: Any, missing: list[str] | None = Non
     research = (getattr(candidate, "acquisition_summary", None) or {}).get(
         "source_first_research", {}
     )
-    if not research.get("exact_documents"):
+    reviewed_scoped_document = bool(
+        research.get("context_review_completed")
+        and getattr(candidate, "official_source_url", None)
+        and getattr(candidate, "official_source_url", None)
+        in research.get("candidate_scoped_documents", [])
+    )
+    if not research.get("exact_documents") and not reviewed_scoped_document:
         blockers.append("Exact official Project document requires verification")
     if not research.get("context_review_completed"):
         blockers.append("Project-specific factual context and source freshness require review")
