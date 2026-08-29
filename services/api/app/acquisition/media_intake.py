@@ -53,6 +53,9 @@ REJECTED_URL_TOKENS = (
     "google-play",
 )
 MEDIA_PROCESSING_VERSION = "project-media-v3"
+AUTOMATIC_EXACT_PROJECT_RIGHTS_BASIS = (
+    "Automatically approved exact-Project image from a validated candidate source."
+)
 TANAMI_OWNER_AUTHORIZED_RIGHTS_BASIS = (
     "Owner-authorized exact-Project Tanami media use; Tanami source provenance "
     "retained and ALIYAS is not recorded as the original copyright owner."
@@ -379,9 +382,7 @@ async def intake_private_media(
                 _synchronize_owner_authorized_tanami_rights(candidate, media)
             elif media.rights_status != MediaRightsStatus.APPROVED:
                 media.rights_status = MediaRightsStatus.APPROVED
-                media.rights_basis = (
-                    "Automatically approved exact-Project image from a validated candidate source."
-                )
+                media.rights_basis = AUTOMATIC_EXACT_PROJECT_RIGHTS_BASIS
                 media.rights_confirmed_by = None
                 media.rights_confirmed_at = datetime.now(UTC)
             for key in previous_keys - {raw_key, storage_key, thumbnail_key, *derivative_keys}:
@@ -423,6 +424,24 @@ def _synchronize_owner_authorized_tanami_rights(
 ) -> None:
     """Apply the owner's source-specific authorization without weakening other sources."""
     if candidate.adapter_key != TANAMI_ADAPTER_KEY:
+        return
+    manifest = media.discovery_manifest or {}
+    project_url = str(manifest.get("project_url") or "")
+    manifest_source_url = str(manifest.get("source_url") or "")
+    dom_discovered_tanami_media = bool(
+        project_url.startswith("https://www.tanamiproperties.com/Projects/")
+        and manifest_source_url == media.source_url
+        and manifest.get("disposition") == "accepted"
+    )
+    if not dom_discovered_tanami_media:
+        if media.rights_basis == TANAMI_OWNER_AUTHORIZED_RIGHTS_BASIS or (
+            media.rights_basis == AUTOMATIC_EXACT_PROJECT_RIGHTS_BASIS
+            and media.rights_status == MediaRightsStatus.APPROVED
+        ):
+            media.rights_status = MediaRightsStatus.PENDING
+            media.rights_basis = AUTOMATIC_EXACT_PROJECT_RIGHTS_BASIS
+            media.rights_confirmed_by = None
+            media.rights_confirmed_at = datetime.now(UTC)
         return
     if (
         media.rights_status == MediaRightsStatus.APPROVED
@@ -483,6 +502,7 @@ def _select_best_cover(candidate: ProjectImportCandidate) -> None:
         for item in candidate.staged_media
         if item.stage_status == "downloaded"
         and item.rights_status == MediaRightsStatus.APPROVED
+        and not (item.rights_basis or "").startswith("Automatically approved exact-Project")
         and item.storage_key
         and item.category in eligible_categories
         and isinstance(item.width, int)
