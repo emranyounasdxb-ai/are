@@ -104,6 +104,11 @@ def parser() -> argparse.ArgumentParser:
         help="Download and sync classified media without changing review state",
     )
     tanami_media_acquire.add_argument("--batch-id", required=True, action="append", type=uuid.UUID)
+    tanami_media_acquire.add_argument(
+        "--rights-only",
+        action="store_true",
+        help="Synchronize owner-authorized rights on already downloaded Tanami media only",
+    )
     for command in (
         "acquire",
         "refresh",
@@ -179,7 +184,10 @@ async def run(args: argparse.Namespace) -> None:
         if args.command == "tanami-media-acquire":
             from app.acquisition.media_intake import _remove_media_output, intake_private_media
             from app.acquisition.service import selected_batch
-            from app.acquisition.tanami import ambiguous_cross_candidate_media_ids
+            from app.acquisition.tanami import (
+                TANAMI_ADAPTER_KEY,
+                ambiguous_cross_candidate_media_ids,
+            )
             from app.import_review import sync_linked_draft_from_candidate
 
             acquisition_totals: dict[str, int] = {}
@@ -187,10 +195,22 @@ async def run(args: argparse.Namespace) -> None:
             completed_batches: list[ProjectImportBatch] = []
             for batch_id in args.batch_id:
                 batch = await selected_batch(db, str(batch_id))
+                media_ids = (
+                    {
+                        media.id
+                        for candidate in batch.candidates
+                        if candidate.adapter_key == TANAMI_ADAPTER_KEY
+                        for media in candidate.staged_media
+                        if media.stage_status == "downloaded"
+                    }
+                    if args.rights_only
+                    else None
+                )
                 media_intake_result = await intake_private_media(
                     db,
                     get_settings(),
                     batch.id,
+                    media_ids=media_ids,
                     preserve_review_state=True,
                 )
                 for key, count in media_intake_result.items():
