@@ -19,8 +19,12 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.acquisition.adapters import adapter_for, official_url_matches_project
-from app.acquisition.contracts import ManifestCandidate, SourceFetcher
+from app.acquisition.adapters import (
+    PROJECT_FORM_SUFFIXES,
+    adapter_for,
+    official_url_matches_project,
+)
+from app.acquisition.contracts import DiscoveryResult, ManifestCandidate, SourceFetcher
 from app.acquisition.parser import normalize_evidence, normalize_name, parse_html
 from app.acquisition.reconciliation import (
     reconcile_candidate_quality,
@@ -47,6 +51,28 @@ from app.project_field_policy import (
 from app.storage import PrivateStorage
 
 RESEARCH_VERSION = "official-readiness-v1"
+
+
+def discovery_inspection_urls(discovery: DiscoveryResult | None) -> list[str]:
+    """Inspect one bounded fuzzy URL privately; document identity still decides acceptance."""
+    if discovery is None:
+        return []
+    if discovery.match_kind == "deterministic":
+        return [
+            url for url in dict.fromkeys([discovery.source_url, *discovery.localized_urls]) if url
+        ]
+    if discovery.match_kind == "fuzzy-suggestion" and discovery.suggested_url:
+        return [discovery.suggested_url]
+    return []
+
+
+def research_fingerprint(research: dict[str, Any]) -> str:
+    """Compare evidence outcomes without treating observation timestamps as changes."""
+    stable = json.loads(json.dumps(research))
+    stable.pop("checked_at", None)
+    for document in stable.get("documents", []):
+        document.pop("retrieved_at", None)
+    return json.dumps(stable, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
 def recalculate_stored_conflicts(
@@ -143,13 +169,71 @@ def recalculate_stored_conflicts(
 def exact_document_identity(project_name: str, heading: str) -> bool:
     """Exact normalized identities only; never equate numbered phases/units."""
     identity = re.split(r"\s+(?:at|by)\s+", project_name, maxsplit=1, flags=re.I)[0]
-    heading = re.split(r"[|–]", heading, maxsplit=1)[0]
-    heading = re.split(r"\s+(?:at|by)\s+", heading, maxsplit=1, flags=re.I)[0]
-    # Word order can differ in an official title, but every token (especially
-    # phase numbers) must agree. This is not fuzzy similarity.
+    heading = re.split(r"\s(?:\||-|–)\s", heading, maxsplit=1)[0]
+    heading = re.split(r"\s+by\s+", heading, maxsplit=1, flags=re.I)[0]
     expected = normalize_name(identity).split()
     actual = normalize_name(heading).split()
-    return bool(expected) and sorted(expected) == sorted(actual)
+    if actual[:1] == ["about"]:
+        actual = actual[1:]
+    while expected and expected[-1] in PROJECT_FORM_SUFFIXES:
+        expected.pop()
+    while actual and actual[-1] in PROJECT_FORM_SUFFIXES:
+        actual.pop()
+    if not expected:
+        return False
+    if sorted(expected) == sorted(actual):
+        return True
+    # Official announcements commonly wrap an exact multi-token Project name
+    # in a longer headline. Accept only the contiguous identity phrase so phase
+    # numbers remain mandatory, while excluding unit/configuration pages.
+    if len(expected) < 2:
+        return False
+    unit_suffixes = {
+        "apartment",
+        "apartments",
+        "bedroom",
+        "bedrooms",
+        "br",
+        "duplex",
+        "studio",
+        "townhouse",
+        "townhouses",
+        "unit",
+        "units",
+        "villa",
+        "villas",
+    }
+    if set(actual) & unit_suffixes:
+        return False
+    expected_numbers = {value for value in expected if value.isdigit()}
+    if expected_numbers:
+        for number in expected_numbers:
+            positions = [index for index, value in enumerate(actual) if value == number]
+            expected_index = expected.index(number)
+            neighbours = {
+                value
+                for value in (
+                    expected[expected_index - 1] if expected_index else None,
+                    expected[expected_index + 1] if expected_index + 1 < len(expected) else None,
+                )
+                if value
+            }
+            if not any(
+                (index and actual[index - 1] in neighbours)
+                or (index + 1 < len(actual) and actual[index + 1] in neighbours)
+                for index in positions
+            ):
+                return False
+    else:
+        expected_tail_positions = [
+            index for index, value in enumerate(actual) if value == expected[-1]
+        ]
+        if any(
+            index + 1 < len(actual) and actual[index + 1].isdigit()
+            for index in expected_tail_positions
+        ):
+            return False
+    return set(expected) <= set(actual)
 
 
 def readiness_report(candidate: ProjectImportCandidate) -> dict[str, Any]:
@@ -235,7 +319,21 @@ async def research_existing_batch(
     if locked_project:
         raise ValueError("Research may update candidates linked to Draft Projects only.")
     reports: list[dict[str, Any]] = []
+    mutated = 0
     for candidate in candidates:
+        before_state = json.dumps(
+            {
+                "official_source_url": candidate.official_source_url,
+                "acquisition_summary": candidate.acquisition_summary,
+                "validation_errors": candidate.validation_errors,
+                "conflict_reasons": candidate.conflict_reasons,
+                "processing_status": candidate.processing_status.value,
+                "review_status": candidate.review_status.value,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+            default=str,
+        )
         name = candidate.normalized_project_name or ""
         owner = candidate.owner_manifest_values
         developer = str(owner.get("source_developer") or owner.get("listing_developer") or "")
@@ -257,14 +355,10 @@ async def research_existing_batch(
                 else None
             )
             research["failures"] = list(discovery.failures) if discovery else []
-            discovered_urls = (
-                [discovery.source_url, *discovery.localized_urls]
-                if discovery and discovery.match_kind == "deterministic"
-                else []
-            )
+            discovered_urls = discovery_inspection_urls(discovery)
             if discovery and discovery.match_kind == "fuzzy-suggestion":
                 research["failures"].append(
-                    "Fuzzy discovery excluded; exact Project source required"
+                    "Fuzzy URL inspected privately; exact document identity remains required"
                 )
             urls = list(
                 dict.fromkeys(
@@ -299,22 +393,17 @@ async def research_existing_batch(
                         parsed = parse_html(result.body, result.url)
                         document["title"] = parsed.title
                         document["headings"] = list(parsed.headings[:12])
+                        url_identity = official_url_matches_project(name, result.url)
+                        identity_headings = list(parsed.headings[:2])
+                        if "/property_category/" in urlsplit(result.url).path and url_identity:
+                            identity_headings = list(parsed.headings[:6])
                         document["exact_identity"] = any(
                             exact_document_identity(name, heading)
-                            for heading in [parsed.title or "", *parsed.headings[:2]]
+                            for heading in [parsed.title or "", *identity_headings]
                         )
-                        document["url_identity"] = official_url_matches_project(name, result.url)
-                        if document["exact_identity"] or (
-                            discovery
-                            and discovery.match_kind == "deterministic"
-                            and document["url_identity"]
-                            and not (candidate.acquisition_summary or {})
-                            .get("targeted_field_review", {})
-                            .get("identity_hold")
-                        ):
+                        document["url_identity"] = url_identity
+                        if document["exact_identity"]:
                             research["exact_documents"].append(result.url)
-                            if not candidate.official_source_url:
-                                candidate.official_source_url = result.url
                         # Parsed proposals are private research only. Whole-page facts can
                         # include related Projects and require contextual adjudication.
                         document["unreviewed_proposal"] = normalize_evidence(
@@ -332,6 +421,14 @@ async def research_existing_batch(
                 research["documents"].append(document)
         else:
             research["failures"].append("Exact canonical Developer adapter unavailable")
+        research["exact_documents"] = list(dict.fromkeys(research["exact_documents"]))
+        if (
+            research["exact_documents"]
+            and candidate.official_source_url not in research["exact_documents"]
+        ):
+            candidate.official_source_url = research["exact_documents"][0]
+        elif adapter and not research["exact_documents"]:
+            research["failures"].append("Exact official Project document unavailable")
         previous = (candidate.acquisition_summary or {}).get("source_first_research", {})
         if not discover:
             # Bounded retries must not discard already successful private evidence.
@@ -351,26 +448,44 @@ async def research_existing_batch(
             research["failures"] = list(
                 dict.fromkeys([*previous.get("failures", []), *research["failures"]])
             )
-        candidate.acquisition_summary = {
-            **(candidate.acquisition_summary or {}),
-            "source_first_research": research,
-        }
+        if research_fingerprint(previous) == research_fingerprint(research):
+            research = previous
+        else:
+            candidate.acquisition_summary = {
+                **(candidate.acquisition_summary or {}),
+                "source_first_research": research,
+            }
         await asyncio.to_thread(recalculate_stored_conflicts, candidate, storage)
         report = readiness_report(candidate)
         # Research must never convert a record into editorial approval/publication.
         if not report["ready"]:
             candidate.processing_status = ProjectProcessingStatus.NEEDS_REVIEW
             candidate.review_status = ImportReviewStatus.NEEDS_REVIEW
-        await write_audit(
-            db,
-            actor_user_id=None,
-            action="project.import.official_research",
-            entity_type="project_import_candidate",
-            entity_id=candidate.id,
-            correlation_id=f"research:{batch_id}",
-            metadata={"ready": report["ready"], "version": RESEARCH_VERSION},
+        after_state = json.dumps(
+            {
+                "official_source_url": candidate.official_source_url,
+                "acquisition_summary": candidate.acquisition_summary,
+                "validation_errors": candidate.validation_errors,
+                "conflict_reasons": candidate.conflict_reasons,
+                "processing_status": candidate.processing_status.value,
+                "review_status": candidate.review_status.value,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+            default=str,
         )
-        await db.commit()
+        if before_state != after_state:
+            mutated += 1
+            await write_audit(
+                db,
+                actor_user_id=None,
+                action="project.import.official_research",
+                entity_type="project_import_candidate",
+                entity_id=candidate.id,
+                correlation_id=f"research:{batch_id}",
+                metadata={"ready": report["ready"], "version": RESEARCH_VERSION},
+            )
+            await db.commit()
         reports.append(report)
         print(
             json.dumps(
@@ -390,5 +505,6 @@ async def research_existing_batch(
     return {
         "count": len(reports),
         "ready": sum(item["ready"] for item in reports),
+        "mutated": mutated,
         "private_report_key": stored.storage_key,
     }
