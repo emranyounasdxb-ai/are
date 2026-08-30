@@ -4,7 +4,41 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from app.models import EditorialApprovalStatus, MediaRightsStatus, ProjectMediaCategory
-from app.project_approval import technical_blockers
+from app.project_approval import content_version, technical_blockers
+
+
+def test_content_version_is_independent_of_media_relationship_order(monkeypatch) -> None:
+    first_id = "00000000-0000-0000-0000-000000000001"
+    second_id = "00000000-0000-0000-0000-000000000002"
+    serialized = {
+        "status": "draft",
+        "workflow_status": "ready-for-approval",
+        "created_at": None,
+        "updated_at": None,
+        "published_at": None,
+        "archived_at": None,
+        "sources": [],
+        "payment_plan": None,
+        "media": [
+            {"id": first_id, "category": "cover", "display_order": 0},
+            {"id": second_id, "category": "gallery", "display_order": 1},
+        ],
+    }
+    monkeypatch.setattr(
+        "app.project_approval.project_dict",
+        lambda _record: {
+            **serialized,
+            "media": [dict(item) for item in serialized["media"]],
+        },
+    )
+    first = SimpleNamespace(id=first_id, sha256="a" * 64, storage_key="first.webp")
+    second = SimpleNamespace(id=second_id, sha256="b" * 64, storage_key="second.webp")
+    record = SimpleNamespace(media=[second, first])
+
+    version = content_version(record)
+    record.media.reverse()
+
+    assert content_version(record) == version
 
 
 @pytest.mark.asyncio
