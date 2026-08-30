@@ -24,10 +24,29 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.acquisition.reconciliation import reconcile_candidate_quality
+from app.area_workflow import (
+    AreaBulkWorkflowInput,
+    AreaUpdateInput,
+    area_or_404,
+)
+from app.area_workflow import (
+    apply_bulk_workflow as apply_area_bulk_workflow,
+)
+from app.area_workflow import (
+    content_version as area_content_version,
+)
+from app.area_workflow import (
+    workflow_state as area_workflow_state,
+)
 from app.audit import request_correlation_id, write_audit
 from app.config import Settings, get_settings
 from app.db import get_db
-from app.dependencies import AuthContext, require_mutation_permission, require_permission
+from app.dependencies import (
+    AuthContext,
+    require_csrf,
+    require_mutation_permission,
+    require_permission,
+)
 from app.import_review import apply_bulk_action, eligibility_errors
 from app.manual_overviews import (
     create_overview_pack,
@@ -305,10 +324,100 @@ async def list_areas(
             .order_by(AreaCommunity.name_en)
         )
     ).all()
+    items = []
+    for record in records:
+        item = area_dict(record)
+        item["workflow"] = await area_workflow_state(record, db)
+        items.append(item)
     return {
-        "items": [area_dict(item) for item in records],
+        "items": items,
         "meta": meta(1, max(1, len(records)), len(records)),
     }
+
+
+@admin_router.get("/areas/{record_id}")
+async def get_area(
+    record_id: uuid.UUID,
+    _: AuthContext = Depends(require_permission("project.read")),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    record = await area_or_404(record_id, db)
+    result = area_dict(record)
+    result["workflow"] = await area_workflow_state(record, db)
+    return result
+
+
+@admin_router.put("/areas/{record_id}")
+async def update_area(
+    record_id: uuid.UUID,
+    payload: AreaUpdateInput,
+    request: Request,
+    context: AuthContext = Depends(require_mutation_permission("project.update")),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    record = await area_or_404(record_id, db, lock=True)
+    if record.status != PublicationStatus.DRAFT:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail={
+                "code": "published_area_immutable",
+                "message": "Published Areas cannot be edited.",
+            },
+        )
+    if payload.expected_content_version != area_content_version(record):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail={"code": "stale_area", "message": "Area changed. Reload before saving."},
+        )
+    referenced_emirates = set(
+        await db.scalars(select(Project.emirate).where(Project.area_id == record.id))
+    )
+    if referenced_emirates and referenced_emirates != {payload.emirate}:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={
+                "code": "area_project_emirate_mismatch",
+                "message": "Area Emirate must match every referenced Project.",
+            },
+        )
+    before = {"slug": record.slug, "content_version": area_content_version(record)}
+    record.slug = payload.slug
+    record.name_en = payload.name_en
+    record.name_ar = payload.name_ar
+    record.emirate = payload.emirate
+    record.aliases = [
+        AreaAlias(
+            alias=item.alias,
+            locale=item.locale,
+            normalized_alias=normalize_alias(item.alias),
+        )
+        for item in payload.aliases
+    ]
+    await db.flush()
+    await write_audit(
+        db,
+        action="area.update",
+        entity_type="area",
+        entity_id=record.id,
+        actor_user_id=context.user.id,
+        correlation_id=request_correlation_id(request),
+        before=before,
+        after={"slug": record.slug, "content_version": area_content_version(record)},
+    )
+    await commit_or_conflict(db)
+    result = area_dict(await area_or_404(record.id, db))
+    result["workflow"] = await area_workflow_state(record, db)
+    return result
+
+
+@admin_router.post("/areas/bulk-workflow")
+async def bulk_area_workflow(
+    payload: AreaBulkWorkflowInput,
+    request: Request,
+    context: AuthContext = Depends(require_csrf),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    return await apply_area_bulk_workflow(db, payload, request, context)
 
 
 @admin_router.post("/areas", status_code=status.HTTP_201_CREATED)
