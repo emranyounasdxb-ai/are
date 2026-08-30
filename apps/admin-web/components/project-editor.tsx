@@ -296,7 +296,7 @@ function recordValues(record: ProjectRecord): Values {
         nearby_places: record.nearby_places?.map((item) => ({ ...item, distance_value: stringValue(item.distance_value), travel_time_minutes: stringValue(item.travel_time_minutes) })) ?? [],
         translations: { en: record.translations?.en ?? emptyTranslation(), ar: record.translations?.ar ?? emptyTranslation() },
         sources: record.sources?.map((item) => ({ ...item, source_title: item.source_title ?? "", source_developer_domain: item.source_developer_domain ?? "", retrieved_at: localDateTime(item.retrieved_at), last_checked_at: localDateTime(item.last_checked_at) })) ?? [],
-        media: record.media?.map((item) => ({ id: item.id, category: item.category, source_url: item.source_url, rights_status: item.rights_status, alt_en: item.alt_en ?? "", alt_ar: item.alt_ar ?? "", display_order: item.display_order, verified_at: localDateTime(item.verified_at), has_upload: item.has_upload })) ?? [],
+        media: record.media?.map((item) => ({ id: item.id, category: item.category, source_url: item.source_url, rights_status: item.rights_status, alt_en: item.alt_en ?? "", alt_ar: item.alt_ar ?? "", display_order: item.display_order, verified_at: localDateTime(item.verified_at), has_upload: item.has_upload, association_status: item.association_status })) ?? [],
         payment_raw: plan?.raw_source_text ?? "",
         payment_source_index: Math.max(0, (record.sources ?? []).findIndex((source) => source.id === plan?.source_id)),
         payment_complete: Boolean(plan?.is_complete),
