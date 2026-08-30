@@ -8,7 +8,7 @@ import json
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.acquisition.media import classify_media_dimensions
+from app.acquisition.media import classify_owner_authorized_media_dimensions
 from app.models import AuditLog, MediaRightsStatus, Project, ProjectMedia, ProjectMediaCategory
 
 APPROVE = "project.media.preview.approve"
@@ -37,6 +37,13 @@ def asset_version(media: ProjectMedia) -> str:
         "verified_at",
         "uploaded_by",
         "updated_at",
+        "title_en",
+        "title_ar",
+        "description_en",
+        "description_ar",
+        "tags",
+        "derivative_manifest",
+        "private_provenance",
     )
     encoded = json.dumps(
         {key: getattr(media, key) for key in fields}, sort_keys=True, default=str
@@ -47,7 +54,13 @@ def asset_version(media: ProjectMedia) -> str:
 def current_asset_permission(media: ProjectMedia, receipt: AuditLog) -> bool:
     detail = receipt.metadata_summary or {}
     quality = (
-        classify_media_dimensions(media.width, media.height, media.category.value)
+        classify_owner_authorized_media_dimensions(
+            media.width,
+            media.height,
+            media.category.value,
+            source_url=media.source_url,
+            rights_approved=media.rights_status == MediaRightsStatus.APPROVED,
+        )
         if media.width and media.height
         else None
     )

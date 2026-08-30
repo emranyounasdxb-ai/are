@@ -14,6 +14,7 @@ from app.acquisition.adapters import OFFICIAL_ADAPTERS
 from app.acquisition.media import (
     SecureRasterFetcher,
     classify_media_quality,
+    classify_owner_authorized_media_dimensions,
     normalized_media_filename,
     responsive_derivatives,
     thumbnail,
@@ -52,7 +53,7 @@ REJECTED_URL_TOKENS = (
     "app-store",
     "google-play",
 )
-MEDIA_PROCESSING_VERSION = "project-media-v3"
+MEDIA_PROCESSING_VERSION = "project-media-v4"
 AUTOMATIC_EXACT_PROJECT_RIGHTS_BASIS = (
     "Automatically approved exact-Project image from a validated candidate source."
 )
@@ -171,14 +172,16 @@ async def intake_private_media(
                 else:
                     candidate_stats["unrelated_rejected"] += 1
                 continue
-            if media.stage_status == "rejected-unrelated" or (
-                media.processing_version == MEDIA_PROCESSING_VERSION
-                and media.stage_status
+            if (
+                media.stage_status
                 in {
                     "downloaded",
                     "duplicate",
-                    "rejected-low-resolution",
+                    "rejected-unrelated",
+                    "replaced-conceptual-cover",
                 }
+                or media.processing_version == MEDIA_PROCESSING_VERSION
+                and media.stage_status == "rejected-low-resolution"
             ):
                 if media.stage_status == "downloaded":
                     _apply_category_metadata(candidate, media)
@@ -221,7 +224,18 @@ async def intake_private_media(
                 media.failure_reason = str(exc)[:500]
                 candidate_stats["failed"] += 1
                 continue
-            quality = classify_media_quality(raster, media.category.value)
+            tanami_native_authorized = _is_owner_authorized_tanami_media(candidate, media)
+            quality = (
+                classify_owner_authorized_media_dimensions(
+                    raster.width,
+                    raster.height,
+                    media.category.value,
+                    source_url=media.source_url,
+                    rights_approved=True,
+                )
+                if tanami_native_authorized
+                else classify_media_quality(raster, media.category.value)
+            )
             media.display_order = int(
                 (media.discovery_manifest or {}).get("category_order", media.display_order)
             )
@@ -429,14 +443,7 @@ def _synchronize_owner_authorized_tanami_rights(
     """Apply the owner's source-specific authorization without weakening other sources."""
     if candidate.adapter_key != TANAMI_ADAPTER_KEY:
         return
-    manifest = media.discovery_manifest or {}
-    project_url = str(manifest.get("project_url") or "")
-    manifest_source_url = str(manifest.get("source_url") or "")
-    dom_discovered_tanami_media = bool(
-        project_url.startswith("https://www.tanamiproperties.com/Projects/")
-        and manifest_source_url == media.source_url
-        and manifest.get("disposition") == "accepted"
-    )
+    dom_discovered_tanami_media = _is_owner_authorized_tanami_media(candidate, media)
     if not dom_discovered_tanami_media:
         if media.rights_basis == TANAMI_OWNER_AUTHORIZED_RIGHTS_BASIS or (
             media.rights_basis == AUTOMATIC_EXACT_PROJECT_RIGHTS_BASIS
@@ -456,6 +463,21 @@ def _synchronize_owner_authorized_tanami_rights(
     media.rights_basis = TANAMI_OWNER_AUTHORIZED_RIGHTS_BASIS
     media.rights_confirmed_by = None
     media.rights_confirmed_at = datetime.now(UTC)
+
+
+def _is_owner_authorized_tanami_media(
+    candidate: ProjectImportCandidate, media: ProjectImportMedia
+) -> bool:
+    if candidate.adapter_key != TANAMI_ADAPTER_KEY:
+        return False
+    manifest = media.discovery_manifest or {}
+    return bool(
+        str(manifest.get("project_url") or "").startswith(
+            "https://www.tanamiproperties.com/Projects/"
+        )
+        and str(manifest.get("source_url") or "") == media.source_url
+        and manifest.get("disposition") == "accepted"
+    )
 
 
 def _allowed_domains_for_media(
@@ -495,7 +517,7 @@ def _count_terminal_media(stats: dict[str, int], media: ProjectImportMedia) -> N
 
 
 def _select_best_cover(candidate: ProjectImportCandidate) -> None:
-    """Select one real high-resolution landscape master without using plans or maps."""
+    """Prefer an exact Tanami banner, then the best eligible landscape Project image."""
     eligible_categories = {
         ProjectMediaCategory.COVER,
         ProjectMediaCategory.GALLERY,
@@ -513,20 +535,42 @@ def _select_best_cover(candidate: ProjectImportCandidate) -> None:
         and item.category in eligible_categories
         and isinstance(item.width, int)
         and isinstance(item.height, int)
-        and item.width >= 1600
-        and item.height >= 900
         and item.width > item.height
+        and classify_owner_authorized_media_dimensions(
+            item.width,
+            item.height,
+            item.category.value,
+            source_url=getattr(item, "source_url", ""),
+            rights_approved=item.rights_status == MediaRightsStatus.APPROVED,
+        ).cover_eligible
     ]
     selected = max(
         eligible,
         key=lambda item: (
             item.rights_basis == TANAMI_OWNER_AUTHORIZED_RIGHTS_BASIS,
+            item.category == ProjectMediaCategory.COVER,
             (item.width or 0) * (item.height or 0),
             item.width or 0,
+            -int(
+                (getattr(item, "discovery_manifest", None) or {}).get(
+                    "category_order", item.display_order
+                )
+            ),
         ),
         default=None,
     )
+    selected_is_exact_tanami = bool(
+        selected and selected.rights_basis == TANAMI_OWNER_AUTHORIZED_RIGHTS_BASIS
+    )
     for item in candidate.staged_media:
+        if (
+            selected_is_exact_tanami
+            and item is not selected
+            and "conceptual illustration" in (item.rights_basis or "").casefold()
+        ):
+            item.stage_status = "replaced-conceptual-cover"
+            item.failure_reason = "Superseded by verified exact-Project Tanami Cover media."
+            continue
         if item.category == ProjectMediaCategory.COVER and item is not selected:
             item.category = ProjectMediaCategory.GALLERY
             _apply_category_metadata(candidate, item)

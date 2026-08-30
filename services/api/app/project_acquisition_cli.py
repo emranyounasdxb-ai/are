@@ -24,7 +24,11 @@ SHARJAH_MEDIA_WORKERS = 4
 
 
 async def _intake_media_parallel(
-    batch_id: uuid.UUID, candidate_ids: list[uuid.UUID]
+    batch_id: uuid.UUID,
+    candidate_ids: list[uuid.UUID],
+    *,
+    preserve_review_state: bool = False,
+    retry_failed: bool = True,
 ) -> dict[str, int]:
     """Process disjoint candidates concurrently while retaining per-candidate commits."""
     from app.acquisition.media_intake import intake_private_media
@@ -40,6 +44,8 @@ async def _intake_media_parallel(
                 get_settings(),
                 batch_id,
                 candidate_ids=group,
+                preserve_review_state=preserve_review_state,
+                retry_failed=retry_failed,
             )
 
     results = await asyncio.gather(*(process_group(group) for group in groups))
@@ -109,6 +115,17 @@ def parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Synchronize owner-authorized rights on already downloaded Tanami media only",
     )
+    tanami_media_acquire.add_argument(
+        "--no-retry-failed",
+        action="store_true",
+        help="Prove idempotency without refetching already recorded terminal failures",
+    )
+    owner_heroes = subcommands.add_parser(
+        "owner-hero-import",
+        help="Validate and assign the exact owner-created RAK/Sharjah Project Hero pack",
+    )
+    owner_heroes.add_argument("--directory", required=True, type=Path)
+    owner_heroes.add_argument("--actor-id", required=True, type=uuid.UUID)
     for command in (
         "acquire",
         "refresh",
@@ -152,6 +169,17 @@ def parser() -> argparse.ArgumentParser:
 
 async def run(args: argparse.Namespace) -> None:
     async with SessionLocal() as db:
+        if args.command == "owner-hero-import":
+            from app.acquisition.owner_hero_banners import import_and_assign_owner_heroes
+
+            result = await import_and_assign_owner_heroes(
+                db,
+                get_settings(),
+                args.directory,
+                actor_id=args.actor_id,
+            )
+            print(json.dumps(result, default=str, indent=2))
+            return
         if args.command == "tanami-media-classify":
             from app.acquisition.security import BatchCachingFetcher, SecureFetcher
             from app.acquisition.service import selected_batch
@@ -206,12 +234,22 @@ async def run(args: argparse.Namespace) -> None:
                     if args.rights_only
                     else None
                 )
-                media_intake_result = await intake_private_media(
-                    db,
-                    get_settings(),
-                    batch.id,
-                    media_ids=media_ids,
-                    preserve_review_state=True,
+                media_intake_result = (
+                    await intake_private_media(
+                        db,
+                        get_settings(),
+                        batch.id,
+                        media_ids=media_ids,
+                        preserve_review_state=True,
+                        retry_failed=not args.no_retry_failed,
+                    )
+                    if args.rights_only
+                    else await _intake_media_parallel(
+                        batch.id,
+                        [candidate.id for candidate in batch.candidates],
+                        preserve_review_state=True,
+                        retry_failed=not args.no_retry_failed,
+                    )
                 )
                 for key, count in media_intake_result.items():
                     acquisition_totals[key] = acquisition_totals.get(key, 0) + count

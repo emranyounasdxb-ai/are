@@ -1516,6 +1516,8 @@ def ambiguous_cross_candidate_media_ids(
         for media in candidate.staged_media:
             if media.stage_status != "downloaded":
                 continue
+            if _is_dom_proven_shared_plan(media):
+                continue
             grouped.setdefault(("url", media.source_url), []).append((candidate.id, media.id))
             if media.sha256:
                 grouped.setdefault(("sha256", media.sha256), []).append((candidate.id, media.id))
@@ -1524,6 +1526,25 @@ def ambiguous_cross_candidate_media_ids(
         if len({candidate_id for candidate_id, _media_id in references}) > 1:
             rejected.update(media_id for _candidate_id, media_id in references)
     return rejected
+
+
+def _is_dom_proven_shared_plan(media: ProjectImportMedia) -> bool:
+    """Allow only a map/plan that the exact Project page placed in its matching section."""
+    category = getattr(media, "category", None)
+    if category not in {
+        ProjectMediaCategory.LOCATION_MAP,
+        ProjectMediaCategory.MASTER_PLAN,
+    }:
+        return False
+    manifest = media.discovery_manifest or {}
+    return bool(
+        str(manifest.get("project_url") or "").startswith(
+            "https://www.tanamiproperties.com/Projects/"
+        )
+        and str(manifest.get("source_url") or "") == media.source_url
+        and manifest.get("disposition") == "accepted"
+        and manifest.get("category") == category.value
+    )
 
 
 def _canonical_slug(value: str) -> str:

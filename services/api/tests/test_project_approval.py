@@ -34,6 +34,7 @@ async def test_import_review_gates_are_independent_of_populated_fields() -> None
                 alt_en="Synthetic",
                 alt_ar="اختبار",
                 category=ProjectMediaCategory.COVER,
+                source_url="owner-approved:synthetic",
                 width=1600,
                 height=900,
             )
@@ -84,3 +85,42 @@ async def test_import_review_gates_are_independent_of_populated_fields() -> None
     assert "Prepared landscape Cover with bilingual metadata required" in await technical_blockers(
         record, db
     )
+
+
+@pytest.mark.asyncio
+async def test_owner_authorized_native_tanami_cover_satisfies_cover_gate() -> None:
+    content = dict(
+        official_name="Synthetic Project",
+        short_summary="Synthetic summary",
+        full_description="Synthetic description",
+        seo_title="Synthetic title",
+        seo_description="Synthetic SEO description",
+    )
+    record = SimpleNamespace(
+        id="synthetic-project",
+        translations=[SimpleNamespace(locale=locale, **content) for locale in ("en", "ar")],
+        priority="B",
+        last_verified_at=True,
+        sources=[
+            SimpleNamespace(
+                is_active=True, is_official=True, content_hash="a" * 64, last_checked_at=True
+            )
+        ],
+        media=[
+            SimpleNamespace(
+                storage_key="tanami-banner.webp",
+                sha256="b" * 64,
+                rights_status=MediaRightsStatus.APPROVED,
+                alt_en="Exact Project banner",
+                alt_ar="الصورة الرئيسية للمشروع",
+                category=ProjectMediaCategory.COVER,
+                source_url=("https://manage.tanamiproperties.com/Banner/1098/Large/7418.webp"),
+                width=1400,
+                height=600,
+            )
+        ],
+        payment_plan=None,
+    )
+    db = SimpleNamespace(scalars=AsyncMock(return_value=Mock(all=lambda: [])))
+
+    assert await technical_blockers(record, db) == []

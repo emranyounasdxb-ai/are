@@ -21,6 +21,7 @@ from app.project_media_preview import (
 )
 from app.public_project_evidence import public_evidenced_project
 from app.routers.projects import preview_project_media
+from app.serializers import _project_media_public_eligible
 
 
 def approved_asset():
@@ -121,6 +122,53 @@ def test_asset_only_permission_rejects_ineligible_or_reference_media(category, w
     receipt.metadata_summary["asset_version"] = asset_version(media)
 
     assert not current_asset_permission(media, receipt)
+
+
+@pytest.mark.parametrize(
+    ("category", "width", "height"),
+    [
+        (ProjectMediaCategory.COVER, 1400, 600),
+        (ProjectMediaCategory.GALLERY, 800, 450),
+        (ProjectMediaCategory.AMENITIES, 640, 360),
+        (ProjectMediaCategory.FLOOR_PLAN, 640, 360),
+        (ProjectMediaCategory.LOCATION_MAP, 640, 360),
+        (ProjectMediaCategory.MASTER_PLAN, 640, 360),
+    ],
+)
+def test_owner_authorized_tanami_native_media_can_receive_private_preview_permission(
+    category, width, height
+):
+    media, receipt = approved_asset()
+    media.category = category
+    media.width = width
+    media.height = height
+    media.source_url = "https://manage.tanamiproperties.com/Gallery/1098/Thumb/7428.webp"
+    receipt.metadata_summary["asset_version"] = asset_version(media)
+
+    assert current_asset_permission(media, receipt)
+
+
+def test_owner_created_exact_2_to_1_hero_can_receive_private_preview_permission():
+    media, receipt = approved_asset()
+    media.width = 1774
+    media.height = 887
+    media.source_url = "owner-created://aliyas/hero-banners/are-hero-hotel-01.webp"
+    receipt.metadata_summary["asset_version"] = asset_version(media)
+
+    assert current_asset_permission(media, receipt)
+
+
+def test_owner_created_native_hero_survives_localized_project_serialization_gate():
+    assert _project_media_public_eligible(
+        {
+            "rights_status": "approved",
+            "has_upload": True,
+            "width": 1774,
+            "height": 887,
+            "category": "cover",
+            "source_url": "owner-created://aliyas/hero-banners/are-hero-hotel-01.webp",
+        }
+    )
 
 
 @pytest.mark.asyncio

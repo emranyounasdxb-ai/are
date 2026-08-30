@@ -68,3 +68,17 @@ test("project media keeps amenities and plan/map categories separate from galler
     /categories: \["gallery", "exterior", "interior", "amenities"/,
   );
 });
+
+test("missing handover and incomplete payment plans use the canonical localized phone CTA", () => {
+  assert.match(source, /callUs: "Call us"/);
+  assert.match(source, /callUs: "اتصل بنا"/);
+  assert.match(source, /href=\{COMPANY_PHONE_TEL\}/);
+  assert.match(source, /const hasVerifiedPayment = Boolean/);
+  assert.match(source, /normalized\.handover[\s\S]*ContactFact/);
+  assert.doesNotMatch(source, /value=\{normalized\.handover \|\| t\.notConfirmed\}/);
+});
+
+test("owner-created native 2-to-1 Project Heroes remain eligible without upscaling", () => {
+  assert.match(source, /item\.width >= 1400 && item\.height >= 600/);
+  assert.doesNotMatch(source, /item\.height >= 900/);
+});

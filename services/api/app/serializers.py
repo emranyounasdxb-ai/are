@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.acquisition.media import classify_media_dimensions
+from app.acquisition.media import (
+    classify_media_dimensions,
+    classify_owner_authorized_media_dimensions,
+)
 from app.models import (
     AreaCommunity,
     Developer,
@@ -41,6 +44,23 @@ ARABIC_EMIRATE_TEXT = {
     "Ras Al Khaimah": "رأس الخيمة",
     "Fujairah": "الفجيرة",
 }
+
+
+def _project_media_public_eligible(item: dict[str, Any]) -> bool:
+    return bool(
+        item["rights_status"] == "approved"
+        and item["has_upload"]
+        and isinstance(item["width"], int)
+        and isinstance(item["height"], int)
+        and isinstance(item["category"], str)
+        and classify_owner_authorized_media_dimensions(
+            item["width"],
+            item["height"],
+            item["category"],
+            source_url=str(item["source_url"]),
+            rights_approved=True,
+        ).public_eligible
+    )
 
 
 def developer_dict(record: Developer, locale: str | None = None) -> dict[str, Any]:
@@ -237,6 +257,11 @@ def project_dict(record: Project, locale: str | None = None) -> dict[str, Any]:
             "rights_status": item.rights_status.value,
             "alt_en": item.alt_en,
             "alt_ar": item.alt_ar,
+            "title_en": item.title_en,
+            "title_ar": item.title_ar,
+            "description_en": item.description_en,
+            "description_ar": item.description_ar,
+            "tags": item.tags,
             "display_order": item.display_order,
             "has_upload": bool(item.storage_key),
             "mime_type": item.mime_type,
@@ -414,18 +439,16 @@ def project_dict(record: Project, locale: str | None = None) -> dict[str, Any]:
                 "category": item["category"],
                 "url": f"/api/v1/public/projects/{record.slug}/media/{item['id']}",
                 "alt": item["alt_ar"] if locale == "ar" else item["alt_en"],
+                "title": item["title_ar"] if locale == "ar" else item["title_en"],
+                "description": (
+                    item["description_ar"] if locale == "ar" else item["description_en"]
+                ),
+                "tags": item["tags"],
                 "width": item["width"],
                 "height": item["height"],
             }
             for item in media
-            if item["rights_status"] == "approved"
-            and item["has_upload"]
-            and isinstance(item["width"], int)
-            and isinstance(item["height"], int)
-            and isinstance(item["category"], str)
-            and classify_media_dimensions(
-                item["width"], item["height"], item["category"]
-            ).public_eligible
+            if _project_media_public_eligible(item)
         ]
         data.pop("status", None)
         data.pop("archived_at", None)
@@ -720,6 +743,8 @@ def candidate_public_preview_dict(
                 f"{item.id}?size=full"
             ),
             "alt": item.alt_ar_draft if ar else item.alt_en_draft,
+            "title": item.title_ar if ar else item.title_en,
+            "description": item.description_ar if ar else item.description_en,
             "width": item.width,
             "height": item.height,
             "display_order": item.display_order,

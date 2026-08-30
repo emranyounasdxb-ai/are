@@ -19,6 +19,7 @@ from app.acquisition.media import (
     RasterFetchResult,
     _encode_raster_url,
     classify_media_quality,
+    classify_owner_authorized_media_dimensions,
     duplicate_hash,
     normalized_media_filename,
     responsive_derivatives,
@@ -72,6 +73,63 @@ def test_raster_source_paths_are_encoded_without_changing_the_host() -> None:
     assert _encode_raster_url("https://example.com/Lifestyle/Cinema Room.jpg") == (
         "https://example.com/Lifestyle/Cinema%20Room.jpg"
     )
+
+
+def test_owner_authorized_tanami_native_dimensions_do_not_weaken_other_sources() -> None:
+    generic = classify_media_quality(SimpleNamespace(width=1400, height=600), "cover")
+    tanami_cover = classify_owner_authorized_media_dimensions(
+        1400,
+        600,
+        "cover",
+        source_url="https://manage.tanamiproperties.com/Banner/1098/Large/7418.webp",
+        rights_approved=True,
+    )
+    tanami_gallery = classify_owner_authorized_media_dimensions(
+        800,
+        450,
+        "gallery",
+        source_url="https://manage.tanamiproperties.com/Gallery/1098/Thumb/7428.webp",
+        rights_approved=True,
+    )
+    unapproved = classify_owner_authorized_media_dimensions(
+        800,
+        450,
+        "gallery",
+        source_url="https://manage.tanamiproperties.com/Gallery/1098/Thumb/7428.webp",
+        rights_approved=False,
+    )
+
+    assert not generic.public_eligible
+    assert tanami_cover.public_eligible and tanami_cover.cover_eligible
+    assert tanami_gallery.public_eligible and tanami_gallery.cover_eligible
+    assert not unapproved.public_eligible
+
+
+def test_owner_authorized_tanami_technical_media_is_public_eligible_but_not_cover() -> None:
+    result = classify_owner_authorized_media_dimensions(
+        640,
+        360,
+        "floor-plan",
+        source_url="https://manage.tanamiproperties.com/Project/Floor_Image/1098/Thumb/1.jpg",
+        rights_approved=True,
+    )
+
+    assert result.public_eligible
+    assert not result.cover_eligible
+
+
+def test_raster_validation_uses_decoded_format_and_converts_supported_gif() -> None:
+    jpeg_buffer = io.BytesIO()
+    Image.new("RGB", (800, 450), "#745238").save(jpeg_buffer, "JPEG")
+    jpeg = validate_raster(jpeg_buffer.getvalue(), "application/octet-stream")
+    gif_buffer = io.BytesIO()
+    Image.new("RGB", (800, 450), "#745238").save(gif_buffer, "GIF")
+    gif = validate_raster(gif_buffer.getvalue(), "image/gif")
+
+    assert jpeg.mime_type == "image/jpeg"
+    assert jpeg.extension == "jpg"
+    assert gif.mime_type == "image/webp"
+    assert gif.extension == "webp"
 
 
 def test_tanami_banner_path_beats_stale_amenities_heading() -> None:
@@ -450,6 +508,7 @@ def test_best_cover_selection_uses_only_a_valid_high_resolution_landscape() -> N
         width=1620,
         height=600,
         display_order=0,
+        failure_reason=None,
     )
     selected = SimpleNamespace(
         category=ProjectMediaCategory.GALLERY,
@@ -537,7 +596,58 @@ def test_exact_tanami_cover_replaces_a_larger_conceptual_cover() -> None:
     _select_best_cover(candidate)
 
     assert exact.category == ProjectMediaCategory.COVER
-    assert conceptual.category == ProjectMediaCategory.GALLERY
+    assert conceptual.category == ProjectMediaCategory.COVER
+    assert conceptual.stage_status == "replaced-conceptual-cover"
+    assert conceptual.failure_reason == "Superseded by verified exact-Project Tanami Cover media."
+
+
+def test_exact_tanami_banner_is_preferred_over_a_larger_gallery_image() -> None:
+    banner = SimpleNamespace(
+        category=ProjectMediaCategory.COVER,
+        stage_status="downloaded",
+        rights_status=MediaRightsStatus.APPROVED,
+        rights_basis=TANAMI_OWNER_AUTHORIZED_RIGHTS_BASIS,
+        source_url="https://manage.tanamiproperties.com/Banner/1098/Large/7418.webp",
+        storage_key="banner.webp",
+        width=1400,
+        height=600,
+        display_order=0,
+        discovery_manifest={"category_order": 0},
+    )
+    gallery = SimpleNamespace(
+        category=ProjectMediaCategory.GALLERY,
+        stage_status="downloaded",
+        rights_status=MediaRightsStatus.APPROVED,
+        rights_basis=TANAMI_OWNER_AUTHORIZED_RIGHTS_BASIS,
+        source_url="https://manage.tanamiproperties.com/Gallery/1098/Thumb/7428.jpg",
+        storage_key="gallery.jpg",
+        width=2500,
+        height=1250,
+        display_order=1,
+        discovery_manifest={"category_order": 0},
+    )
+    for item in (banner, gallery):
+        item.normalized_filename = None
+        item.title_en = None
+        item.title_ar = None
+        item.description_en = None
+        item.description_ar = None
+        item.alt_en_draft = None
+        item.alt_ar_draft = None
+        item.tags = []
+        item.public_metadata = {}
+    candidate = SimpleNamespace(
+        normalized_project_name="Rimal Residences",
+        owner_manifest_values={},
+        normalized_payload={},
+        manifest_row_id=1,
+        staged_media=[banner, gallery],
+    )
+
+    _select_best_cover(candidate)
+
+    assert banner.category == ProjectMediaCategory.COVER
+    assert gallery.category == ProjectMediaCategory.GALLERY
 
 
 def public_resolver(
@@ -683,15 +793,15 @@ def test_change_detection_does_not_turn_unavailable_into_sold_out() -> None:
     )
 
 
-def test_raster_validation_sanitizes_and_detects_duplicates() -> None:
+def test_raster_validation_sanitizes_detected_content_and_detects_duplicates() -> None:
     source = io.BytesIO()
     Image.new("RGB", (640, 360), "white").save(source, "JPEG", exif=b"test-metadata")
     raster = validate_raster(source.getvalue(), "image/jpeg")
     assert raster.width == 640 and raster.height == 360
     assert duplicate_hash({raster.sha256}, raster)
     assert b"test-metadata" not in raster.content
-    with pytest.raises(ValueError):
-        validate_raster(source.getvalue(), "image/png")
+    mismatched_header = validate_raster(source.getvalue(), "image/png")
+    assert mismatched_header.mime_type == "image/jpeg"
 
 
 def test_inactive_mapping_registry_covers_project_contract_and_limits_ai() -> None:

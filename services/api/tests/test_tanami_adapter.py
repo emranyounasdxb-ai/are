@@ -525,6 +525,46 @@ def test_cross_candidate_media_is_rejected_for_urls_and_binary_hashes() -> None:
     }
 
 
+def test_dom_proven_shared_location_and_master_plans_are_not_cross_project_contamination() -> None:
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    project_urls = (
+        "https://www.tanamiproperties.com/Projects/Phase-One",
+        "https://www.tanamiproperties.com/Projects/Phase-Two",
+    )
+    shared = {
+        ProjectMediaCategory.LOCATION_MAP: (
+            "https://manage.tanamiproperties.com/Project/Location_Map/1/Thumb/1.webp"
+        ),
+        ProjectMediaCategory.MASTER_PLAN: (
+            "https://manage.tanamiproperties.com/Project/LayoutPlan/1/Gallery/1.webp"
+        ),
+    }
+    candidates = []
+    for project_url in project_urls:
+        staged_media = []
+        for category, source_url in shared.items():
+            staged_media.append(
+                SimpleNamespace(
+                    id=uuid4(),
+                    category=category,
+                    source_url=source_url,
+                    stage_status="downloaded",
+                    sha256=f"shared-{category.value}",
+                    discovery_manifest={
+                        "project_url": project_url,
+                        "source_url": source_url,
+                        "category": category.value,
+                        "disposition": "accepted",
+                    },
+                )
+            )
+        candidates.append(SimpleNamespace(id=uuid4(), staged_media=staged_media))
+
+    assert _ambiguous_cross_candidate_media_ids(SimpleNamespace(candidates=candidates)) == set()
+
+
 @pytest.mark.asyncio
 async def test_exact_project_media_excludes_related_and_brand_assets() -> None:
     result = await acquire_project_documents(ALPHA, fetcher=TanamiFixtureFetcher())
