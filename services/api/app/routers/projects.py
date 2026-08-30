@@ -294,8 +294,51 @@ async def replace_project_content(record: Project, payload: ProjectInput, db: As
             media = ProjectMedia(**values, source_url=str(item.source_url))
         next_media.append(media)
     next_media.extend(
-        item for item in existing_media.values() if item.storage_key and item.id not in retained_ids
+        existing_item
+        for existing_item in existing_media.values()
+        if existing_item.storage_key and existing_item.id not in retained_ids
     )
+    omitted_stored_media = [
+        existing_item
+        for existing_item in existing_media.values()
+        if existing_item.storage_key and existing_item.id not in retained_ids
+    ]
+    neutral_fallbacks = [
+        existing_item
+        for existing_item in omitted_stored_media
+        if existing_item.rights_status != MediaRightsStatus.APPROVED
+        and existing_item.source_url.startswith(
+            "owner-approved:aliyas-neutral-cover-temporary-private-preview-"
+        )
+        and existing_item.private_provenance.get("association_status") != "superseded-private"
+    ]
+    if neutral_fallbacks:
+        approved_owner_heroes = [
+            existing_item
+            for existing_item in existing_media.values()
+            if existing_item.category.value == "cover"
+            and existing_item.rights_status == MediaRightsStatus.APPROVED
+            and existing_item.storage_key
+            and existing_item.sha256
+            and existing_item.private_provenance.get("origin") == "owner-created-aliyas-hero-media"
+        ]
+        if len(approved_owner_heroes) != 1:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail={
+                    "code": "owner_hero_invariant",
+                    "message": "Exactly one approved owner-created Hero must remain.",
+                },
+            )
+        for neutral_fallback in neutral_fallbacks:
+            neutral_fallback.rights_status = MediaRightsStatus.REJECTED
+            neutral_fallback.private_provenance = {
+                **neutral_fallback.private_provenance,
+                "association_status": "superseded-private",
+                "superseded_reason": "Replaced by the approved owner-created Project Hero",
+                "superseded_at": datetime.now(UTC).isoformat(),
+                "approved_owner_hero_id": str(approved_owner_heroes[0].id),
+            }
     record.media = next_media
     await db.flush()
     if payload.payment_plan:
@@ -698,6 +741,13 @@ async def update_project(
         for item in record.sources
     )
     before_media_rights = [item.rights_status.value for item in record.media]
+    before_private_associations = {
+        item.id: {
+            "association_status": item.private_provenance.get("association_status"),
+            "rights_status": item.rights_status.value,
+        }
+        for item in record.media
+    }
     before = {
         "slug": record.slug,
         "status": record.status.value,
@@ -793,6 +843,38 @@ async def update_project(
             before={"rights": before_media_rights},
             after={"rights": current_media_rights},
         )
+    for item in record.media:
+        if (
+            before_private_associations.get(item.id, {}).get("association_status")
+            != "superseded-private"
+            and item.private_provenance.get("association_status") == "superseded-private"
+        ):
+            await write_audit(
+                db,
+                action="project.media.association.supersede-private",
+                entity_type="project_media",
+                entity_id=item.id,
+                actor_user_id=context.user.id,
+                correlation_id=request_correlation_id(request),
+                before={
+                    "project_id": str(record.id),
+                    "media_id": str(item.id),
+                    "rights_status": before_private_associations.get(item.id, {}).get(
+                        "rights_status"
+                    ),
+                    "category": item.category.value,
+                    "sha256": item.sha256,
+                    "storage_key": item.storage_key,
+                },
+                after={
+                    "project_id": str(record.id),
+                    "media_id": str(item.id),
+                    "rights_status": item.rights_status.value,
+                    "association_status": "superseded-private",
+                    "private_file_preserved": True,
+                    "approved_owner_hero_id": item.private_provenance.get("approved_owner_hero_id"),
+                },
+            )
     if before["last_verified_at"] != (
         str(record.last_verified_at) if record.last_verified_at else None
     ):

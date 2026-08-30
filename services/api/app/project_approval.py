@@ -20,12 +20,19 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.acquisition.media import classify_owner_authorized_media_dimensions
-from app.models import AuditLog, EditorialApprovalStatus, Project, ProjectImportCandidate
+from app.models import (
+    AuditLog,
+    EditorialApprovalStatus,
+    Project,
+    ProjectImportCandidate,
+    ProjectMedia,
+)
 from app.project_field_policy import critical_candidate_errors
 from app.serializers import project_dict
 
 CHECKS = ("facts", "english", "arabic", "media_rights", "seo", "disclaimer", "preview")
 RECEIPT_VERSION = "project-approval-v1"
+SUPERSEDED_PRIVATE_ASSOCIATION = "superseded-private"
 
 
 class ReviewAttestation(BaseModel):
@@ -39,6 +46,18 @@ class ProjectApprovalInput(BaseModel):
     content_version: str = Field(pattern=r"^[a-f0-9]{64}$")
     checks: dict[str, ReviewAttestation]
     media_permissions: dict[str, str] = Field(default_factory=dict)
+
+
+def is_superseded_private_media(media: ProjectMedia) -> bool:
+    private_provenance = getattr(media, "private_provenance", None)
+    return (
+        isinstance(private_provenance, dict)
+        and private_provenance.get("association_status") == SUPERSEDED_PRIVATE_ASSOCIATION
+    )
+
+
+def active_project_media(record: Project) -> list[ProjectMedia]:
+    return [item for item in record.media if not is_superseded_private_media(item)]
 
 
 def canonical(value: Any) -> Any:
@@ -101,9 +120,10 @@ async def technical_blockers(record: Project, db: AsyncSession) -> list[str]:
         for s in record.sources
     ):
         blockers.append("Verified official source evidence required")
+    active_media = active_project_media(record)
     eligible = [
         m
-        for m in record.media
+        for m in active_media
         if m.storage_key
         and m.sha256
         and m.rights_status.value == "approved"
@@ -124,7 +144,7 @@ async def technical_blockers(record: Project, db: AsyncSession) -> list[str]:
         for m in eligible
     ):
         blockers.append("Prepared landscape Cover with bilingual metadata required")
-    if any(m not in eligible for m in record.media):
+    if any(m not in eligible for m in active_media):
         blockers.append(
             "Every attached media asset requires preparation, metadata and rights review"
         )
@@ -178,7 +198,7 @@ async def approval_state(record: Project, db: AsyncSession) -> dict[str, Any]:
         "blockers": await technical_blockers(record, db),
         "media": [
             {"sha256": m.sha256, "category": m.category.value, "source_url": m.source_url}
-            for m in record.media
+            for m in active_project_media(record)
         ],
         "receipt": {
             "id": str(receipt.id),
@@ -205,7 +225,7 @@ async def validate_review(record: Project, payload: ProjectApprovalInput, db: As
     blockers = await technical_blockers(record, db)
     if set(payload.checks) != set(CHECKS):
         blockers.append("All seven explicit review attestations are required")
-    hashes = {m.sha256 for m in record.media if m.sha256}
+    hashes = {m.sha256 for m in active_project_media(record) if m.sha256}
     if set(payload.media_permissions) != hashes or any(
         not 12 <= len(ref.strip()) <= 2000
         or ref.strip().casefold().startswith(("automatically approved", "http://", "https://"))

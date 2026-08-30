@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import uuid
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 from httpx import AsyncClient
@@ -10,6 +11,7 @@ from PIL import Image
 from pydantic import ValidationError
 from sqlalchemy import func, select
 
+from app.config import Settings
 from app.db import SessionLocal
 from app.models import (
     AuditLog,
@@ -19,6 +21,7 @@ from app.models import (
     ProjectImportBatch,
     ProjectImportCandidate,
     ProjectImportEditorialDraft,
+    ProjectMedia,
     ProjectRevision,
     ProjectWorkflowStatus,
     PublicationStatus,
@@ -68,7 +71,7 @@ def test_publication_snapshot_preserves_media_beyond_the_editor_limit() -> None:
 
 @pytest.mark.asyncio
 async def test_bulk_project_workflow_is_gated_audited_atomic_and_idempotent(
-    client: AsyncClient, create_user
+    client: AsyncClient, create_user, test_settings: Settings
 ) -> None:
     email, password = await create_user("super-admin")
     session = await authenticate(client, email, password)
@@ -101,6 +104,21 @@ async def test_bulk_project_workflow_is_gated_audited_atomic_and_idempotent(
     assert area.status_code == 201, area.text
     project_data = project_payload(developer_id, area.json()["id"])
     project_data.update({"priority": None, "featured": False})
+    project_media = project_data["media"]
+    assert isinstance(project_media, list)
+    project_media[0]["source_url"] = (
+        "owner-created://aliyas/hero-banners/qa-owner-project-hero.webp"
+    )
+    project_media.append(
+        {
+            **project_media[0],
+            "source_url": (
+                "owner-approved:aliyas-neutral-cover-temporary-private-preview-20260827"
+            ),
+            "rights_status": "pending",
+            "display_order": 1,
+        }
+    )
     created = await client.post(
         "/api/v1/admin/projects",
         json=project_data,
@@ -109,23 +127,80 @@ async def test_bulk_project_workflow_is_gated_audited_atomic_and_idempotent(
     assert created.status_code == 201, created.text
     project_id = created.json()["id"]
     media_id = created.json()["media"][0]["id"]
+    fallback_media_id = created.json()["media"][1]["id"]
     image = io.BytesIO()
-    Image.new("RGB", (1600, 900), "#745238").save(image, "WEBP")
+    Image.new("RGB", (2000, 1000), "#745238").save(image, "WEBP")
     uploaded = await client.post(
         f"/api/v1/admin/projects/{project_id}/media/{media_id}",
         files={"image": ("bulk-project.webp", image.getvalue(), "image/webp")},
         headers={"X-CSRF-Token": csrf},
     )
     assert uploaded.status_code == 200, uploaded.text
-    project_data["media"][0].update(  # type: ignore[index, union-attr]
-        {"id": media_id, "rights_status": "approved"}
+    fallback_upload = await client.post(
+        f"/api/v1/admin/projects/{project_id}/media/{fallback_media_id}",
+        files={"image": ("neutral-fallback.webp", image.getvalue(), "image/webp")},
+        headers={"X-CSRF-Token": csrf},
     )
+    assert fallback_upload.status_code == 200, fallback_upload.text
+    project_media[0].update({"id": media_id, "rights_status": "approved"})
+    project_media[1].update({"id": fallback_media_id, "rights_status": "pending"})
+    async with SessionLocal() as db:
+        owner_hero = await db.get(ProjectMedia, uuid.UUID(media_id))
+        fallback = await db.get(ProjectMedia, uuid.UUID(fallback_media_id))
+        assert owner_hero is not None and fallback is not None
+        owner_hero.private_provenance = {"origin": "owner-created-aliyas-hero-media"}
+        fallback_key = fallback.storage_key
+        await db.commit()
     saved = await client.put(
         f"/api/v1/admin/projects/{project_id}",
         json=project_data,
         headers={"X-CSRF-Token": csrf},
     )
     assert saved.status_code == 200, saved.text
+    project_data["media"] = [project_media[0]]
+    superseded = await client.put(
+        f"/api/v1/admin/projects/{project_id}",
+        json=project_data,
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert superseded.status_code == 200, superseded.text
+    async with SessionLocal() as db:
+        fallback = await db.get(ProjectMedia, uuid.UUID(fallback_media_id))
+        assert fallback is not None
+        assert fallback.rights_status.value == "rejected"
+        assert fallback.private_provenance["association_status"] == "superseded-private"
+        assert fallback.storage_key == fallback_key
+        assert fallback_key is not None
+        assert (Path(test_settings.private_storage_path) / fallback_key).is_file()
+        supersede_audits = int(
+            await db.scalar(
+                select(func.count(AuditLog.id)).where(
+                    AuditLog.entity_id == uuid.UUID(fallback_media_id),
+                    AuditLog.action == "project.media.association.supersede-private",
+                )
+            )
+            or 0
+        )
+        assert supersede_audits == 1
+    replay_supersede = await client.put(
+        f"/api/v1/admin/projects/{project_id}",
+        json=project_data,
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert replay_supersede.status_code == 200, replay_supersede.text
+    async with SessionLocal() as db:
+        assert (
+            int(
+                await db.scalar(
+                    select(func.count(AuditLog.id)).where(
+                        AuditLog.entity_id == uuid.UUID(fallback_media_id),
+                        AuditLog.action == "project.media.association.supersede-private",
+                    )
+                )
+                or 0
+            )
+            == 1
+        )
 
     # Legacy acquisition rows can retain a normalized percentage without the
     # source wording required by the current input contract. That unsupported
