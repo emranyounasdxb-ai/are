@@ -837,6 +837,24 @@ def test_linked_official_domains_are_allowlisted_for_bounded_research() -> None:
     assert "ajwan.ae" in shurooq.allowed_domains
 
 
+def test_the_luxe_adapter_accepts_the_canonical_redirect_domain() -> None:
+    adapter = adapter_for("The Luxe Developers")
+
+    assert adapter is not None
+    assert adapter.base_url == "https://theluxedevelopers.com/"
+    assert adapter.allowed_domains == (
+        "theluxedevelopers.com",
+        "theluxedevelopers.ae",
+    )
+
+
+def test_lacasa_adapter_accepts_the_official_project_domain() -> None:
+    adapter = adapter_for("Lacasa Living")
+
+    assert adapter is not None
+    assert "ola-residences.com" in adapter.allowed_domains
+
+
 def test_official_announcement_match_requires_every_multi_token_identity_part() -> None:
     assert official_announcement_url_matches_project(
         "Al Mamsha Hamsa 2",

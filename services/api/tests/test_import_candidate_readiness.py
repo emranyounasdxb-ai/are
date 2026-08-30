@@ -134,6 +134,28 @@ def test_rejected_private_gallery_evidence_does_not_block_an_eligible_cover() ->
     assert result["eligibility"]["mark-ready"] is True
 
 
+@pytest.mark.parametrize(
+    ("source_url", "width", "height"),
+    [
+        ("https://www.tanamiproperties.com/media/exact-project-cover.webp", 1400, 600),
+        ("owner-created://aliyas/hero-banners/owner-hero.webp", 1774, 887),
+    ],
+)
+def test_owner_authorized_native_cover_satisfies_candidate_readiness(
+    source_url: str, width: int, height: int
+) -> None:
+    record = candidate()
+    cover = record.staged_media[0]
+    cover.source_url = source_url
+    cover.width = width
+    cover.height = height
+    cover.rights_basis = "Owner-authorized Project Hero media with private provenance."
+    record.validation_errors = [{"code": "missing_approved_cover", "field": "cover"}]
+
+    assert eligibility_errors(record) == []
+    assert import_candidate_summary_dict(record)["eligibility"]["mark-ready"] is True
+
+
 def test_ready_candidate_can_return_to_review_without_reopening_other_actions() -> None:
     record = candidate()
     record.review_status = ImportReviewStatus.READY_FOR_APPROVAL
@@ -159,7 +181,6 @@ def test_ready_candidate_can_return_to_review_without_reopening_other_actions() 
         ("conflict_reasons", ["Unclassified source disagreement"]),
         ("validation_errors", [{"field": "official_project_source"}]),
         ("validation_errors", [{"field": "overview"}]),
-        ("validation_errors", [{"field": "cover"}]),
         ("validation_errors", [{"field": "media_rights"}]),
         ("editorial_draft", None),
         ("staged_media", []),
@@ -189,6 +210,16 @@ def test_reviewed_candidate_scoped_official_document_satisfies_source_gate() -> 
     }
 
     assert eligibility_errors(record) == []
+
+
+def test_cover_evidence_error_remains_blocking_without_an_eligible_cover() -> None:
+    record = candidate()
+    record.validation_errors = [{"field": "cover"}]
+    record.staged_media = []
+
+    errors = eligibility_errors(record)
+    assert "Critical evidence requires review: cover" in errors
+    assert "Rights-cleared landscape Cover required" in errors
 
 
 def test_candidate_scoped_official_document_still_requires_context_review() -> None:
