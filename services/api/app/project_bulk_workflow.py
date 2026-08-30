@@ -50,7 +50,7 @@ from app.project_approval import (
     technical_blockers,
     validate_review,
 )
-from app.schemas import ProjectInput
+from app.schemas import ProjectInput, ProjectMediaInput
 
 AUTHORITATIVE_SOURCES = {
     ProjectSourceType.DLD_PROJECT_STATUS,
@@ -661,7 +661,17 @@ def _project_input_snapshot(project: Project) -> dict[str, Any]:
             for item in project.media
         ],
     }
-    return ProjectInput.model_validate(payload).model_dump(mode="json")
+    return _validated_snapshot_payload(payload)
+
+
+def _validated_snapshot_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    payload = dict(payload)
+    media = payload.pop("media")
+    snapshot = ProjectInput.model_validate({**payload, "media": []}).model_dump(mode="json")
+    snapshot["media"] = [
+        ProjectMediaInput.model_validate(item).model_dump(mode="json") for item in media
+    ]
+    return snapshot
 
 
 def _request_hash(payload: ProjectBulkWorkflowInput) -> str:
