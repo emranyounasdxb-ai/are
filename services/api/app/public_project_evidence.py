@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import re
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -47,6 +48,7 @@ FIELD_GROUPS = {
 }
 
 UNKNOWN = {"", "-", "—", "0", "n/a", "not confirmed", "not-confirmed", "غير مؤكد"}
+UNCONFIRMED_TEXT = re.compile(r"\bnot[ -]confirmed\b|غير مؤكد", re.IGNORECASE)
 
 
 def _known(value: Any) -> bool:
@@ -67,6 +69,15 @@ def _positive(value: Any) -> bool:
         return False
 
 
+def _omit_unconfirmed_sentences(value: Any) -> Any:
+    if not isinstance(value, str) or not UNCONFIRMED_TEXT.search(value):
+        return value
+    sentences = re.findall(r"[^.!؟]+[.!؟]?", value)
+    return " ".join(
+        sentence.strip() for sentence in sentences if not UNCONFIRMED_TEXT.search(sentence)
+    ).strip()
+
+
 def omit_unresolved(
     data: dict[str, Any],
     *,
@@ -82,6 +93,11 @@ def omit_unresolved(
     for key in ("availability_status", "construction_status"):
         if not _known(result.get(key)):
             result.pop(key, None)
+    for key in ("short_summary", "full_description", "seo_description"):
+        if key in result:
+            result[key] = _omit_unconfirmed_sentences(result[key])
+            if not result[key]:
+                result.pop(key)
     for key in ("bedroom_options", "bedrooms", "unit_types", "amenities", "property_types"):
         if isinstance(result.get(key), list):
             result[key] = [

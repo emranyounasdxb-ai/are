@@ -3034,6 +3034,7 @@ html[dir="rtl"] .project-presentation__hero-shade { transform: scaleX(-1); }
 .project-presentation__fact-grid dt svg,.project-presentation__home-grid dt svg { flex: 0 0 auto; color: var(--are-gold-deep); }
 .project-presentation dt { color: var(--are-bronze); font-size: .68rem; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
 .project-presentation dd { margin: .45rem 0 0; overflow-wrap: anywhere; font-weight: 700; line-height: 1.45; }
+.project-presentation__fact-grid dd a { color: var(--are-bronze); text-decoration-color: var(--are-gold-deep); text-underline-offset: .2em; }
 .project-presentation__verification { display: flex; align-items: flex-start; gap: .45rem; margin: 1rem 0 0; color: #6e625c; font-size: .82rem; }
 .project-presentation__verification svg { flex: 0 0 auto; margin-top: .1rem; }
 .project-presentation__home-grid { display: grid; margin: 2.5rem 0 0; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 1rem; }
@@ -3042,6 +3043,7 @@ html[dir="rtl"] .project-presentation__hero-shade { transform: scaleX(-1); }
 .project-presentation__home-grid dd { display: flex; flex-wrap: wrap; gap: .45rem; }
 .project-presentation__home-grid dd span { border-radius: 999px; padding: .38rem .62rem; background: var(--are-stone); color: #473b34; font-size: .8rem; }
 .project-presentation__payment { overflow: hidden; border: 1px solid rgba(43,31,24,.12); border-radius: 1.5rem; padding: clamp(1.5rem,4vw,2.5rem); background: var(--are-white); box-shadow: var(--are-shadow); }
+.project-presentation__missing-contact { display: flex; min-height: 9rem; align-items: center; justify-content: center; border: 1px solid rgba(43,31,24,.12); border-radius: 1.5rem; padding: clamp(1.5rem,4vw,2.5rem); background: var(--are-white); box-shadow: var(--are-shadow); }
 .project-presentation__plan-ratio { display: block; color: var(--are-bronze); font-family: var(--are-font-heading); font-size: clamp(3rem,6vw,5rem); line-height: 1; }
 .project-presentation__payment > p { display: grid; margin: 1.5rem 0 0; grid-template-columns: auto 1fr auto; align-items: center; gap: .75rem; border-radius: .75rem; padding: .85rem 1rem; background: var(--are-stone); }
 .project-presentation__payment > p svg { color: var(--are-gold-deep); }

@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.acquisition.media import is_owner_created_hero_source, is_tanami_native_media_source
 from app.acquisition.reconciliation import reconcile_candidate_quality
 from app.acquisition.service import retry_candidates
 from app.audit import request_correlation_id, write_audit
@@ -33,6 +34,7 @@ from app.models import (
     ProjectImportBulkOperation,
     ProjectImportCandidate,
     ProjectMedia,
+    ProjectMediaCategory,
     ProjectNearbyPlace,
     ProjectPaymentMilestone,
     ProjectPaymentPlan,
@@ -738,9 +740,27 @@ async def sync_linked_draft_from_candidate(
 
     existing_media = {item.source_url: item for item in record.media}
     staged_media_by_url = {item.source_url: item for item in candidate.staged_media}
+    has_owner_hero = any(
+        item.category == ProjectMediaCategory.COVER
+        and item.rights_status == MediaRightsStatus.APPROVED
+        and item.storage_key
+        and is_owner_created_hero_source(item.source_url)
+        for item in record.media
+    )
+    has_exact_tanami_cover = any(
+        item.category == ProjectMediaCategory.COVER
+        and item.stage_status == "downloaded"
+        and item.rights_status == MediaRightsStatus.APPROVED
+        and item.storage_key
+        and is_tanami_native_media_source(item.source_url)
+        for item in candidate.staged_media
+    )
     for source_url, media in list(existing_media.items()):
         if not included("media"):
             break
+        if (has_exact_tanami_cover or has_owner_hero) and _is_neutral_conceptual_cover(media):
+            media.rights_status = MediaRightsStatus.PENDING
+            continue
         staged_media = staged_media_by_url.get(source_url)
         if staged_media and not (
             staged_media.stage_status == "downloaded"
@@ -763,10 +783,27 @@ async def sync_linked_draft_from_candidate(
             target_media = ProjectMedia(source_url=staged_media.source_url)
             record.media.append(target_media)
             existing_media[staged_media.source_url] = target_media
-        target_media.category = staged_media.category
+        target_media.category = (
+            ProjectMediaCategory.GALLERY
+            if has_owner_hero and staged_media.category == ProjectMediaCategory.COVER
+            else staged_media.category
+        )
         target_media.rights_status = staged_media.rights_status
         target_media.alt_en = staged_media.alt_en_draft
         target_media.alt_ar = staged_media.alt_ar_draft
+        target_media.title_en = staged_media.title_en
+        target_media.title_ar = staged_media.title_ar
+        target_media.description_en = staged_media.description_en
+        target_media.description_ar = staged_media.description_ar
+        target_media.tags = staged_media.tags
+        target_media.derivative_manifest = staged_media.derivative_manifest
+        target_media.private_provenance = {
+            "origin": "tanami-owner-authorized-acquisition",
+            "source_url": staged_media.source_url,
+            "original_sha256": staged_media.original_sha256,
+            "processed_sha256": staged_media.processed_sha256,
+            "discovery_manifest": staged_media.discovery_manifest,
+        }
         target_media.display_order = staged_media.display_order
         target_media.storage_key = staged_media.storage_key
         target_media.original_filename = staged_media.normalized_filename
@@ -825,6 +862,13 @@ async def sync_linked_draft_from_candidate(
             target_milestone.source_value = str(milestone_payload.get("source_value", ""))
     await db.flush()
     return record
+
+
+def _is_neutral_conceptual_cover(media: ProjectMedia) -> bool:
+    return bool(
+        media.category == ProjectMediaCategory.COVER
+        and media.source_url.startswith("owner-approved:aliyas-neutral-cover-")
+    )
 
 
 def _availability_status(value: object) -> ProjectAvailabilityStatus:

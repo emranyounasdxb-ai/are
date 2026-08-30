@@ -20,6 +20,8 @@ from app.acquisition.security import (
 
 MAX_RASTER_BYTES = 10 * 1024 * 1024
 MAX_RASTER_PIXELS = 40_000_000
+TANAMI_NATIVE_MEDIA_HOSTS = frozenset({"manage.tanamiproperties.com", "www.tanamiproperties.com"})
+OWNER_HERO_SOURCE_PREFIX = "owner-created://aliyas/hero-banners/"
 
 
 @dataclass(frozen=True)
@@ -88,6 +90,55 @@ def classify_media_dimensions(width: int, height: int, category: str) -> MediaQu
         False,
         None if eligible else "Image does not meet the minimum public-readiness dimensions.",
     )
+
+
+def is_tanami_native_media_source(source_url: str) -> bool:
+    """Return true only for the owner-authorized Tanami media origins."""
+    return (urlsplit(source_url).hostname or "").casefold() in TANAMI_NATIVE_MEDIA_HOSTS
+
+
+def is_owner_created_hero_source(source_url: str) -> bool:
+    return source_url.startswith(OWNER_HERO_SOURCE_PREFIX)
+
+
+def classify_owner_authorized_media_dimensions(
+    width: int,
+    height: int,
+    category: str,
+    *,
+    source_url: str,
+    rights_approved: bool,
+) -> MediaQuality:
+    """Apply the approved native-resolution policy only to rights-approved Tanami media."""
+    if rights_approved and is_owner_created_hero_source(source_url):
+        eligible = category == "cover" and width >= 320 and height >= 180 and width == height * 2
+        return MediaQuality(
+            "owner-hero-ready" if eligible else "invalid-owner-hero",
+            eligible,
+            eligible,
+            None if eligible else "Owner Hero must be a decodable exact 2:1 Cover.",
+        )
+    if not rights_approved or not is_tanami_native_media_source(source_url):
+        generic = classify_media_dimensions(width, height, category)
+        if (
+            category in {"gallery", "exterior", "interior"}
+            and width >= 1600
+            and height >= 900
+            and width > height
+        ):
+            return MediaQuality(
+                generic.status, generic.public_eligible, True, generic.rejection_reason
+            )
+        return generic
+    if width < 320 or height < 180:
+        return MediaQuality(
+            "low-resolution",
+            False,
+            False,
+            "Raster media dimensions are outside the accepted range.",
+        )
+    cover_eligible = category in {"cover", "gallery", "exterior", "interior"} and width > height
+    return MediaQuality("native-source-ready", True, cover_eligible, None)
 
 
 def normalized_media_filename(
@@ -167,15 +218,21 @@ class SecureRasterFetcher:
                         content_type = response.headers.get_content_type().lower()
                         if content_type not in {
                             "image/jpeg",
+                            "image/jpg",
                             "image/png",
                             "image/webp",
                             "image/avif",
+                            "image/gif",
+                            "application/octet-stream",
                         }:
                             return RasterFetchResult(
                                 current,
                                 status=response.status,
                                 error_code="unsupported_media_type",
-                                error_message="Only JPEG, PNG and WebP raster media is accepted.",
+                                error_message=(
+                                    "Only decodable JPEG, PNG, WebP, AVIF or GIF raster media "
+                                    "is accepted."
+                                ),
                             )
                         body = response.read(MAX_RASTER_BYTES + 1)
                         if len(body) > MAX_RASTER_BYTES:
@@ -236,22 +293,28 @@ def validate_raster(content: bytes, declared_mime: str) -> ValidatedRaster:
             if width < 320 or height < 180 or width * height > MAX_RASTER_PIXELS:
                 raise ValueError("Raster media dimensions are outside the accepted range.")
             output = io.BytesIO()
-            if source.format == "JPEG" and declared_mime == "image/jpeg":
+            if source.format == "JPEG":
                 source.convert("RGB").save(output, "JPEG", quality=90, optimize=True)
                 mime, extension = "image/jpeg", "jpg"
-            elif source.format == "PNG" and declared_mime == "image/png":
+            elif source.format == "PNG":
                 source.save(output, "PNG", optimize=True)
                 mime, extension = "image/png", "png"
-            elif source.format == "WEBP" and declared_mime == "image/webp":
+            elif source.format == "WEBP":
                 source.save(output, "WEBP", quality=90, method=6)
                 mime, extension = "image/webp", "webp"
-            elif source.format == "AVIF" and declared_mime == "image/avif":
+            elif source.format == "AVIF":
                 source.convert("RGB").save(output, "AVIF", quality=90)
                 mime, extension = "image/avif", "avif"
+            elif source.format == "GIF":
+                source.seek(0)
+                source.convert("RGB").save(output, "WEBP", quality=90, method=6)
+                mime, extension = "image/webp", "webp"
             else:
-                raise ValueError("Raster extension, MIME and decoded format do not match.")
+                raise ValueError("Raster media decoded to an unsupported image format.")
     except (UnidentifiedImageError, OSError) as exc:
-        raise ValueError("Raster media is not a decodable JPEG, PNG or WebP image.") from exc
+        raise ValueError(
+            "Raster media is not a decodable JPEG, PNG, WebP, AVIF or GIF image."
+        ) from exc
     sanitized = output.getvalue()
     return ValidatedRaster(
         content=sanitized,

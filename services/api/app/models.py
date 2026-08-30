@@ -706,6 +706,7 @@ class ProjectPaymentMilestone(Base):
 
 class ProjectMedia(TimestampMixin, Base):
     __tablename__ = "project_media"
+    __table_args__ = (UniqueConstraint("project_id", "source_url"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     project_id: Mapped[uuid.UUID] = mapped_column(
@@ -721,7 +722,7 @@ class ProjectMedia(TimestampMixin, Base):
     alt_en: Mapped[str | None] = mapped_column(String(320))
     alt_ar: Mapped[str | None] = mapped_column(String(320))
     display_order: Mapped[int] = mapped_column(default=0, nullable=False)
-    storage_key: Mapped[str | None] = mapped_column(String(180), unique=True)
+    storage_key: Mapped[str | None] = mapped_column(String(180))
     original_filename: Mapped[str | None] = mapped_column(String(255))
     mime_type: Mapped[str | None] = mapped_column(String(64))
     size_bytes: Mapped[int | None]
@@ -732,6 +733,15 @@ class ProjectMedia(TimestampMixin, Base):
     uploaded_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id")
     )
+    title_en: Mapped[str | None] = mapped_column(String(240))
+    title_ar: Mapped[str | None] = mapped_column(String(240))
+    description_en: Mapped[str | None] = mapped_column(String(500))
+    description_ar: Mapped[str | None] = mapped_column(String(500))
+    tags: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    derivative_manifest: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSON, default=list, nullable=False
+    )
+    private_provenance: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
 
 
 class ProjectImportBatch(TimestampMixin, Base):

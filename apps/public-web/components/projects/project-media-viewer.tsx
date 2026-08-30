@@ -13,6 +13,8 @@ export type ProjectPresentationMedia = {
   thumbnailUrl: string;
   fullUrl: string;
   alt: string;
+  title?: string | null;
+  description?: string | null;
   width: number;
   height: number;
 };
@@ -125,11 +127,12 @@ export function ProjectMediaViewer({
               loading="lazy"
               sizes="(max-width: 767px) calc(100vw - 32px), (max-width: 1200px) 50vw, 620px"
               src={item.thumbnailUrl}
+              title={item.title ?? undefined}
               unoptimized
               width={item.width}
             />
           </span>
-          <span className="project-media-viewer__caption"><span>{item.alt}</span><Expand aria-hidden size={18}/></span>
+          <span className="project-media-viewer__caption"><span>{item.description || item.alt}</span><Expand aria-hidden size={18}/></span>
         </button>
       </figure>)}
     </div>
@@ -139,9 +142,9 @@ export function ProjectMediaViewer({
       {category.items.length > 1 ? <button aria-label={t.previous} className="project-media-lightbox__previous" onClick={() => move(-1)} type="button"><ChevronLeft aria-hidden className="directional-icon" size={28}/></button> : null}
       <figure>
         <div className="project-media-lightbox__image">
-          <Image alt={activeItem.alt} height={activeItem.height} priority sizes="95vw" src={activeItem.fullUrl} unoptimized width={activeItem.width}/>
+          <Image alt={activeItem.alt} height={activeItem.height} priority sizes="95vw" src={activeItem.fullUrl} title={activeItem.title ?? undefined} unoptimized width={activeItem.width}/>
         </div>
-        <figcaption><span>{activeItem.alt}</span><small>{t.position((activeIndex ?? 0) + 1, category.items.length)}</small></figcaption>
+        <figcaption><span>{activeItem.description || activeItem.alt}</span><small>{t.position((activeIndex ?? 0) + 1, category.items.length)}</small></figcaption>
       </figure>
       {category.items.length > 1 ? <button aria-label={t.next} className="project-media-lightbox__next" onClick={() => move(1)} type="button"><ChevronRight aria-hidden className="directional-icon" size={28}/></button> : null}
     </div> : null}

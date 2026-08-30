@@ -146,6 +146,39 @@ class PrivateStorage:
         await asyncio.to_thread(self._path(storage_key).write_bytes, content)
         return storage_key
 
+    async def save_owner_hero_media(
+        self, content: bytes, *, normalized_filename: str, namespace: str = "owner-hero"
+    ) -> str:
+        """Store immutable owner media once under a checksum-bound private key."""
+        if not content or not re.fullmatch(
+            r"[a-z0-9]+(?:-[a-z0-9]+)*\.(?:webp|avif)", normalized_filename
+        ):
+            raise ValueError("Unsafe owner Hero media filename.")
+        if not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", namespace):
+            raise ValueError("Unsafe owner Hero media namespace.")
+        digest = hashlib.sha256(content).hexdigest()
+        storage_key = f"{namespace}-{digest[:20]}-{normalized_filename}"
+        path = self._path(storage_key)
+        if path.is_file():
+            existing = await asyncio.to_thread(path.read_bytes)
+            if existing != content:
+                raise RuntimeError("Owner Hero media checksum collision.")
+            return storage_key
+        await asyncio.to_thread(path.write_bytes, content)
+        return storage_key
+
+    async def existing_owner_hero_keys(
+        self, *, normalized_filename: str, namespace: str = "owner-hero"
+    ) -> tuple[str, ...]:
+        if not re.fullmatch(
+            r"[a-z0-9]+(?:-[a-z0-9]+)*\.(?:webp|avif)", normalized_filename
+        ) or not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", namespace):
+            raise ValueError("Unsafe owner Hero lookup.")
+        paths = await asyncio.to_thread(
+            lambda: sorted(self.root.glob(f"{namespace}-*-{normalized_filename}"))
+        )
+        return tuple(path.name for path in paths if path.is_file() and path.parent == self.root)
+
     async def save_private_json(self, content: bytes, *, prefix: str) -> StoredFile:
         if not content or len(content) > 5 * 1024 * 1024:
             raise ValueError("Private JSON is empty or exceeds the private-storage limit.")

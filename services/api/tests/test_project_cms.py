@@ -12,7 +12,7 @@ from sqlalchemy.orm import selectinload
 
 from app.acquisition.targeted_evidence import persist_targeted_review, review_observations
 from app.db import SessionLocal
-from app.import_review import sync_linked_draft_from_candidate
+from app.import_review import _is_neutral_conceptual_cover, sync_linked_draft_from_candidate
 from app.models import (
     AuditLog,
     EditorialApprovalStatus,
@@ -23,10 +23,30 @@ from app.models import (
     ProjectImportCandidate,
     ProjectImportEditorialDraft,
     ProjectImportMedia,
+    ProjectMedia,
     ProjectMediaCategory,
 )
 from app.schemas import PaymentPlanInput
 from tests.test_developer_cms import developer_payload
+
+
+def test_only_the_known_neutral_conceptual_cover_is_replaced_by_exact_media() -> None:
+    neutral = ProjectMedia(
+        category=ProjectMediaCategory.COVER,
+        source_url="owner-approved:aliyas-neutral-cover-temporary-private-preview-20260827",
+    )
+    owner_exact = ProjectMedia(
+        category=ProjectMediaCategory.COVER,
+        source_url="owner-approved:project-specific-authorized-render",
+    )
+    gallery = ProjectMedia(
+        category=ProjectMediaCategory.GALLERY,
+        source_url="owner-approved:aliyas-neutral-cover-temporary-private-preview-20260827",
+    )
+
+    assert _is_neutral_conceptual_cover(neutral)
+    assert not _is_neutral_conceptual_cover(owner_exact)
+    assert not _is_neutral_conceptual_cover(gallery)
 
 
 async def authenticate(client: AsyncClient, email: str, password: str) -> dict[str, object]:

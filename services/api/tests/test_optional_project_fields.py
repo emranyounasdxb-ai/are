@@ -40,6 +40,33 @@ def test_unknown_optional_rows_are_absent_without_mutating_private_data(placehol
     assert data == before
 
 
+@pytest.mark.parametrize(
+    ("locale", "description", "expected"),
+    [
+        (
+            "en",
+            "Verified homes are documented. Availability is Not Confirmed. "
+            "Speak with an advisor for the current position.",
+            "Verified homes are documented. Speak with an advisor for the current position.",
+        ),
+        (
+            "ar",
+            "تتوفر معلومات موثقة عن المساكن. حالة الإنشاء غير مؤكد. تواصل مع مستشارنا.",
+            "تتوفر معلومات موثقة عن المساكن. تواصل مع مستشارنا.",
+        ),
+    ],
+)
+def test_unconfirmed_optional_sentences_are_omitted_from_public_copy(locale, description, expected):
+    del locale
+    result = omit_unresolved(
+        {"full_description": description, "seo_description": description}, hidden_fields=set()
+    )
+    assert result["full_description"] == expected
+    assert result["seo_description"] == expected
+    assert "Not Confirmed" not in result["full_description"]
+    assert "غير مؤكد" not in result["full_description"]
+
+
 def test_optional_conflict_hides_full_group_and_identity_conflict_stays_critical():
     summary = {"targeted_field_review": {"states": {"handover": "last-known"}}}
     hidden, hold = candidate_evidence_state(

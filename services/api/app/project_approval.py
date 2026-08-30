@@ -19,6 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.acquisition.media import classify_owner_authorized_media_dimensions
 from app.models import AuditLog, EditorialApprovalStatus, Project, ProjectImportCandidate
 from app.project_field_policy import critical_candidate_errors
 from app.serializers import project_dict
@@ -109,9 +110,15 @@ async def technical_blockers(record: Project, db: AsyncSession) -> list[str]:
     ]
     if not any(
         m.category.value == "cover"
-        and (m.width or 0) >= 1600
-        and (m.height or 0) >= 900
-        and (m.width or 0) > (m.height or 0)
+        and m.width
+        and m.height
+        and classify_owner_authorized_media_dimensions(
+            m.width,
+            m.height,
+            m.category.value,
+            source_url=m.source_url,
+            rights_approved=m.rights_status.value == "approved",
+        ).cover_eligible
         for m in eligible
     ):
         blockers.append("Prepared landscape Cover with bilingual metadata required")

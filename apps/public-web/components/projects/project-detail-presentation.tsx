@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 
 import type { CandidateProjectPreview, PublicProject } from "../../lib/api";
+import { COMPANY_PHONE_TEL, COMPANY_WHATSAPP_URL } from "../../lib/company-contact";
 import {
   localizedArabicList,
   localizedDisplayText,
@@ -69,6 +70,7 @@ const copy = {
     ctaText: "Ask about the current status and verify the details relevant to your preferred home.",
     back: "Back to Off-Plan",
     previewNote: "Private noindex preview — this Project is not publicly published.",
+    callUs: "Call us",
   },
   ar: {
     eyebrow: "علياس العقارية / مشروع على الخارطة",
@@ -103,6 +105,7 @@ const copy = {
     ctaText: "استفسر عن الحالة الحالية وتحقق من التفاصيل المرتبطة بالمنزل الذي تفضله.",
     back: "العودة إلى المشاريع على الخارطة",
     previewNote: "معاينة خاصة غير مفهرسة — لا يمثل هذا المشروع منشوراً عاماً.",
+    callUs: "اتصل بنا",
   },
 } as const;
 
@@ -127,10 +130,9 @@ export function ProjectDetailPresentation({
     || normalized.bedrooms.length
     || normalized.size,
   );
-  const hasPayment = Boolean(
+  const hasVerifiedPayment = Boolean(
     normalized.paymentPlan
     || normalized.milestones.length
-    || normalized.downPayment,
   );
   const hasAmenities = normalized.amenities.length > 0;
   const hasLocation = Boolean(normalized.area || normalized.emirate || normalized.nearby.length);
@@ -141,7 +143,7 @@ export function ProjectDetailPresentation({
     normalized.overview ? { id: "project-overview", label: t.overview } : null,
     { id: "project-details", label: locale === "ar" ? "تفاصيل المشروع" : "Project details" },
     hasHomes ? { id: "project-homes", label: t.homes } : null,
-    hasPayment ? { id: "project-payment", label: t.plan } : null,
+    { id: "project-payment", label: t.plan },
     hasAmenities ? { id: "project-amenities", label: t.amenities } : null,
     hasFloorPlans ? { id: "project-media", label: t.floorPlans } : null,
     hasLocation ? { id: "project-location", label: locale === "ar" ? "الموقع" : "Location" } : null,
@@ -200,9 +202,13 @@ export function ProjectDetailPresentation({
         <IconFact icon={Building2} label={t.types} value={normalized.propertyTypes.join(" · ")}/>
         <IconFact icon={BedDouble} label={t.bedrooms} value={normalized.bedrooms.join(" · ")}/>
         <IconFact icon={Maximize2} label={t.size} value={normalized.size}/>
-        <IconFact icon={CalendarDays} label={t.handover} value={normalized.handover}/>
+        {normalized.handover
+          ? <IconFact icon={CalendarDays} label={t.handover} value={normalized.handover}/>
+          : <ContactFact icon={CalendarDays} label={t.handover} linkLabel={t.callUs}/>}
         <IconFact icon={Percent} label={t.down} value={normalized.downPayment}/>
-        <IconFact icon={WalletCards} label={t.plan} value={normalized.paymentPlan}/>
+        {hasVerifiedPayment
+          ? <IconFact icon={WalletCards} label={t.plan} value={normalized.paymentPlan || `${normalized.milestones.length} ${locale === "ar" ? "مراحل" : "milestones"}`}/>
+          : <ContactFact icon={WalletCards} label={t.plan} linkLabel={t.callUs}/>}
         <IconFact icon={BadgeCheck} label={t.availability} value={normalized.availability}/>
         <IconFact icon={HardHat} label={t.construction} value={normalized.construction}/>
       </dl>
@@ -219,9 +225,9 @@ export function ProjectDetailPresentation({
       </dl>
     </section> : null}
 
-    {hasPayment ? <section className="project-presentation__section project-presentation__section--split" id="project-payment" aria-labelledby="project-payment-title">
+    <section className="project-presentation__section project-presentation__section--split" id="project-payment" aria-labelledby="project-payment-title">
       <Heading eyebrow={localizedDisplayText("04", locale)} id="project-payment-title" title={t.plan}/>
-      <div className="project-presentation__payment">
+      {hasVerifiedPayment ? <div className="project-presentation__payment">
         {normalized.paymentPlan ? <strong className="project-presentation__plan-ratio">{normalized.paymentPlan}</strong> : null}
         {normalized.downPayment ? <p><Percent aria-hidden size={18}/><span>{t.down}</span><strong>{normalized.downPayment}</strong></p> : null}
         {normalized.milestones.length ? <ol className="project-presentation__milestones">{normalized.milestones.map((item) => <li key={`${item.sequence}-${item.stage}`}>
@@ -229,8 +235,10 @@ export function ProjectDetailPresentation({
           <strong>{item.label || stageLabel(item.stage, locale)}</strong>
           {item.percentage == null ? null : <em>{localizedDisplayText(`${item.percentage}%`, locale)}</em>}
         </li>)}</ol> : null}
-      </div>
-    </section> : null}
+      </div> : <div className="project-presentation__missing-contact">
+        <a className="button star-action--outline" href={COMPANY_PHONE_TEL}>{t.callUs}</a>
+      </div>}
+    </section>
 
     {hasAmenities ? <section className="project-presentation__section" id="project-amenities" aria-labelledby="project-amenities-title">
       <Heading eyebrow={localizedDisplayText("05", locale)} id="project-amenities-title" title={t.amenities}/>
@@ -331,6 +339,8 @@ function normalizeProject(project: PresentationProject, locale: Locale, mediaBas
       thumbnailUrl: mediaUrl(mediaBaseUrl, item.thumbnail_url),
       fullUrl: mediaUrl(mediaBaseUrl, item.full_url),
       alt: localizedMediaAlt(item.alt, project.project_name, locale),
+      title: item.title,
+      description: item.description,
       width: item.width ?? 1200,
       height: item.height ?? 900,
     })),
@@ -372,6 +382,8 @@ function normalizeProject(project: PresentationProject, locale: Locale, mediaBas
       thumbnailUrl: mediaUrl(mediaBaseUrl, item.url),
       fullUrl: mediaUrl(mediaBaseUrl, item.url),
       alt: localizedMediaAlt(item.alt, project.official_name, locale),
+      title: item.title,
+      description: item.description,
       width: item.width ?? 1200,
       height: item.height ?? 900,
     })) ?? [],
@@ -425,7 +437,11 @@ function editorialParagraphs(text: string) {
 }
 
 function isEligibleCover(item: ProjectPresentationMedia) {
-  return item.category === "cover" && item.width >= 1600 && item.height >= 900 && item.width > item.height;
+  return item.category === "cover" && item.width >= 1400 && item.height >= 600 && item.width > item.height;
+}
+
+function ContactFact({ icon: Icon, label, linkLabel }: Readonly<{ icon: LucideIcon; label: string; linkLabel: string }>) {
+  return <div><dt><Icon aria-hidden size={21}/><span>{label}</span></dt><dd><a href={COMPANY_PHONE_TEL}>{linkLabel}</a></dd></div>;
 }
 
 function mediaUrl(baseUrl: string, path: string) {
@@ -476,5 +492,5 @@ function whatsappUrl(projectName: string, locale: Locale) {
   const message = locale === "ar"
     ? `مرحباً، أود الاستفسار عن مشروع ${projectName}.`
     : `Hello, I would like to enquire about ${projectName}.`;
-  return `https://wa.me/971569157576?text=${encodeURIComponent(message)}`;
+  return `${COMPANY_WHATSAPP_URL}?text=${encodeURIComponent(message)}`;
 }
