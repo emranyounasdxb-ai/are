@@ -55,7 +55,6 @@ from app.models import (
     ProjectImportEditorialDraft,
     ProjectImportMedia,
     ProjectMedia,
-    ProjectMediaCategory,
     ProjectNearbyPlace,
     ProjectOverviewGeneration,
     ProjectOverviewPack,
@@ -70,7 +69,6 @@ from app.models import (
     ProjectRevision,
     ProjectRevisionStatus,
     ProjectSource,
-    ProjectSourceType,
     ProjectTranslation,
     ProjectUnitType,
     ProjectWorkflowStatus,
@@ -83,6 +81,13 @@ from app.project_approval import (
     approval_state,
     require_current_receipt,
     validate_review,
+)
+from app.project_bulk_workflow import (
+    ProjectBulkWorkflowInput,
+    apply_project_bulk_workflow,
+    project_workflow_state,
+    validate_project_approval,
+    validate_project_publication,
 )
 from app.project_field_policy import candidate_media_is_preview_eligible
 from app.project_processing import (
@@ -124,15 +129,6 @@ from app.storage import PrivateStorage
 
 admin_router = APIRouter(prefix="/admin", tags=["admin-projects"])
 public_router = APIRouter(prefix="/public", tags=["public-projects"])
-
-AUTHORITATIVE_SOURCES = {
-    ProjectSourceType.DLD_PROJECT_STATUS,
-    ProjectSourceType.OFFICIAL_DEVELOPER_PAGE,
-    ProjectSourceType.OFFICIAL_DEVELOPER_BROCHURE,
-    ProjectSourceType.OFFICIAL_MASTER_COMMUNITY_PAGE,
-    ProjectSourceType.OWNER_SUPPLIED_DOCUMENT,
-    ProjectSourceType.OWNER_APPROVED_PARTNER_FEED,
-}
 
 
 def meta(page: int, page_size: int, total: int) -> dict[str, int]:
@@ -211,92 +207,6 @@ async def validate_relations(
             },
         )
     return developer, area
-
-
-def validate_publication(record: Project) -> None:
-    if record.workflow_status != ProjectWorkflowStatus.APPROVED:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail={
-                "code": "project_approval_required",
-                "message": "The Project must complete review and approval before publication.",
-            },
-        )
-    translations = {
-        item.locale
-        for item in record.translations
-        if all(
-            (
-                item.official_name,
-                item.short_summary,
-                item.full_description,
-                item.seo_title,
-                item.seo_description,
-            )
-        )
-    }
-    authoritative = any(
-        item.is_active and item.source_type in AUTHORITATIVE_SOURCES for item in record.sources
-    )
-    cover = next(
-        (
-            item
-            for item in record.media
-            if item.category == ProjectMediaCategory.COVER
-            and item.storage_key
-            and item.rights_status == MediaRightsStatus.APPROVED
-            and item.source_url
-            and item.alt_en
-            and item.alt_ar
-        ),
-        None,
-    )
-    if (
-        translations != {"en", "ar"}
-        or record.developer.status != PublicationStatus.PUBLISHED
-        or record.area.status != PublicationStatus.PUBLISHED
-        or not record.last_verified_at
-        or not authoritative
-        or not cover
-    ):
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail={
-                "code": "project_publication_incomplete",
-                "message": (
-                    "Publishing requires approved bilingual content, canonical published Developer "
-                    "and Area records, authoritative provenance, verification, and an approved "
-                    "cover."
-                ),
-            },
-        )
-
-
-def validate_approval(record: Project) -> None:
-    translations = {
-        item.locale
-        for item in record.translations
-        if all((item.official_name, item.short_summary, item.full_description))
-    }
-    authoritative = any(
-        item.is_active and item.source_type in AUTHORITATIVE_SOURCES for item in record.sources
-    )
-    if (
-        translations != {"en", "ar"}
-        or not record.last_verified_at
-        or not authoritative
-        or record.priority is None
-    ):
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail={
-                "code": "project_approval_incomplete",
-                "message": (
-                    "Approval requires bilingual content, authoritative provenance, Last "
-                    "Verified and a manually selected ARE Priority."
-                ),
-            },
-        )
 
 
 async def replace_project_content(record: Project, payload: ProjectInput, db: AsyncSession) -> None:
@@ -694,7 +604,7 @@ async def update_project(
     if publishing:
         await db.flush()
         refreshed = await project_or_404(record.id, db)
-        validate_publication(refreshed)
+        validate_project_publication(refreshed)
         await require_current_receipt(refreshed, db)
         record.published_at = datetime.now(UTC)
         record.archived_at = None
@@ -984,7 +894,7 @@ async def activate_revision(
     project.updated_by = actor_id
     await db.flush()
     refreshed = await project_or_404(project.id, db)
-    validate_publication(refreshed)
+    validate_project_publication(refreshed)
     if project.active_revision_id and project.active_revision_id != revision.id:
         active = await db.get(ProjectRevision, project.active_revision_id)
         if active:
@@ -1105,7 +1015,7 @@ async def approve_project(
                 "message": "Submit the Project for review first.",
             },
         )
-    validate_approval(record)
+    validate_project_approval(record)
     await validate_review(record, payload, db)
     record.workflow_status = ProjectWorkflowStatus.APPROVED
     record.updated_by = context.user.id
@@ -1287,6 +1197,7 @@ async def import_batch_detail(
     total = len(records)
     start = (page - 1) * page_size
     summaries = {str(item.id): import_candidate_summary_dict(item) for item in records}
+    workflow = await project_workflow_state(db, all_candidates)
     return {
         **import_batch_dict(batch),
         "metrics": metrics,
@@ -1295,6 +1206,7 @@ async def import_batch_detail(
         "filtered_candidate_ids": [item.id for item in records],
         "all_candidate_ids": [item.id for item in all_candidates],
         "all_candidate_versions": {str(item.id): item.review_version for item in all_candidates},
+        "project_workflow": workflow,
         "filtered_candidate_versions": {str(item.id): item.review_version for item in records},
         "filtered_candidate_info": {
             str(item.id): {
@@ -1748,6 +1660,17 @@ async def bulk_import_candidates(
     settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
     return await apply_bulk_action(db, batch_id, payload, request, context, settings)
+
+
+@admin_router.post("/project-imports/{batch_id}/project-workflow")
+async def bulk_project_workflow(
+    batch_id: uuid.UUID,
+    payload: ProjectBulkWorkflowInput,
+    request: Request,
+    context: AuthContext = Depends(require_mutation_permission("project-import.manage")),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    return await apply_project_bulk_workflow(db, batch_id, payload, request, context)
 
 
 @admin_router.get("/project-imports/{batch_id}/overview-packs")
