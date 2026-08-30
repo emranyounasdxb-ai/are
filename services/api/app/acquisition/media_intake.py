@@ -83,6 +83,7 @@ async def intake_private_media(
     media_ids: set[uuid.UUID] | None = None,
     fetcher: SecureRasterFetcher | None = None,
     preserve_review_state: bool = False,
+    retry_failed: bool = True,
 ) -> dict[str, int]:
     batch = await db.scalar(
         select(ProjectImportBatch)
@@ -182,6 +183,9 @@ async def intake_private_media(
                 if media.stage_status == "downloaded":
                     _apply_category_metadata(candidate, media)
                     _synchronize_owner_authorized_tanami_rights(candidate, media)
+                _count_terminal_media(candidate_stats, media)
+                continue
+            if not retry_failed and media.stage_status == "failed":
                 _count_terminal_media(candidate_stats, media)
                 continue
             allowed_domains = _allowed_domains_for_media(candidate, media.source_url)
@@ -486,6 +490,8 @@ def _count_terminal_media(stats: dict[str, int], media: ProjectImportMedia) -> N
         stats["low_resolution_rejected"] += 1
     elif media.stage_status == "rejected-unrelated":
         stats["unrelated_rejected"] += 1
+    elif media.stage_status == "failed":
+        stats["failed"] += 1
 
 
 def _select_best_cover(candidate: ProjectImportCandidate) -> None:
@@ -513,7 +519,11 @@ def _select_best_cover(candidate: ProjectImportCandidate) -> None:
     ]
     selected = max(
         eligible,
-        key=lambda item: ((item.width or 0) * (item.height or 0), item.width or 0),
+        key=lambda item: (
+            item.rights_basis == TANAMI_OWNER_AUTHORIZED_RIGHTS_BASIS,
+            (item.width or 0) * (item.height or 0),
+            item.width or 0,
+        ),
         default=None,
     )
     for item in candidate.staged_media:
