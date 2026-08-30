@@ -269,6 +269,7 @@ def project_dict(record: Project, locale: str | None = None) -> dict[str, Any]:
             "height": item.height,
             "size_bytes": item.size_bytes,
             "verified_at": item.verified_at,
+            "association_status": item.private_provenance.get("association_status"),
         }
         for item in sorted(
             record.media, key=lambda value: (value.category.value, value.display_order)

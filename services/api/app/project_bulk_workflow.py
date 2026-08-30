@@ -45,6 +45,7 @@ from app.project_approval import (
     RECEIPT_VERSION,
     ProjectApprovalInput,
     ReviewAttestation,
+    active_project_media,
     content_version,
     require_current_receipt,
     technical_blockers,
@@ -355,7 +356,7 @@ async def apply_project_bulk_workflow(
                 checks=payload.checks,
                 media_permissions={
                     item.sha256: payload.media_permission_reference
-                    for item in project.media
+                    for item in active_project_media(project)
                     if item.sha256
                 },
             )
@@ -384,7 +385,7 @@ async def apply_project_bulk_workflow(
                     "checks": {key: value.model_dump() for key, value in payload.checks.items()},
                     "media_permissions": {
                         item.sha256: payload.media_permission_reference
-                        for item in project.media
+                        for item in active_project_media(project)
                         if item.sha256
                     },
                 }
@@ -658,7 +659,7 @@ def _project_input_snapshot(project: Project) -> dict[str, Any]:
                 "display_order": item.display_order,
                 "verified_at": item.verified_at,
             }
-            for item in project.media
+            for item in active_project_media(project)
         ],
     }
     return _validated_snapshot_payload(payload)
