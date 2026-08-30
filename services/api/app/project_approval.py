@@ -74,7 +74,9 @@ def content_version(record: Project) -> str:
         plan.pop("id", None)
         source_id = plan.pop("source_id", None)
         plan["source_url"] = next((s.source_url for s in record.sources if s.id == source_id), None)
-    for item, media in zip(data["media"], record.media, strict=True):
+    media_by_id = {media.id: media for media in record.media}
+    for item in data["media"]:
+        media = media_by_id[item["id"]]
         item.pop("id", None)
         item["sha256"] = media.sha256
         item["storage_key"] = media.storage_key

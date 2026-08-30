@@ -197,12 +197,23 @@ class PaymentPlanInput(StrictModel):
 class ProjectMediaInput(StrictModel):
     id: uuid.UUID | None = None
     category: ProjectMediaCategory
-    source_url: HttpUrl
+    source_url: str = Field(min_length=1, max_length=2000)
     rights_status: MediaRightsStatus = MediaRightsStatus.PENDING
     alt_en: str | None = Field(default=None, max_length=320)
     alt_ar: str | None = Field(default=None, max_length=320)
     display_order: int = Field(default=0, ge=0, le=10000)
     verified_at: datetime | None = None
+
+    @field_validator("source_url")
+    @classmethod
+    def valid_media_source_url(cls, value: str) -> str:
+        if re.match(r"^https?://[^\s]+$", value, re.IGNORECASE):
+            return value
+        if re.match(r"^owner-created://[^\s]+$", value, re.IGNORECASE):
+            return value
+        if re.match(r"^owner-approved:[^\s]+$", value, re.IGNORECASE):
+            return value
+        raise ValueError("Use an HTTP(S) or approved owner-media provenance URL")
 
 
 class ProjectUnitTypeInput(StrictModel):

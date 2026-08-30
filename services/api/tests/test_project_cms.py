@@ -26,7 +26,7 @@ from app.models import (
     ProjectMedia,
     ProjectMediaCategory,
 )
-from app.schemas import PaymentPlanInput
+from app.schemas import PaymentPlanInput, ProjectMediaInput
 from tests.test_developer_cms import developer_payload
 
 
@@ -167,6 +167,29 @@ def test_complete_payment_plan_requires_exact_total() -> None:
     payload["milestones"][1]["percentage"] = "79"  # type: ignore[index]
     with pytest.raises(ValueError, match="100%"):
         PaymentPlanInput.model_validate(payload)
+
+
+@pytest.mark.parametrize(
+    "source_url",
+    [
+        "https://example.com/approved-cover.webp",
+        "owner-created://aliyas/hero-banners/are-hero-hotel-01.webp",
+        "owner-approved:aliyas-neutral-cover-temporary-private-preview-20260827",
+    ],
+)
+def test_project_media_accepts_supported_provenance_urls(source_url: str) -> None:
+    payload = project_payload(str(uuid.uuid4()), str(uuid.uuid4()))["media"]
+    assert isinstance(payload, list)
+    payload[0]["source_url"] = source_url
+    assert ProjectMediaInput.model_validate(payload[0]).source_url == source_url
+
+
+def test_project_media_rejects_unsafe_provenance_url() -> None:
+    payload = project_payload(str(uuid.uuid4()), str(uuid.uuid4()))["media"]
+    assert isinstance(payload, list)
+    payload[0]["source_url"] = "javascript:alert(1)"
+    with pytest.raises(ValueError, match="approved owner-media"):
+        ProjectMediaInput.model_validate(payload[0])
 
 
 @pytest.mark.asyncio
