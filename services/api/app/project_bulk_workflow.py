@@ -543,6 +543,7 @@ def _project_input_snapshot(project: Project) -> dict[str, Any]:
     sources = list(project.sources)
     source_index = {item.id: index for index, item in enumerate(sources)}
     plan = project.payment_plan
+    supported_down_payment = bool(project.down_payment_source_value)
     payload: dict[str, Any] = {
         "slug": project.slug,
         "developer_id": project.developer_id,
@@ -558,8 +559,12 @@ def _project_input_snapshot(project: Project) -> dict[str, Any]:
         "size_min": project.size_min,
         "size_max": project.size_max,
         "size_unit": project.size_unit,
-        "down_payment_percentage": project.down_payment_percentage,
-        "down_payment_source_value": project.down_payment_source_value,
+        "down_payment_percentage": (
+            project.down_payment_percentage if supported_down_payment else None
+        ),
+        "down_payment_source_value": (
+            project.down_payment_source_value if supported_down_payment else None
+        ),
         "latitude": project.latitude,
         "longitude": project.longitude,
         "last_verified_at": project.last_verified_at,

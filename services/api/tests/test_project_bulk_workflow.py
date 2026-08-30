@@ -114,6 +114,16 @@ async def test_bulk_project_workflow_is_gated_audited_atomic_and_idempotent(
     )
     assert saved.status_code == 200, saved.text
 
+    # Legacy acquisition rows can retain a normalized percentage without the
+    # source wording required by the current input contract. That unsupported
+    # optional value remains private and must not block a publication snapshot.
+    async with SessionLocal() as db:
+        project = await db.get(Project, uuid.UUID(project_id))
+        assert project is not None
+        project.down_payment_percentage = 10
+        project.down_payment_source_value = None
+        await db.commit()
+
     batch_id = uuid.uuid4()
     candidate_id = uuid.uuid4()
     async with SessionLocal() as db:
@@ -252,6 +262,10 @@ async def test_bulk_project_workflow_is_gated_audited_atomic_and_idempotent(
         assert project.workflow_status == ProjectWorkflowStatus.APPROVED
         assert project.priority.value == "B"
         assert candidate.review_status == ImportReviewStatus.MERGED
+        revision = await db.get(ProjectRevision, project.active_revision_id)
+        assert revision is not None
+        assert revision.record_snapshot["down_payment_percentage"] is None
+        assert revision.record_snapshot["down_payment_source_value"] is None
         assert (
             await db.scalar(
                 select(func.count(ProjectRevision.id)).where(
