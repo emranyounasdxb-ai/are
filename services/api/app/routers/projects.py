@@ -1276,6 +1276,89 @@ async def upload_project_media(
     return project_dict(await project_or_404(record.id, db))
 
 
+@admin_router.post("/projects/{record_id}/media/{media_id}/supersede-private")
+async def supersede_private_project_media(
+    record_id: uuid.UUID,
+    media_id: uuid.UUID,
+    request: Request,
+    context: AuthContext = Depends(require_mutation_permission("project.update")),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    record = await project_or_404(record_id, db, lock=True)
+    media = next((item for item in record.media if item.id == media_id), None)
+    if not media:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            detail={"code": "not_found", "message": "Project media not found."},
+        )
+    if media.private_provenance.get("association_status") == "superseded-private":
+        return project_dict(record)
+    if media.rights_status == MediaRightsStatus.APPROVED or not media.source_url.startswith(
+        "owner-approved:aliyas-neutral-cover-temporary-private-preview-"
+    ):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={
+                "code": "media_not_supersedable",
+                "message": "Only an unapproved superseded neutral fallback may be archived.",
+            },
+        )
+    approved_owner_heroes = [
+        item
+        for item in record.media
+        if item.id != media.id
+        and item.category.value == "cover"
+        and item.rights_status == MediaRightsStatus.APPROVED
+        and item.storage_key
+        and item.sha256
+        and item.private_provenance.get("origin") == "owner-created-aliyas-hero-media"
+        and item.private_provenance.get("association_status") != "superseded-private"
+    ]
+    if len(approved_owner_heroes) != 1:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={
+                "code": "owner_hero_invariant",
+                "message": "Exactly one approved owner-created Hero must remain.",
+            },
+        )
+    previous_rights = media.rights_status.value
+    media.rights_status = MediaRightsStatus.REJECTED
+    media.private_provenance = {
+        **media.private_provenance,
+        "association_status": "superseded-private",
+        "superseded_reason": "Replaced by the approved owner-created Project Hero",
+        "superseded_at": datetime.now(UTC).isoformat(),
+        "approved_owner_hero_id": str(approved_owner_heroes[0].id),
+    }
+    await write_audit(
+        db,
+        action="project.media.association.supersede-private",
+        entity_type="project_media",
+        entity_id=media.id,
+        actor_user_id=context.user.id,
+        correlation_id=request_correlation_id(request),
+        before={
+            "project_id": str(record.id),
+            "media_id": str(media.id),
+            "rights_status": previous_rights,
+            "category": media.category.value,
+            "sha256": media.sha256,
+            "storage_key": media.storage_key,
+        },
+        after={
+            "project_id": str(record.id),
+            "media_id": str(media.id),
+            "rights_status": media.rights_status.value,
+            "association_status": "superseded-private",
+            "private_file_preserved": True,
+            "approved_owner_hero_id": str(approved_owner_heroes[0].id),
+        },
+    )
+    await db.commit()
+    return project_dict(await project_or_404(record.id, db))
+
+
 @admin_router.get("/project-imports")
 async def list_import_batches(
     _: AuthContext = Depends(require_permission("project-import.manage")),
