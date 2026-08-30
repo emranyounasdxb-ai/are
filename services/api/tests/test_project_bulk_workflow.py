@@ -157,10 +157,8 @@ async def test_bulk_project_workflow_is_gated_audited_atomic_and_idempotent(
         headers={"X-CSRF-Token": csrf},
     )
     assert saved.status_code == 200, saved.text
-    project_data["media"] = [project_media[0]]
-    superseded = await client.put(
-        f"/api/v1/admin/projects/{project_id}",
-        json=project_data,
+    superseded = await client.post(
+        f"/api/v1/admin/projects/{project_id}/media/{fallback_media_id}/supersede-private",
         headers={"X-CSRF-Token": csrf},
     )
     assert superseded.status_code == 200, superseded.text
@@ -182,12 +180,17 @@ async def test_bulk_project_workflow_is_gated_audited_atomic_and_idempotent(
             or 0
         )
         assert supersede_audits == 1
-    replay_supersede = await client.put(
-        f"/api/v1/admin/projects/{project_id}",
-        json=project_data,
+    replay_supersede = await client.post(
+        f"/api/v1/admin/projects/{project_id}/media/{fallback_media_id}/supersede-private",
         headers={"X-CSRF-Token": csrf},
     )
     assert replay_supersede.status_code == 200, replay_supersede.text
+    approved_hero_rejected = await client.post(
+        f"/api/v1/admin/projects/{project_id}/media/{media_id}/supersede-private",
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert approved_hero_rejected.status_code == 422
+    assert approved_hero_rejected.json()["error"]["code"] == "media_not_supersedable"
     async with SessionLocal() as db:
         assert (
             int(
