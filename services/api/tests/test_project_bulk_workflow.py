@@ -23,7 +23,7 @@ from app.models import (
     ProjectWorkflowStatus,
     PublicationStatus,
 )
-from app.project_bulk_workflow import ProjectBulkWorkflowInput
+from app.project_bulk_workflow import ProjectBulkWorkflowInput, _validated_snapshot_payload
 from tests.test_developer_cms import developer_payload
 from tests.test_project_cms import authenticate, project_payload
 
@@ -51,6 +51,19 @@ def test_bulk_project_workflow_contract_is_bounded_and_explicit() -> None:
                 "idempotency_key": f"qa-confirm-{uuid.uuid4()}",
             }
         )
+
+
+def test_publication_snapshot_preserves_media_beyond_the_editor_limit() -> None:
+    project = project_payload(uuid.uuid4(), uuid.uuid4())
+    media = project["media"]
+    assert isinstance(media, list)
+    project["media"] = [
+        {**media[0], "id": str(uuid.uuid4()), "display_order": index} for index in range(101)
+    ]
+
+    snapshot = _validated_snapshot_payload(project)
+
+    assert len(snapshot["media"]) == 101
 
 
 @pytest.mark.asyncio
