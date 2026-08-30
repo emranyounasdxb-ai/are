@@ -83,6 +83,46 @@ def test_changed_asset_or_metadata_cannot_reuse_permission(field, value):
     assert not current_asset_permission(media, receipt)
 
 
+@pytest.mark.parametrize(
+    ("category", "width", "height"),
+    [
+        (ProjectMediaCategory.COVER, 1920, 1080),
+        (ProjectMediaCategory.GALLERY, 1600, 900),
+        (ProjectMediaCategory.AMENITIES, 1400, 900),
+        (ProjectMediaCategory.FLOOR_PLAN, 1000, 700),
+        (ProjectMediaCategory.LOCATION_MAP, 1200, 900),
+        (ProjectMediaCategory.MASTER_PLAN, 1000, 700),
+    ],
+)
+def test_asset_only_permission_supports_separate_public_media_categories(category, width, height):
+    media, receipt = approved_asset()
+    media.category = category
+    media.width = width
+    media.height = height
+    receipt.metadata_summary["asset_version"] = asset_version(media)
+
+    assert current_asset_permission(media, receipt)
+
+
+@pytest.mark.parametrize(
+    ("category", "width", "height"),
+    [
+        (ProjectMediaCategory.GALLERY, 800, 450),
+        (ProjectMediaCategory.FLOOR_PLAN, 999, 700),
+        (ProjectMediaCategory.LOCATION_MAP, 1100, 900),
+        (ProjectMediaCategory.VIDEO_REFERENCE, 1920, 1080),
+    ],
+)
+def test_asset_only_permission_rejects_ineligible_or_reference_media(category, width, height):
+    media, receipt = approved_asset()
+    media.category = category
+    media.width = width
+    media.height = height
+    receipt.metadata_summary["asset_version"] = asset_version(media)
+
+    assert not current_asset_permission(media, receipt)
+
+
 @pytest.mark.asyncio
 async def test_latest_revocation_wins_and_permission_is_project_isolated():
     media, receipt = approved_asset()

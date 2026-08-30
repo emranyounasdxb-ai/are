@@ -10,6 +10,7 @@ from types import SimpleNamespace
 import pytest
 from PIL import Image
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from app.acquisition.adapters import ADAPTERS, adapter_for
 from app.acquisition.contracts import FetchResult, ManifestCandidate
@@ -40,7 +41,12 @@ from app.acquisition.service import (
     read_manifest,
     retry_candidates,
 )
-from app.acquisition.tanami import TANAMI_ADAPTER_KEY
+from app.acquisition.tanami import (
+    TANAMI_ADAPTER_KEY,
+    _classify_media,
+    classify_rendered_candidate_media,
+    discover_exact_project_media,
+)
 from app.db import SessionLocal
 from app.models import (
     AreaCommunity,
@@ -66,6 +72,152 @@ def test_raster_source_paths_are_encoded_without_changing_the_host() -> None:
     assert _encode_raster_url("https://example.com/Lifestyle/Cinema Room.jpg") == (
         "https://example.com/Lifestyle/Cinema%20Room.jpg"
     )
+
+
+def test_tanami_banner_path_beats_stale_amenities_heading() -> None:
+    category, disposition, evidence = _classify_media(
+        url="https://manage.tanamiproperties.com/Banner/1098/Large/7418.webp",
+        subpage="summary",
+        heading="Feature & Amenities",
+        parent_context="project summary banner",
+        caption="",
+        alt_text="Rimal Residences",
+    )
+
+    assert category == ProjectMediaCategory.COVER
+    assert disposition == "accepted"
+    assert evidence == ("summary subpage", "Tanami banner path")
+
+
+def test_tanami_structural_floor_plan_context_wins_without_losing_best_variant() -> None:
+    primary = "https://www.tanamiproperties.com/Projects/Rimal-Residences"
+    thumb = "https://manage.tanamiproperties.com/Project/Floor_Image/1098/Thumb/14227.jpg"
+    original = "https://manage.tanamiproperties.com/Project/Floor_Image/1098/Gallery/14227.jpg"
+    summary = FetchResult(
+        primary,
+        200,
+        datetime.now(UTC),
+        "text/html",
+        f'<a href="{thumb}"><img src="{thumb}" alt="0 Bedroom"></a>'.encode(),
+    )
+    floor_plans = FetchResult(
+        primary + "-FloorPlans",
+        200,
+        datetime.now(UTC),
+        "text/html",
+        (
+            '<h2>Floor Plan</h2><figure><a href="'
+            + original
+            + '"><img src="'
+            + original
+            + '" alt="Type ST-A1"></a></figure>'
+        ).encode(),
+    )
+
+    discovery = discover_exact_project_media(primary, (summary, floor_plans))
+    item = next(value for value in discovery.manifest if "14227.jpg" in value.source_url)
+
+    assert item.source_url == original
+    assert item.category == ProjectMediaCategory.FLOOR_PLAN
+    assert item.subpage == "floorplans"
+    assert item.disposition == "accepted"
+
+
+def test_shared_amenities_icons_are_rejected_even_on_amenities_subpage() -> None:
+    category, disposition, evidence = _classify_media(
+        url=(
+            "https://manage.tanamiproperties.com/Amenities/AmenitiesIcon/3/Thumb/Swimming-Pool.webp"
+        ),
+        subpage="amenities",
+        heading="Features & Amenities",
+        parent_context="features icon",
+        caption="Swimming Pool",
+        alt_text="Swimming Pool",
+    )
+
+    assert category is None
+    assert disposition == "reject"
+    assert evidence == ("shared amenities icon, not Project media",)
+
+
+@pytest.mark.asyncio
+async def test_rendered_media_classification_preserves_review_state(test_settings) -> None:
+    project_url = "https://www.tanamiproperties.com/Projects/QA-Rendered-Media"
+    banner = "https://manage.tanamiproperties.com/Banner/9001/Large/9001.webp"
+    floor_plan = "https://manage.tanamiproperties.com/Project/Floor_Image/9001/Gallery/9002.jpg"
+    retained_prior = "https://manage.tanamiproperties.com/Gallery/9001/Thumb/9003.webp"
+    async with SessionLocal() as db:
+        batch = ProjectImportBatch(
+            name="QA Rendered Media",
+            source_reference="synthetic-browser-evidence",
+            manifest_hash=uuid.uuid4().hex + uuid.uuid4().hex,
+            adapter_version="synthetic-v1",
+            total_count=1,
+        )
+        candidate = ProjectImportCandidate(
+            manifest_row_id=1,
+            raw_source_payload={},
+            normalized_payload={},
+            normalized_project_name="QA Rendered Media",
+            owner_manifest_values={
+                "owner_project_name": "QA Rendered Media",
+                "approved_project_url": project_url,
+            },
+            source_urls=[project_url],
+            content_hash="9" * 64,
+            adapter_key=TANAMI_ADAPTER_KEY,
+            validation_errors=[],
+            conflict_reasons=[],
+            review_status=ImportReviewStatus.MERGED,
+        )
+        candidate.staged_media = [
+            ProjectImportMedia(
+                category=ProjectMediaCategory.GALLERY,
+                source_url=retained_prior,
+                rights_status=MediaRightsStatus.PENDING,
+                stage_status="downloaded",
+            )
+        ]
+        batch.candidates = [candidate]
+        db.add(batch)
+        await db.commit()
+        results = (
+            FetchResult(
+                project_url,
+                200,
+                datetime.now(UTC),
+                "text/html",
+                f'<img src="{banner}" alt="QA Rendered Media">'.encode(),
+            ),
+            FetchResult(
+                project_url + "-FloorPlans",
+                200,
+                datetime.now(UTC),
+                "text/html",
+                f'<h2>Floor Plans</h2><img src="{floor_plan}">'.encode(),
+            ),
+        )
+
+        result = await classify_rendered_candidate_media(db, test_settings, candidate.id, results)
+        repeated = await classify_rendered_candidate_media(db, test_settings, candidate.id, results)
+        loaded = await db.scalar(
+            select(ProjectImportCandidate)
+            .where(ProjectImportCandidate.id == candidate.id)
+            .options(selectinload(ProjectImportCandidate.staged_media))
+        )
+
+        assert loaded is not None
+        assert loaded.review_status == ImportReviewStatus.MERGED
+        assert result["counts"]["cover"] == 1
+        assert result["counts"]["floor-plan"] == 1
+        media = {item.source_url: item for item in loaded.staged_media}
+        assert media[banner].category == ProjectMediaCategory.COVER
+        assert media[floor_plan].category == ProjectMediaCategory.FLOOR_PLAN
+        assert media[floor_plan].discovery_manifest["subpage"] == "floorplans"
+        assert media[retained_prior].stage_status == "downloaded"
+        assert result["stale_references"] == 1
+        assert result["idempotent"] is False
+        assert repeated["idempotent"] is True
 
 
 @pytest.mark.asyncio
@@ -157,6 +309,64 @@ async def test_idempotent_tanami_media_rerun_synchronizes_owner_authorization(
         assert stale_media.rights_status == MediaRightsStatus.PENDING
         assert legacy_media.rights_confirmed_at == legacy_confirmation
         assert stale_media.rights_confirmed_at == stale_confirmation
+
+
+@pytest.mark.asyncio
+async def test_idempotent_media_pass_does_not_retry_recorded_failures(test_settings) -> None:
+    class FailIfCalled:
+        def fetch(self, url: str, allowed_domains: tuple[str, ...]) -> RasterFetchResult:
+            del url, allowed_domains
+            raise AssertionError("A recorded failure must not be fetched during idempotency proof.")
+
+    batch_id = uuid.uuid4()
+    async with SessionLocal() as db:
+        candidate = ProjectImportCandidate(
+            manifest_row_id=1,
+            raw_source_payload={},
+            owner_manifest_values={"owner_project_name": "QA Failed Media"},
+            normalized_project_name="QA Failed Media",
+            source_urls=[],
+            content_hash="8" * 64,
+            validation_errors=[],
+            conflict_reasons=[],
+            adapter_key=TANAMI_ADAPTER_KEY,
+            review_status=ImportReviewStatus.NEEDS_REVIEW,
+            staged_media=[
+                ProjectImportMedia(
+                    category=ProjectMediaCategory.GALLERY,
+                    source_url="https://manage.tanamiproperties.com/Gallery/9002/Thumb/9002.webp",
+                    rights_status=MediaRightsStatus.PENDING,
+                    stage_status="failed",
+                    failure_reason="Recorded permanent source failure.",
+                )
+            ],
+        )
+        db.add(
+            ProjectImportBatch(
+                id=batch_id,
+                name="QA Failed Media Idempotency",
+                source_reference="qa-failed-media",
+                manifest_hash=uuid.uuid4().hex + uuid.uuid4().hex,
+                adapter_version="test",
+                total_count=1,
+                candidates=[candidate],
+            )
+        )
+        await db.commit()
+
+        stats = await intake_private_media(
+            db,
+            test_settings,
+            batch_id,
+            fetcher=FailIfCalled(),
+            preserve_review_state=True,
+            retry_failed=False,
+        )
+
+        assert stats["attempted"] == 0
+        assert stats["failed"] == 1
+        assert candidate.staged_media[0].stage_status == "failed"
+        assert candidate.staged_media[0].failure_reason == "Recorded permanent source failure."
 
 
 def test_reconciliation_does_not_recreate_the_generic_nine_conflicts() -> None:
@@ -280,6 +490,54 @@ def test_best_cover_selection_uses_only_a_valid_high_resolution_landscape() -> N
     _select_best_cover(candidate)
     assert selected.category == ProjectMediaCategory.COVER
     assert invalid.category == ProjectMediaCategory.GALLERY
+
+
+def test_exact_tanami_cover_replaces_a_larger_conceptual_cover() -> None:
+    conceptual = SimpleNamespace(
+        category=ProjectMediaCategory.COVER,
+        stage_status="downloaded",
+        rights_status=MediaRightsStatus.APPROVED,
+        rights_basis=(
+            "Owner-authorized ALIYAS-owned conceptual illustration; website and derivative "
+            "use permitted; not an exact development depiction."
+        ),
+        storage_key="conceptual.webp",
+        width=3000,
+        height=1800,
+        display_order=0,
+    )
+    exact = SimpleNamespace(
+        category=ProjectMediaCategory.GALLERY,
+        stage_status="downloaded",
+        rights_status=MediaRightsStatus.APPROVED,
+        rights_basis=TANAMI_OWNER_AUTHORIZED_RIGHTS_BASIS,
+        storage_key="exact.webp",
+        width=1800,
+        height=1000,
+        display_order=2,
+    )
+    for item in (conceptual, exact):
+        item.normalized_filename = None
+        item.title_en = None
+        item.title_ar = None
+        item.description_en = None
+        item.description_ar = None
+        item.alt_en_draft = None
+        item.alt_ar_draft = None
+        item.tags = []
+        item.public_metadata = {}
+    candidate = SimpleNamespace(
+        normalized_project_name="Exact Project",
+        owner_manifest_values={},
+        normalized_payload={},
+        manifest_row_id=1,
+        staged_media=[conceptual, exact],
+    )
+
+    _select_best_cover(candidate)
+
+    assert exact.category == ProjectMediaCategory.COVER
+    assert conceptual.category == ProjectMediaCategory.GALLERY
 
 
 def public_resolver(

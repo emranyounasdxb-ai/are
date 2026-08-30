@@ -8,6 +8,7 @@ import json
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.acquisition.media import classify_media_dimensions
 from app.models import AuditLog, MediaRightsStatus, Project, ProjectMedia, ProjectMediaCategory
 
 APPROVE = "project.media.preview.approve"
@@ -45,6 +46,11 @@ def asset_version(media: ProjectMedia) -> str:
 
 def current_asset_permission(media: ProjectMedia, receipt: AuditLog) -> bool:
     detail = receipt.metadata_summary or {}
+    quality = (
+        classify_media_dimensions(media.width, media.height, media.category.value)
+        if media.width and media.height
+        else None
+    )
     return bool(
         receipt.action == APPROVE
         and receipt.outcome == "success"
@@ -55,18 +61,25 @@ def current_asset_permission(media: ProjectMedia, receipt: AuditLog) -> bool:
         and detail.get("project_id") == str(media.project_id)
         and detail.get("asset_version") == asset_version(media)
         and detail.get("authorization_reference")
-        and media.category == ProjectMediaCategory.COVER
+        and media.category
+        in {
+            ProjectMediaCategory.COVER,
+            ProjectMediaCategory.GALLERY,
+            ProjectMediaCategory.EXTERIOR,
+            ProjectMediaCategory.INTERIOR,
+            ProjectMediaCategory.AMENITIES,
+            ProjectMediaCategory.FLOOR_PLAN,
+            ProjectMediaCategory.LOCATION_MAP,
+            ProjectMediaCategory.MASTER_PLAN,
+        }
         and media.rights_status == MediaRightsStatus.APPROVED
         and media.storage_key
         and media.sha256
         and media.mime_type in {"image/webp", "image/png", "image/jpeg", "image/avif"}
         and media.alt_en
         and media.alt_ar
-        and media.width
-        and media.width >= 1600
-        and media.height
-        and media.height >= 900
-        and media.width > media.height
+        and quality
+        and quality.public_eligible
     )
 
 
